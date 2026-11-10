@@ -10,6 +10,7 @@ import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
 import { LABELS, readMeta, setLabel, setMeta, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
+import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
@@ -303,6 +304,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
   )
+  ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
+  ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
+  ipcMain.on('app:dragOut', (e, files: string[]) => {
+    void startFileDrag(e.sender, files ?? [])
+  })
   ipcMain.handle('fs:readText', (_e, p: string) => readTextFile(p ?? ''))
   ipcMain.handle('fs:writeText', (_e, a: { path: string; text: string }) =>
     writeTextFile(a?.path ?? '', String(a?.text ?? ''))

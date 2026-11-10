@@ -101,6 +101,10 @@ export type Api = {
   walk(dir: string, opts: WalkOpts): Promise<WalkResult>
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
+  openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
+  reveal(path: string): Promise<{ ok: true } | { error: string }>
+  /** hands the files to the OS so they can be dropped into another app */
+  dragOut(files: string[]): void
   readText(p: string): Promise<{ text: string; size: number } | { error: string }>
   writeText(path: string, text: string): Promise<{ ok: true } | { error: string }>
   htmlToPdf(html: string, out: string, theme?: string): Promise<{ path: string } | { error: string }>

@@ -12,7 +12,8 @@ export const DEFAULT_TOOLBAR = [
   'previewPane',
   'undo',
   'flat',
-  'dupes'
+  'dupes',
+  'terminal'
 ]
 
 export type View = 'list' | 'grid'

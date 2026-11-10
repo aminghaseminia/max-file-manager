@@ -10,6 +10,9 @@ import { createVisualEditor, type VisualEditor } from './visual'
 type Props = {
   path: string
   theme: 'dark' | 'light'
+  /** sit in the preview slot instead of covering the window */
+  docked?: boolean
+  onToggleMax?(): void
   onClose(): void
   onNote(msg: string): void
   /** the file changed on disk, so the pane behind the editor reloads */
@@ -18,7 +21,7 @@ type Props = {
 
 const MD = /\.(md|markdown|mdx)$/i
 
-export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
+export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNote, onSaved }: Props) {
   const [text, setText] = useState<string | null>(null)
   const [saved, setSaved] = useState('')
   const [err, setErr] = useState('')
@@ -155,7 +158,7 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
   const dir = isMd ? dirOfText(value) : 'ltr'
 
   return (
-    <div className="editor">
+    <div className={'editor' + (docked ? ' docked' : '')}>
       <header className="ed-head">
         <span className="ed-name" dir="auto" title={path}>
           {baseName(path)}
@@ -206,6 +209,15 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
           <ConfirmIcon />
           <span>ذخیره</span>
         </button>
+        {onToggleMax && (
+          <button
+            className="tb"
+            title={docked ? 'تمام صفحه' : 'برگرداندن به کنار پیش‌نمایش'}
+            onClick={onToggleMax}
+          >
+            {docked ? '⛶' : '❐'}
+          </button>
+        )}
         <button className="tb" title="بستن (Esc)" onClick={onClose}>
           <XIcon size={12} />
         </button>

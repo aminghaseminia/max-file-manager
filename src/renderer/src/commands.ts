@@ -30,6 +30,8 @@ export type CommandId =
   | 'addressBar'
   | 'toggleView'
   | 'toggleLayout'
+  | 'terminal'
+  | 'reveal'
   | 'prefs'
 
 export type CommandGroup = 'transfer' | 'file' | 'view' | 'tab' | 'window'
@@ -64,6 +66,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'reopenTab', label: 'تب بسته‌شده', key: 'Ctrl+Shift+T', group: 'tab' },
   { id: 'nextTab', label: 'تب بعدی', key: 'Ctrl+Tab', group: 'tab' },
   { id: 'addressBar', label: 'نوار آدرس', key: 'Ctrl+L', group: 'window' },
+  { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', group: 'window' },
+  { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', key: '', group: 'window' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' }
 ]
 

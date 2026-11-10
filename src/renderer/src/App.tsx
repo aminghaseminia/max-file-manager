@@ -28,6 +28,8 @@ import {
 } from './format'
 import {
   ArchiveOpenIcon,
+  ChevronLeftIcon,
+  DriveIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
@@ -113,6 +115,7 @@ export default function App() {
   const [previewOn, setPreviewOn] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [editor, setEditor] = useState<string | null>(null)
+  const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
   const [labelFor, setLabelFor] = useState<{ dir: string; name: string } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
@@ -746,6 +749,14 @@ export default function App() {
       case 'openTab':
         if (path) addTab(active, path)
         break
+      case 'reveal':
+        if (path) void api.reveal(path)
+        break
+      case 'terminal':
+        void api.openTerminal(tabOf(me)).then((r) => {
+          if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
+        })
+        break
       case 'label': {
         if (path) setLabelFor({ dir: dirOf(path), name: baseName(path) })
         break
@@ -860,6 +871,8 @@ export default function App() {
       { id: 'delete', label: 'حذف قطعی', key: 'Shift+F8', icon: <TrashIcon />, danger: true },
       { sep: true },
       { id: 'copyPath', label: 'کپی مسیر', icon: <CopyIcon /> },
+      { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', icon: <DriveIcon /> },
+      { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
     )
     const pinDir = path ? dirOf(path) : ''
@@ -1001,6 +1014,15 @@ export default function App() {
     addressBar: () => setAddr(tabOf(panes![active])),
     toggleView: () => setView((v) => (v === 'list' ? 'grid' : 'list')),
     toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
+    terminal: () => {
+      void api.openTerminal(tabOf(panes![active])).then((r) => {
+        if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
+      })
+    },
+    reveal: () => {
+      const p = panes![active].sel[0] ?? tabOf(panes![active])
+      void api.reveal(p)
+    },
     prefs: () => setSettingsOpen(true)
   }
 
@@ -1078,11 +1100,12 @@ export default function App() {
 
   return (
     <div className="app">
-      {editor && (
+      {editor && editorMax && (
         <Editor
-          key={editor}
+          key={editor + ':max'}
           path={editor}
           theme={theme}
+          onToggleMax={() => setEditorMax(false)}
           onClose={() => setEditor(null)}
           onNote={setNote}
           onSaved={() => void load(active, tabOf(panes![active]))}
@@ -1313,16 +1336,29 @@ export default function App() {
           )
         })}
 
-        {previewOn && (
-          <div className="preview-slot">
-          <PreviewPanel
-            entry={entryOf(active, previewPath) ?? null}
-            maxKB={prefs.previewMaxKB}
-            onOpen={(p) => void api.open(p)}
-            onClose={() => setPreviewOn(false)}
-          />
+        {editor && !editorMax ? (
+          <div className="preview-slot wide">
+            <Editor
+              key={editor + ':dock'}
+              path={editor}
+              theme={theme}
+              docked
+              onToggleMax={() => setEditorMax(true)}
+              onClose={() => setEditor(null)}
+              onNote={setNote}
+              onSaved={() => void load(active, tabOf(panes![active]))}
+            />
           </div>
-        )}
+        ) : previewOn ? (
+          <div className="preview-slot">
+            <PreviewPanel
+              entry={entryOf(active, previewPath) ?? null}
+              maxKB={prefs.previewMaxKB}
+              onOpen={(p) => void api.open(p)}
+              onClose={() => setPreviewOn(false)}
+            />
+          </div>
+        ) : null}
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">

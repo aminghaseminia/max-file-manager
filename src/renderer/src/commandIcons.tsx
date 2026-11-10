@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import {
   ArchiveOpenIcon,
   ChevronLeftIcon,
+  DriveIcon,
   CopyIcon,
   DupeIcon,
   EyeIcon,
@@ -55,5 +56,7 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   addressBar: <PinIcon />,
   toggleView: <GridIcon />,
   toggleLayout: <SplitIcon />,
+  terminal: <ChevronLeftIcon />,
+  reveal: <DriveIcon />,
   prefs: <SettingsIcon />
 }
