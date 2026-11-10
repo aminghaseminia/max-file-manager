@@ -1,0 +1,16 @@
+appId: tech.performai.maxfilemanager
+productName: Max File Manager
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+linux:
+  target:
+    - AppImage
+    - deb
+  category: FileManager
+  synopsis: Dual-pane file manager
+win:
+  target:
+    - nsis
