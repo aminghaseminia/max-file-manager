@@ -37,6 +37,7 @@ import {
   MoonIcon,
   MoveIcon,
   PaletteIcon,
+  PinIcon,
   PlayIcon,
   PlusIcon,
   PreviewIcon,
@@ -46,6 +47,7 @@ import {
   SplitIcon,
   SunIcon,
   TrashIcon,
+  XIcon,
   UndoIcon,
   ConfirmIcon
 } from './Icons'
@@ -53,6 +55,7 @@ import {
 const newPane = (dir: string): PaneState => ({
   tabs: [dir],
   ti: 0,
+  pinCount: 0,
   hist: [dir],
   hi: 0,
   sel: [],
@@ -97,7 +100,12 @@ export default function App() {
   const [free, setFree] = useState<number | null>(null)
   const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [menu, setMenu] = useState<{ path: string | null; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{
+    path: string | null
+    tab?: number
+    x: number
+    y: number
+  } | null>(null)
   const [previewOn, setPreviewOn] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
@@ -162,11 +170,12 @@ export default function App() {
       }
       if (Array.isArray(s.marks)) setMarks(s.marks.filter((m: unknown) => typeof m === 'string' && m))
       if (s.active === 1) setActive(1)
-      const mk = (p?: { tabs?: string[]; ti?: number }): PaneState => {
+      const mk = (p?: { tabs?: string[]; ti?: number; pinCount?: number }): PaneState => {
         const tabs = (p?.tabs ?? []).filter((t) => typeof t === 'string' && t)
         const list = tabs.length ? tabs : [s.prefs?.startFolder || home]
         const ti = Math.min(Math.max(p?.ti ?? 0, 0), list.length - 1)
-        return { ...newPane(list[ti]), tabs: list, ti }
+        const pinCount = Math.min(Math.max(p?.pinCount ?? 0, 0), list.length)
+        return { ...newPane(list[ti]), tabs: list, ti, pinCount }
       }
       setPanes([mk(s.panes?.[0]), mk(s.panes?.[1])])
       setBooted(true)
@@ -218,7 +227,7 @@ export default function App() {
     if (!booted || !panes) return
     const t = setTimeout(() => {
       void api.state.set({
-        panes: panes.map((p) => ({ tabs: p.tabs, ti: p.ti })),
+        panes: panes.map((p) => ({ tabs: p.tabs, ti: p.ti, pinCount: p.pinCount })),
         active,
         sort,
         marks,
@@ -525,14 +534,132 @@ export default function App() {
     setPreviewOn((o) => !o)
   }
 
-  const addTab = (i: number, dir: string) =>
-    setPanes((p) => p && patch(p, i, { tabs: [...p[i].tabs, dir], ti: p[i].tabs.length }))
+  const reopenStack = useRef<{ pane: number; path: string }[]>([])
+
+  const addTab = (i: number, dir: string, opts: { pinned?: boolean } = {}) =>
+    setPanes((p) => {
+      if (!p) return p
+      const s = p[i]
+      const tabs = [...s.tabs]
+      let at = tabs.length
+      if (opts.pinned) at = s.pinCount
+      else if (prefs.newTabPos === 'next') at = Math.max(s.pinCount, Math.min(s.ti + 1, tabs.length))
+      tabs.splice(at, 0, dir)
+      return patch(p, i, {
+        tabs,
+        ti: at,
+        pinCount: s.pinCount + (opts.pinned ? 1 : 0),
+        sel: [],
+        virtual: null,
+        results: null,
+        archive: null,
+        preview: null
+      })
+    })
+
+  const closeTab = (i: number, idx: number) => {
+    const s = panes?.[i]
+    if (!s) return
+    if (idx < s.pinCount) {
+      setNote('تب سنجاق‌شده بسته نمی‌شود')
+      return
+    }
+    if (s.tabs.length <= 1) return
+    reopenStack.current.push({ pane: i, path: s.tabs[idx] })
+    setPanes((p) => {
+      if (!p) return p
+      const cur = p[i]
+      const tabs = cur.tabs.filter((_, j) => j !== idx)
+      const ti = cur.ti === idx ? Math.max(0, idx - 1) : cur.ti > idx ? cur.ti - 1 : cur.ti
+      return patch(p, i, { tabs, ti: Math.min(ti, tabs.length - 1), sel: [] })
+    })
+  }
+
+  const closeTabs = (i: number, idx: number, mode: 'others' | 'right') => {
+    const s = panes?.[i]
+    if (!s) return
+    setPanes((p) => {
+      if (!p) return p
+      const cur = p[i]
+      const keep = cur.tabs.filter((_, j) => {
+        if (j < cur.pinCount) return true
+        return mode === 'others' ? j === idx : j <= idx
+      })
+      const activePath = cur.tabs[cur.ti]
+      const ti = Math.max(0, keep.indexOf(activePath))
+      return patch(p, i, { tabs: keep, ti, sel: [], pinCount: Math.min(cur.pinCount, keep.length) })
+    })
+  }
+
+  const togglePin = (i: number, idx: number) =>
+    setPanes((p) => {
+      if (!p) return p
+      const s = p[i]
+      const tabs = [...s.tabs]
+      const [path] = tabs.splice(idx, 1)
+      if (idx < s.pinCount) {
+        const at = Math.max(0, s.pinCount - 1)
+        tabs.splice(at, 0, path)
+        return patch(p, i, { tabs, pinCount: s.pinCount - 1, ti: at })
+      }
+      tabs.splice(s.pinCount, 0, path)
+      return patch(p, i, { tabs, pinCount: s.pinCount + 1, ti: s.pinCount })
+    })
+
+  const moveTab = (i: number, from: number, to: number) =>
+    setPanes((p) => {
+      if (!p) return p
+      const s = p[i]
+      if (from === to || from < 0 || to < 0 || from >= s.tabs.length || to >= s.tabs.length) return p
+      // a pinned tab stays in the pinned region and vice versa
+      if (from < s.pinCount !== to < s.pinCount) return p
+      const tabs = [...s.tabs]
+      const [moved] = tabs.splice(from, 1)
+      tabs.splice(to, 0, moved)
+      return patch(p, i, { tabs, ti: s.ti === from ? to : s.ti })
+    })
+
+  const reopenTab = () => {
+    const last = reopenStack.current.pop()
+    if (!last) {
+      setNote('تب بسته‌شده‌ای نیست')
+      return
+    }
+    addTab(last.pane, last.path)
+  }
+
+  const jumpTab = (n: number) =>
+    setPanes((p) => {
+      if (!p) return p
+      const s = p[active]
+      if (n >= s.tabs.length) return p
+      return patch(p, active, { ti: n, sel: [] })
+    })
 
   const pickMenu = (id: string) => {
     if (!menu || !panes) return
     const me = panes[active]
     const path = menu.path
+    const tabIdx = menu.tab
     switch (id) {
+      case 'tabPin':
+        if (tabIdx != null) togglePin(active, tabIdx)
+        break
+      case 'tabDup':
+        if (tabIdx != null) addTab(active, me.tabs[tabIdx])
+        break
+      case 'tabClose':
+        if (tabIdx != null) closeTab(active, tabIdx)
+        break
+      case 'tabCloseOthers':
+        if (tabIdx != null) closeTabs(active, tabIdx, 'others')
+        break
+      case 'tabCloseRight':
+        if (tabIdx != null) closeTabs(active, tabIdx, 'right')
+        break
+      case 'tabCopyPath':
+        if (tabIdx != null) void copyText(me.tabs[tabIdx])
+        break
       case 'open':
         if (path) openEntry(active, path)
         break
@@ -572,6 +699,9 @@ export default function App() {
       case 'tabHere':
         if (path) addTab(active, path)
         break
+      case 'openTab':
+        if (path) addTab(active, path)
+        break
       case 'tabNew':
         addTab(active, tabOf(me))
         break
@@ -605,6 +735,26 @@ export default function App() {
   const menuItems = (path: string | null): MenuItem[] => {
     const me = panes?.[active]
     if (!me) return []
+    if (menu?.tab != null) {
+      const idx = menu.tab
+      const pinned = idx < me.pinCount
+      return [
+        { id: 'tabPin', label: pinned ? 'برداشتن سنجاق' : 'سنجاق‌کردن تب', icon: <PinIcon filled={pinned} /> },
+        { id: 'tabDup', label: 'تب تکراری', icon: <PlusIcon /> },
+        { sep: true },
+        {
+          id: 'tabClose',
+          label: 'بستن تب',
+          key: 'Ctrl+W',
+          icon: <XIcon size={12} />,
+          disabled: pinned || me.tabs.length <= 1
+        },
+        { id: 'tabCloseOthers', label: 'بستن بقیه', icon: <XIcon size={12} /> },
+        { id: 'tabCloseRight', label: 'بستن تب‌های بعدی', icon: <XIcon size={12} /> },
+        { sep: true },
+        { id: 'tabCopyPath', label: 'کپی مسیر', icon: <CopyIcon /> }
+      ]
+    }
     const entry = entryOf(active, path)
     if (!path) {
       return [
@@ -647,6 +797,7 @@ export default function App() {
     )
     if (entry?.dir) {
       items.push(
+        { id: 'openTab', label: 'باز کردن در تب نو', icon: <PlusIcon /> },
         { id: 'size', label: 'محاسبهٔ اندازه', key: 'F9', icon: <GaugeIcon /> },
         { id: 'look', label: 'رنگ و آیکون پوشه', icon: <PaletteIcon /> },
         { id: 'tabHere', label: 'تب نو در این پوشه', icon: <PlusIcon /> }
@@ -760,14 +911,19 @@ export default function App() {
         addTab(active, tabOf(me))
         return
       }
+      if (ev.ctrlKey && ev.shiftKey && (ev.key === 'T' || ev.key === 't')) {
+        ev.preventDefault()
+        reopenTab()
+        return
+      }
       if (ev.ctrlKey && (ev.key === 'w' || ev.key === 'W')) {
         ev.preventDefault()
-        setPanes((p) => {
-          if (!p) return p
-          const tabs = p[active].tabs.filter((_, j) => j !== p[active].ti)
-          if (!tabs.length) return p
-          return patch(p, active, { tabs, ti: Math.min(p[active].ti, tabs.length - 1) })
-        })
+        closeTab(active, panes[active].ti)
+        return
+      }
+      if (ev.ctrlKey && /^[1-9]$/.test(ev.key)) {
+        ev.preventDefault()
+        jumpTab(Number(ev.key) - 1)
         return
       }
       if (ev.ctrlKey && ev.shiftKey && (ev.key === 'F' || ev.key === 'f')) {
@@ -1052,6 +1208,9 @@ export default function App() {
               })
             }
             onTabPick={(idx) => setPanes((p) => p && patch(p, i, { ti: idx, sel: [] }))}
+            onTabMenu={(idx, x, y) => setMenu({ path: null, tab: idx, x, y })}
+            onTabMove={(from, to) => moveTab(i, from, to)}
+            middleClickClosesTab={prefs.middleClickClosesTab}
             onOp={(kind) => {
               if (kind === 'mkdir') setPrompt({ kind: 'mkdir', value: '' })
               else if (kind === 'rename') openRename(i)

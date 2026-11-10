@@ -382,3 +382,19 @@ export const ConfirmIcon = () => (
     <path d="M12 8v4.5M12 16h.01" />
   </S>
 )
+export const PinIcon = ({ filled = false, size = 13 }: { filled?: boolean; size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill={filled ? 'currentColor' : 'none'}
+    stroke="currentColor"
+    strokeWidth={1.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6z" />
+    <path d="M12 14v7" />
+  </svg>
+)

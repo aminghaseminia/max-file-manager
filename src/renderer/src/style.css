@@ -1540,3 +1540,29 @@ html[data-rounded='1'] .app {
   position: relative;
   left: 0;
 }
+
+/* ---------- tabs: pinned, scrolling, dragging ---------- */
+.tabs {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  height: 0;
+}
+.tab {
+  flex: none;
+  cursor: pointer;
+}
+.tab.pinned {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.pane:not(.active) .tab.pinned {
+  color: var(--dim);
+  background: transparent;
+}
+.tab.pinned svg {
+  flex: none;
+  opacity: 0.9;
+}

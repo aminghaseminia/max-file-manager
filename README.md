@@ -13,6 +13,10 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Full tab support — pinned tabs, drag to reorder, and a tab menu:
+
+![tabs](docs/screenshot-tabs.png)
+
 Configurable columns (permissions, owner, links, image size) with Jalali dates, the gallery editor (crop), and the columns page in preferences:
 
 ![columns](docs/screenshot-columns.png)
@@ -42,12 +46,12 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.7** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
+**Status: v0.8** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
 - **Single pane or dual pane** — dual is a setting, not a requirement; the copy/move target stays tracked and is shown in the status bar
-- Two panes (source / destination) with tabs in each (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`) and per-pane back/forward history
+- Two panes (source / destination) with **full tabs** in each — pinned tabs, drag to reorder, middle-click close, a tab menu (pin, duplicate, close others/right, copy path), `Ctrl+T/W/Shift+T/Ctrl+Tab/Ctrl+1…9`, position of new tabs configurable — plus per-pane back/forward history
 - **Single instance**: launching again focuses the open window and opens the path you passed
 - **Photo gallery**: arrows browse the folder's images, `+`/`-` zoom, `R` rotate, `Space` slideshow, `F` fullscreen, thumbnail strip
 - **Simple image edits in the gallery**: rotate 90°, flip, crop by dragging a box, resize with a locked aspect ratio, save as a copy (`name-edit.png`) or overwrite

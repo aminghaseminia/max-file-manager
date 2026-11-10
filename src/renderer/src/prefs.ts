@@ -34,6 +34,9 @@ export type Prefs = {
   layout: Layout
   sidebar: 'docked' | 'float'
   sidebarOpen: boolean
+  // tabs
+  newTabPos: 'end' | 'next'
+  middleClickClosesTab: boolean
   // file operations
   doubleClick: DoubleClick
   confirmDelete: boolean
@@ -61,6 +64,8 @@ export const DEFAULTS: Prefs = {
   layout: 'dual',
   sidebar: 'docked',
   sidebarOpen: true,
+  newTabPos: 'next',
+  middleClickClosesTab: true,
   doubleClick: 'gallery',
   confirmDelete: true,
   trashByDefault: true,
@@ -87,6 +92,8 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
     sidebarOpen: p.sidebarOpen !== false,
+    newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
+    middleClickClosesTab: p.middleClickClosesTab !== false,
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
     confirmDelete: p.confirmDelete !== false,
     trashByDefault: p.trashByDefault !== false,

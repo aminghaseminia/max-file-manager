@@ -27,6 +27,7 @@ import {
   LayersIcon,
   MoveIcon,
   PaletteIcon,
+  PinIcon,
   PlusIcon,
   RefreshIcon,
   RenameIcon,
@@ -44,6 +45,8 @@ export type Virtual = { kind: 'flat' | 'search' | 'dupes' | 'archive'; label: st
 export type PaneState = {
   tabs: string[]
   ti: number
+  /** tabs before this index are pinned: first, protected from closing, no boundary crossing */
+  pinCount: number
   hist: string[]
   hi: number
   sel: string[]
@@ -89,6 +92,9 @@ type Props = {
   onTabNew(): void
   onTabClose(idx: number): void
   onTabPick(idx: number): void
+  onTabMenu(idx: number, x: number, y: number): void
+  onTabMove(from: number, to: number): void
+  middleClickClosesTab: boolean
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
   onBookmark(): void
@@ -271,24 +277,59 @@ export function Pane(props: Props) {
     >
       <div className="tabs">
         <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? 'مبدأ' : 'مقصد'}</span>
-        {pane.tabs.map((t, i) => (
-          <div key={i} className={'tab' + (i === pane.ti ? ' on' : '')} onClick={() => props.onTabPick(i)}>
-            <span dir="auto">{t.split(/[\\/]/).filter(Boolean).pop() || t}</span>
-            {pane.tabs.length > 1 && (
-              <button
-                className="x"
-                title="بستن تب"
-                onClick={(e) => {
-                  e.stopPropagation()
+        {pane.tabs.map((t, i) => {
+          const pinned = i < pane.pinCount
+          return (
+            <div
+              key={t + i}
+              className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
+              draggable
+              onDragStart={(ev) => {
+                ev.dataTransfer.setData('application/x-mfm-tab', String(i))
+                ev.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(ev) => {
+                if (ev.dataTransfer.types.includes('application/x-mfm-tab')) ev.preventDefault()
+              }}
+              onDrop={(ev) => {
+                const raw = ev.dataTransfer.getData('application/x-mfm-tab')
+                if (!raw) return
+                ev.preventDefault()
+                ev.stopPropagation()
+                props.onTabMove(Number(raw), i)
+              }}
+              onClick={() => props.onTabPick(i)}
+              onAuxClick={(ev) => {
+                if (ev.button === 1 && props.middleClickClosesTab) {
+                  ev.preventDefault()
                   props.onTabClose(i)
-                }}
-              >
-                <XIcon size={11} />
-              </button>
-            )}
-          </div>
-        ))}
-        <button className="tb" title="تب نو" onClick={props.onTabNew}>
+                }
+              }}
+              onContextMenu={(ev) => {
+                ev.preventDefault()
+                ev.stopPropagation()
+                props.onTabMenu(i, ev.clientX, ev.clientY)
+              }}
+              title={t}
+            >
+              {pinned && <PinIcon filled />}
+              <span dir="auto">{t.split(/[\\/]/).filter(Boolean).pop() || t}</span>
+              {!pinned && pane.tabs.length > 1 && (
+                <button
+                  className="x"
+                  title="بستن تب"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    props.onTabClose(i)
+                  }}
+                >
+                  <XIcon size={11} />
+                </button>
+              )}
+            </div>
+          )
+        })}
+        <button className="tb" title="تب نو (Ctrl+T)" onClick={props.onTabNew}>
           <PlusIcon size={13} />
         </button>
       </div>
