@@ -30,6 +30,7 @@ import type { CommandId } from './commands'
 export const CMD_ICON: Record<CommandId, JSX.Element> = {
   copy: <CopyIcon />,
   move: <MoveIcon />,
+  edit: <RenameIcon />,
   rename: <RenameIcon />,
   batchRename: <RenameIcon />,
   mkdir: <FolderPlusIcon />,

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FolderDialog } from './FolderDialog'
+import { Editor } from './Editor'
 import { Gallery } from './Gallery'
 import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
@@ -111,6 +112,7 @@ export default function App() {
   } | null>(null)
   const [previewOn, setPreviewOn] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [editor, setEditor] = useState<string | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
@@ -741,6 +743,10 @@ export default function App() {
       case 'openTab':
         if (path) addTab(active, path)
         break
+      case 'edit': {
+        if (path && !entryOf(active, path)?.dir) setEditor(path)
+        break
+      }
       case 'pinFile': {
         if (!path) break
         const dir = dirOf(path)
@@ -854,6 +860,7 @@ export default function App() {
     const isPinned = !!pinName && (panes[active].listing?.pins ?? []).includes(pinName)
     if (path) {
       items.push(
+        { id: 'edit', label: 'ویرایش متن', key: 'F4', icon: <RenameIcon /> },
         { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
         {
         id: 'pinFile',
@@ -952,6 +959,11 @@ export default function App() {
   const RUN: Record<CommandId, () => void> = {
     copy: () => void runSel(active, 'copy'),
     move: () => void runSel(active, 'move'),
+    edit: () => {
+      const p = panes![active].sel[0]
+      if (p) setEditor(p)
+      else setNote('چیزی انتخاب نشده')
+    },
     rename: () => openRename(active),
     batchRename: () => openRename(active),
     mkdir: () => setPrompt({ kind: 'mkdir', value: '' }),
@@ -989,6 +1001,7 @@ export default function App() {
       const t = ev.target as HTMLElement | null
       const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
       if (!panes) return
+      if (editor) return
       const me = panes[active]
 
       if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
@@ -1048,6 +1061,16 @@ export default function App() {
 
   return (
     <div className="app">
+      {editor && (
+        <Editor
+          key={editor}
+          path={editor}
+          theme={theme}
+          onClose={() => setEditor(null)}
+          onNote={setNote}
+          onSaved={() => void load(active, tabOf(panes![active]))}
+        />
+      )}
       <header
         className="topbar"
         onDoubleClick={(ev) => {

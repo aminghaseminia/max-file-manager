@@ -13,6 +13,11 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Built-in editor: syntax highlighting for ~35 languages (`F4`), and a markdown editor with a live preview side by side plus one-button PDF export:
+
+![markdown editor](docs/screenshot-md-editor.png)
+![code editor](docs/screenshot-code-editor.png)
+
 Create a zip from a selection (streamed, never held in memory), and a text preview with line numbers:
 
 ![archive](docs/screenshot-archive-create.png)
@@ -61,7 +66,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.11** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
+**Status: v0.12** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
@@ -77,6 +82,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Pin files inside a folder** — pinned names sort to the very top with a pin mark and live in the folder's `.mfm.json`
 - **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit
 - **Create zip archives** from a selection (streamed through fflate, compression level 0–9), extract to the opposite pane
+- **Inline editor** (`F4`): highlight.js colouring behind a transparent textarea, line numbers, wrapping, font size, atomic `Ctrl+S` save, unsaved marker
+- **Markdown editor** with a live side-by-side preview — every block gets its own `dir` from its first strong character, code always stays LTR — and a **one-button PDF export** (embedded Vazirmatn, A4, print CSS)
 - **Text preview with line numbers** and a configurable size cap; gallery slideshow interval, looping, and image save format/quality (PNG/JPEG/WebP)
 - **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails

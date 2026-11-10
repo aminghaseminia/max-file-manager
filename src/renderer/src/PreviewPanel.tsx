@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Entry, type Preview } from './api'
 import { fa, fmtDate, fmtSize, mediaUrl } from './format'
 import { ChevronLeftIcon, ChevronRightIcon, FileIcon, GridIcon, XIcon } from './Icons'
+import { renderMarkdown } from './md'
 
 type Props = {
   entry: Entry | null
@@ -100,7 +101,14 @@ export function PreviewPanel({
             {data?.kind === 'video' && (
               <video className="preview-media" controls src={mediaUrl(entry.path)} />
             )}
-            {data?.kind === 'text' && (
+            {data?.kind === 'text' && /\.(md|markdown|mdx)$/i.test(entry.path) && (
+              <div
+                className="preview-body md-body"
+                dir="auto"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(data.text ?? '') }}
+              />
+            )}
+            {data?.kind === 'text' && !/\.(md|markdown|mdx)$/i.test(entry.path) && (
               <div className="preview-text" dir="auto">
                 {lines.slice(0, 4000).map((ln, n) => (
                   <div className="pline" key={n}>

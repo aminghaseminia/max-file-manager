@@ -9,6 +9,7 @@ import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
 import { readMeta, setMeta, togglePin, type FolderMeta } from './meta.ts'
+import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
@@ -301,6 +302,13 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
+  )
+  ipcMain.handle('fs:readText', (_e, p: string) => readTextFile(p ?? ''))
+  ipcMain.handle('fs:writeText', (_e, a: { path: string; text: string }) =>
+    writeTextFile(a?.path ?? '', String(a?.text ?? ''))
+  )
+  ipcMain.handle('pdf:html', (_e, a: { html: string; out: string; theme?: string }) =>
+    htmlToPdf(String(a?.html ?? ''), a?.out ?? '', a?.theme ?? 'dark')
   )
   ipcMain.handle('fs:preview', (_e, p: string, maxKB?: number) =>
     path.isAbsolute(p) ? preview(p, maxKB) : null

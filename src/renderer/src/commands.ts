@@ -5,6 +5,7 @@
 export type CommandId =
   | 'copy'
   | 'move'
+  | 'edit'
   | 'rename'
   | 'batchRename'
   | 'mkdir'
@@ -38,6 +39,7 @@ export type CommandDef = { id: CommandId; label: string; key: string; group: Com
 export const COMMANDS: CommandDef[] = [
   { id: 'copy', label: 'کپی به مقصد', key: 'F5', group: 'transfer' },
   { id: 'move', label: 'انتقال به مقصد', key: 'F6', group: 'transfer' },
+  { id: 'edit', label: 'ویرایش متن', key: 'F4', group: 'file' },
   { id: 'rename', label: 'تغییر نام', key: 'F2', group: 'file' },
   { id: 'batchRename', label: 'تغییر نام گروهی', key: 'Shift+F2', group: 'file' },
   { id: 'mkdir', label: 'پوشهٔ نو', key: 'F7', group: 'file' },

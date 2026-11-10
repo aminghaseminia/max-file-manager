@@ -4,6 +4,7 @@ import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS } from './commands.ts'
 export const DEFAULT_TOOLBAR = [
   'copy',
   'move',
+  'edit',
   'rename',
   'mkdir',
   'trash',
