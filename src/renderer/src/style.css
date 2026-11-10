@@ -632,3 +632,231 @@ input {
   color: #fff;
   filter: brightness(1.08);
 }
+
+/* ---------- virtual view chip ---------- */
+.vchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.vchip .x {
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- search bar ---------- */
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 6px;
+}
+.filter.grow {
+  flex: 1;
+  width: auto;
+}
+.filter.grow:focus-within {
+  width: auto;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.check input {
+  accent-color: var(--accent);
+}
+.btn {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+.btn:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- jobs bar ---------- */
+.jobs {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 5px 10px 6px;
+}
+.jobs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--dim);
+  padding-bottom: 3px;
+}
+.jobs-title {
+  color: var(--text);
+  font-weight: 600;
+}
+.pill {
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--panel-3);
+  font-size: 11px;
+}
+.jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 104px;
+  overflow-y: auto;
+}
+.job {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  min-height: 22px;
+}
+.job-label {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job .ic {
+  color: var(--accent);
+}
+.bar {
+  flex: none;
+  width: 130px;
+  height: 5px;
+  border-radius: 4px;
+  background: var(--panel-3);
+  overflow: hidden;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+.job.done .bar > i {
+  background: var(--c-code);
+}
+.job.error .bar > i,
+.job.cancelled .bar > i {
+  background: var(--c-archive);
+}
+.job-meta {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.job-err {
+  color: var(--c-archive);
+}
+
+/* ---------- rename dialog ---------- */
+.dialog.wide {
+  width: 560px;
+}
+.seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  align-self: flex-start;
+}
+.seg button {
+  padding: 3px 12px;
+  border-radius: 5px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.seg button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.field input {
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.field input:focus {
+  outline: 0;
+  border-color: var(--accent);
+}
+.two {
+  display: flex;
+  gap: 10px;
+}
+.hint {
+  font-size: 11px;
+  color: var(--dim);
+}
+.hint code {
+  background: var(--panel-3);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+.preview {
+  max-height: 168px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.preview-row .arrow {
+  color: var(--line);
+}
+.preview-row.chg .new {
+  color: var(--c-code);
+}
+.old,
+.new {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46%;
+}
+.warn {
+  color: var(--c-archive);
+  font-size: 11.5px;
+}
+.dlg-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

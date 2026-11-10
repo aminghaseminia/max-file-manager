@@ -118,3 +118,60 @@ export function typeLabel(e: Entry): string {
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
 
+/** POSIX or Windows: parent folder of a path, keeping its own separator. */
+export function dirOf(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  if (i < 0) return ''
+  if (i === 0) return p.slice(0, 1)
+  return p.slice(0, i)
+}
+
+export function joinPath(dir: string, name: string): string {
+  if (!dir) return name
+  return /[\\/]$/.test(dir) ? dir + name : dir + (dir.includes('\\') ? '\\' : '/') + name
+}
+
+
+/** Group number for duplicate results; anything else shows its type. */
+export const groupLabel = (e: Entry): string => (e.group ? `گروه ${fa(e.group)}` : typeLabel(e))
+
+export type RenameMode = 'template' | 'regex'
+export type RenameOpts = {
+  mode: RenameMode
+  /** template tokens: {name} {ext} {n} {nn} */
+  template: string
+  find: string
+  replace: string
+  start: number
+  pad: number
+}
+
+/**
+ * Batch-rename planner: takes base names, returns the new base names in the same order.
+ * Pure so the dialog can preview exactly what will happen before touching a file.
+ */
+export function planRename(names: string[], o: RenameOpts): string[] {
+  if (o.mode === 'regex') {
+    let re: RegExp
+    try {
+      re = new RegExp(o.find, 'g')
+    } catch {
+      return [...names] // an invalid pattern must not rename anything
+    }
+    return names.map((n) => n.replace(re, o.replace))
+  }
+  return names.map((n, i) => {
+    const dot = n.lastIndexOf('.')
+    const base = dot > 0 ? n.slice(0, dot) : n
+    const ext = dot > 0 ? n.slice(dot + 1) : ''
+    const num = o.start + i
+    const out = o.template
+      .replace(/\{name\}/g, base)
+      .replace(/\{ext\}/g, ext)
+      .replace(/\{nn\}/g, String(num).padStart(Math.max(1, o.pad), '0'))
+      .replace(/\{n\}/g, String(num))
+    return ext && !out.toLowerCase().endsWith('.' + ext.toLowerCase()) ? `${out}.${ext}` : out
+  })
+}
+
+

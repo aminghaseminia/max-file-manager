@@ -1,6 +1,6 @@
 {
   "name": "max-file-manager",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dual-pane file manager for KDE and Windows (Directory Opus class), Electron + TypeScript",
   "license": "MIT",
   "author": "Majid Asgari <majidasgari@users.noreply.github.com>",
@@ -10,7 +10,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test": "node --test src/main/ops.test.ts src/renderer/src/format.test.ts",
+    "test": "node --test src/main/*.test.ts src/renderer/src/*.test.ts",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb",
     "dist:win": "npm run build && electron-builder --win nsis"
   },

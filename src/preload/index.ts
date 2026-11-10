@@ -7,9 +7,28 @@ contextBridge.exposeInMainWorld('api', {
   roots: () => ipcRenderer.invoke('fs:roots'),
   home: () => ipcRenderer.invoke('fs:home'),
   size: (p: string) => ipcRenderer.invoke('fs:size', p),
-  op: (kind: string, paths: string[], dest?: string, name?: string) =>
-    ipcRenderer.invoke('fs:op', { kind, paths, dest, name }),
+  remove: (paths: string[], permanent: boolean) =>
+    ipcRenderer.invoke('fs:remove', { paths, permanent }),
+  walk: (dir: string, opts: unknown) => ipcRenderer.invoke('fs:walk', dir, opts),
+  dupes: (dir: string) => ipcRenderer.invoke('fs:dupes', dir),
+  mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
+  renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
+  jobs: {
+    start: (kind: string, sources: string[], dest: string) =>
+      ipcRenderer.invoke('job:start', { kind, sources, dest }),
+    pause: (id: string) => ipcRenderer.invoke('job:pause', id),
+    resume: (id: string) => ipcRenderer.invoke('job:resume', id),
+    cancel: (id: string) => ipcRenderer.invoke('job:cancel', id),
+    list: () => ipcRenderer.invoke('job:list'),
+    clear: () => ipcRenderer.invoke('job:clear'),
+    onUpdate: (cb: (job: unknown) => void) => {
+      const fn = (_e: unknown, job: unknown) => cb(job)
+      ipcRenderer.on('job:update', fn)
+      return () => ipcRenderer.removeListener('job:update', fn)
+    }
+  },
+  undo: { run: () => ipcRenderer.invoke('undo:run'), depth: () => ipcRenderer.invoke('undo:depth') },
   state: {
     get: () => ipcRenderer.invoke('state:get'),
     set: (s: unknown) => ipcRenderer.invoke('state:set', s)

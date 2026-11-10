@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type DirRef, type OpKind } from './api'
-import { Pane, type PaneState, type View } from './Pane'
+import { api, type DirRef, type Entry, type Job } from './api'
+import { JobsBar } from './JobsBar'
+import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
+import { RenameDialog } from './RenameDialog'
 import { Sidebar } from './Sidebar'
-import { baseName, fa, fmtSize, orderEntries, type SortKey } from './format'
+import { baseName, dirOf, fa, fmtSize, joinPath, orderEntries, type SortKey } from './format'
 import {
   EyeIcon,
   EyeOffIcon,
@@ -11,7 +13,8 @@ import {
   GridIcon,
   ListIcon,
   MoonIcon,
-  SunIcon
+  SunIcon,
+  UndoIcon
 } from './Icons'
 
 const newPane = (dir: string): PaneState => ({
@@ -22,6 +25,8 @@ const newPane = (dir: string): PaneState => ({
   sel: [],
   filter: '',
   listing: null,
+  virtual: null,
+  results: null,
   error: '',
   loading: true
 })
@@ -35,9 +40,7 @@ const OP_LABEL: Record<string, string> = {
   copy: 'کپی',
   move: 'انتقال',
   trash: 'سطل بازیافت',
-  delete: 'حذف',
-  mkdir: 'پوشهٔ نو',
-  rename: 'تغییر نام'
+  delete: 'حذف'
 }
 
 const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext']
@@ -52,10 +55,13 @@ export default function App() {
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'name', asc: true })
   const [marks, setMarks] = useState<string[]>([])
   const [sizes, setSizes] = useState<Record<string, string>>({})
+  const [jobs, setJobs] = useState<Job[]>([])
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
+  const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
   const [booted, setBooted] = useState(false)
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
+  const refreshRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -83,6 +89,22 @@ export default function App() {
       setPanes([mk(s.panes?.[0]), mk(s.panes?.[1])])
       setBooted(true)
     })
+  }, [])
+
+  // transfers report progress from the main process; a finished job refreshes both panes
+  useEffect(() => {
+    void api.jobs.list().then(setJobs)
+    const off = api.jobs.onUpdate((job) => {
+      setJobs((prev) => {
+        const old = prev.find((j) => j.id === job.id)
+        const finished =
+          old && old.state !== job.state && ['done', 'error', 'cancelled'].includes(job.state)
+        if (finished) setTimeout(() => refreshRef.current(), 150)
+        const next = prev.filter((j) => j.id !== job.id)
+        return [...next, job].slice(-8)
+      })
+    })
+    return off
   }, [])
 
   // remember the session, debounced so a directory load doesn't hammer the disk
@@ -122,6 +144,13 @@ export default function App() {
     if (path1) void load(1, path1)
   }, [path1, hidden])
 
+  const reloadAll = () => {
+    if (!panes) return
+    void load(0, tabOf(panes[0]))
+    void load(1, tabOf(panes[1]))
+  }
+  refreshRef.current = reloadAll
+
   const go = (i: number, dir: string) =>
     setPanes((p) => {
       if (!p) return p
@@ -131,7 +160,9 @@ export default function App() {
         tabs: s.tabs.map((t, j) => (j === s.ti ? dir : t)),
         sel: [],
         hist,
-        hi: hist.length - 1
+        hi: hist.length - 1,
+        virtual: null,
+        results: null
       })
     })
 
@@ -141,7 +172,13 @@ export default function App() {
       const s = p[i]
       const hi = s.hi + delta
       if (hi < 0 || hi >= s.hist.length) return p
-      return patch(p, i, { hi, tabs: s.tabs.map((t, j) => (j === s.ti ? s.hist[hi] : t)), sel: [] })
+      return patch(p, i, {
+        hi,
+        tabs: s.tabs.map((t, j) => (j === s.ti ? s.hist[hi] : t)),
+        sel: [],
+        virtual: null,
+        results: null
+      })
     })
 
   const up = (i: number) => {
@@ -149,22 +186,34 @@ export default function App() {
     if (parent) go(i, parent)
   }
 
-  const runSel = async (i: number, kind: Extract<OpKind, 'copy' | 'move' | 'trash' | 'delete'>) => {
+  const runSel = async (i: number, kind: 'copy' | 'move' | 'trash' | 'delete') => {
     if (!panes) return
     const me = panes[i]
     if (!me.sel.length) {
       setNote('چیزی انتخاب نشده')
       return
     }
-    const dest = tabOf(panes[1 - i])
-    const res = await api.op(kind, me.sel, dest)
+    if (kind === 'copy' || kind === 'move') {
+      const dest = tabOf(panes[1 - i])
+      await api.jobs.start(kind, me.sel, dest)
+      setNote(`${OP_LABEL[kind]} ${fa(me.sel.length)} مورد آغاز شد`)
+      setPanes((p) => p && patch(p, i, { sel: [] }))
+      return
+    }
+    const res = await api.remove(me.sel, kind === 'delete')
     setNote(
       res.errors.length
         ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
         : `${OP_LABEL[kind]}: ${fa(res.done)} مورد`
     )
     setPanes((p) => p && patch(p, i, { sel: [] }))
-    await Promise.all([load(i, tabOf(me)), load(1 - i, dest)])
+    reloadAll()
+  }
+
+  const doUndo = async () => {
+    const r = await api.undo.run()
+    setNote(r.done ? `بازگردانی شد: ${r.label} (${fa(r.done)})` : 'چیزی برای بازگردانی نیست')
+    if (r.done) reloadAll()
   }
 
   const computeSizes = async (i: number) => {
@@ -186,21 +235,22 @@ export default function App() {
     setPrompt(null)
     if (!value) return
     const me = panes[active]
-    const cur = tabOf(me)
     if (kind === 'rename' && !me.sel[0]) {
       setNote('چیزی انتخاب نشده')
       return
     }
     const res =
       kind === 'mkdir'
-        ? await api.op('mkdir', [cur], undefined, value)
-        : await api.op('rename', [me.sel[0]], undefined, value)
-    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${OP_LABEL[kind]}: ${value}`)
-    await load(active, cur)
+        ? await api.mkdir(tabOf(me), value)
+        : await api.renameMany([{ from: me.sel[0], to: joinPath(dirOf(me.sel[0]), value) }])
+    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${kind === 'mkdir' ? 'پوشهٔ نو' : 'تغییر نام'}: ${value}`)
+    await load(active, tabOf(me))
   }
 
   const openEntry = (i: number, p: string) => {
-    const e = panes?.[i].listing?.entries.find((x) => x.path === p)
+    const e =
+      panes?.[i].listing?.entries.find((x) => x.path === p) ??
+      panes?.[i].results?.find((x) => x.path === p)
     if (!e) return
     if (e.dir) go(i, e.path)
     else void api.open(e.path)
@@ -212,8 +262,56 @@ export default function App() {
     setMarks((m) => (m.includes(cur) ? m.filter((x) => x !== cur) : [...m, cur]))
   }
 
-  const visibleOf = (i: number) =>
-    orderEntries(panes?.[i].listing?.entries ?? [], sort.key, sort.asc, panes?.[i].filter ?? '')
+  const setVirtual = (i: number, kind: 'flat' | 'search' | 'dupes', label: string, results: Entry[]) =>
+    setPanes((p) => p && patch(p, i, { virtual: { kind, label }, results, sel: [], loading: false }))
+
+  const runFlat = async (i: number) => {
+    if (!panes) return
+    setPanes((p) => p && patch(p, i, { loading: true }))
+    const r = await api.walk(tabOf(panes[i]), { limit: 5000 })
+    setVirtual(i, 'flat', `نمای تخت · ${fa(r.entries.length)}${r.capped ? '+' : ''}`, r.entries)
+  }
+
+  const runSearch = async (i: number, q: SearchQuery) => {
+    if (!panes) return
+    setPanes((p) => p && patch(p, i, { loading: true }))
+    const r = await api.walk(tabOf(panes[i]), {
+      query: q.query,
+      content: q.content,
+      regex: q.regex,
+      limit: 5000
+    })
+    setVirtual(i, 'search', `جست‌وجو · ${fa(r.entries.length)}${r.capped ? '+' : ''}`, r.entries)
+    if (r.capped) setNote('نتیجه به ۵۰۰۰ مورد بریده شد')
+  }
+
+  const runDupes = async (i: number) => {
+    if (!panes) return
+    setPanes((p) => p && patch(p, i, { loading: true }))
+    setNote('در حال محاسبهٔ hash…')
+    const r = await api.dupes(tabOf(panes[i]))
+    const groups = new Set(r.entries.map((e) => e.group)).size
+    setVirtual(i, 'dupes', `تکراری‌ها · ${fa(groups)} گروه`, r.entries)
+    setNote(r.entries.length ? `${fa(r.entries.length)} فایل تکراری در ${fa(groups)} گروه` : 'فایل تکراری پیدا نشد')
+  }
+
+  const exitVirtual = (i: number) =>
+    setPanes((p) => p && patch(p, i, { virtual: null, results: null, sel: [] }))
+
+  const openRename = (i: number) => {
+    if (!panes) return
+    const sel = panes[i].sel
+    if (sel.length > 1) setRenameTargets(sel)
+    else if (sel.length === 1) setPrompt({ kind: 'rename', value: baseName(sel[0]) })
+    else setNote('چیزی انتخاب نشده')
+  }
+
+  const visibleOf = (i: number) => {
+    const pane = panes?.[i]
+    if (!pane) return []
+    const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
+    return orderEntries(source, sort.key, sort.asc, pane.filter)
+  }
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -228,6 +326,12 @@ export default function App() {
         return
       }
       if (typing) return
+
+      if (ev.ctrlKey && ev.shiftKey && (ev.key === 'F' || ev.key === 'f')) {
+        ev.preventDefault()
+        void runFlat(active)
+        return
+      }
 
       switch (ev.key) {
         case 'Tab':
@@ -248,7 +352,7 @@ export default function App() {
           break
         case 'F2':
           ev.preventDefault()
-          if (me.sel[0]) setPrompt({ kind: 'rename', value: baseName(me.sel[0]) })
+          openRename(active)
           break
         case 'F3':
           ev.preventDefault()
@@ -284,6 +388,13 @@ export default function App() {
             setPanes((p) => p && patch(p, active, { sel: visibleOf(active).map((e) => e.path) }))
           }
           break
+        case 'z':
+        case 'Z':
+          if (ev.ctrlKey) {
+            ev.preventDefault()
+            void doUndo()
+          }
+          break
         case 'f':
         case 'F':
           if (ev.ctrlKey) {
@@ -317,6 +428,7 @@ export default function App() {
 
   const visible = visibleOf(active)
   const curPath = tabOf(panes[active])
+  const running = jobs.filter((j) => j.state === 'running' || j.state === 'paused').length
 
   return (
     <div className="app">
@@ -329,6 +441,9 @@ export default function App() {
         </span>
         <span className="spacer" />
         <span className="note">{note}</span>
+        <button className="tb" title="بازگردانی آخرین عملیات (Ctrl+Z)" onClick={() => void doUndo()}>
+          <UndoIcon />
+        </button>
         <button
           className="tb"
           title={view === 'list' ? 'نمای شبکه' : 'نمای فهرست'}
@@ -385,7 +500,17 @@ export default function App() {
             onUp={() => up(i)}
             onRefresh={() => void load(i, tabOf(pane))}
             onOpen={(path) => openEntry(i, path)}
-            onSel={(sel) => setPanes((p) => p && patch(p, i, { sel }))}
+            onSel={(paths, mode) =>
+              setPanes((p) => {
+                if (!p) return p
+                if (mode === 'set') return patch(p, i, { sel: paths })
+                const cur = p[i].sel
+                const all = paths.every((x) => cur.includes(x))
+                return patch(p, i, {
+                  sel: all ? cur.filter((x) => !paths.includes(x)) : [...new Set([...cur, ...paths])]
+                })
+              })
+            }
             onFilter={(q) => setPanes((p) => p && patch(p, i, { filter: q }))}
             onTabNew={() =>
               setPanes(
@@ -403,31 +528,63 @@ export default function App() {
             onTabPick={(idx) => setPanes((p) => p && patch(p, i, { ti: idx, sel: [] }))}
             onOp={(kind) => {
               if (kind === 'mkdir') setPrompt({ kind: 'mkdir', value: '' })
-              else if (kind === 'rename') {
-                if (pane.sel[0]) setPrompt({ kind: 'rename', value: baseName(pane.sel[0]) })
-                else setNote('چیزی انتخاب نشده')
-              } else void runSel(i, kind)
+              else if (kind === 'rename') openRename(i)
+              else void runSel(i, kind)
             }}
             onSize={() => void computeSizes(i)}
             onBookmark={() => toggleMark(i)}
+            onFlat={() => void runFlat(i)}
+            onDupes={() => void runDupes(i)}
+            onSearch={(q) => void runSearch(i, q)}
+            onExitVirtual={() => exitVirtual(i)}
           />
         ))}
       </div>
 
+      <JobsBar
+        jobs={jobs}
+        onPause={(id) => void api.jobs.pause(id)}
+        onResume={(id) => void api.jobs.resume(id)}
+        onCancel={(id) => void api.jobs.cancel(id)}
+        onClear={() => {
+          void api.jobs.clear().then(() => api.jobs.list().then(setJobs))
+        }}
+      />
+
       <footer className="status">
         <span>
-          {panes[active].listing
-            ? `${fa(visible.length)} مورد`
-            : panes[active].loading
-              ? 'در حال خواندن…'
-              : 'فهرستی نیست'}
+          {panes[active].virtual
+            ? `${fa(visible.length)} نتیجه`
+            : panes[active].listing
+              ? `${fa(visible.length)} مورد`
+              : panes[active].loading
+                ? 'در حال خواندن…'
+                : 'فهرستی نیست'}
         </span>
         <span>{panes[active].sel.length ? `${fa(panes[active].sel.length)} انتخاب‌شده` : ''}</span>
+        <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         <span className="spacer" />
         <span className="keys">
-          F5 کپی · F6 انتقال · F7 پوشهٔ نو · F8 سطل · F2 تغییر نام · F9 اندازه · Ctrl+A همه · Tab پنجره
+          F5 کپی · F6 انتقال · F7 پوشه · F8 سطل · F2 نام · F9 اندازه · Ctrl+Z بازگردانی · Ctrl+Shift+F نمای تخت
         </span>
       </footer>
+
+      {renameTargets && (
+        <RenameDialog
+          paths={renameTargets}
+          onClose={() => setRenameTargets(null)}
+          onApply={async (pairs) => {
+            setRenameTargets(null)
+            const res = await api.renameMany(pairs)
+            setNote(
+              res.errors.length
+                ? `${fa(res.done)} تغییر نام، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
+                : `${fa(res.done)} تغییر نام انجام شد`
+            )
+            reloadAll()
+          }}
+        />
+      )}
 
       {prompt && (
         <div className="modal" onMouseDown={() => setPrompt(null)}>

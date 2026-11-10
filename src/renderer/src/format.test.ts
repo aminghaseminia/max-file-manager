@@ -3,12 +3,16 @@ import test from 'node:test'
 import {
   baseName,
   crumbs,
+  dirOf,
   fa,
   fmtDate,
   fmtSize,
+  groupLabel,
+  joinPath,
   kindOf,
   mediaUrl,
   orderEntries,
+  planRename,
   sortEntries,
   typeLabel
 } from './format.ts'
@@ -98,4 +102,62 @@ test('orderEntries: live filter keeps the sort', () => {
   )
   assert.equal(orderEntries(list, 'name', true, '').length, 4)
   assert.equal(orderEntries(list, 'name', true, 'nothing').length, 0)
+})
+
+test('planRename: template numbering with padding', () => {
+  const out = planRename(['a.txt', 'b.jpg', 'noext'], {
+    mode: 'template',
+    template: 'photo-{nn}',
+    find: '',
+    replace: '',
+    start: 3,
+    pad: 3
+  })
+  assert.deepEqual(out, ['photo-003.txt', 'photo-004.jpg', 'photo-005'])
+})
+
+test('planRename: {name} and {ext} tokens', () => {
+  assert.deepEqual(
+    planRename(['holiday.png'], {
+      mode: 'template',
+      template: '{name}-small.{ext}',
+      find: '',
+      replace: '',
+      start: 1,
+      pad: 2
+    }),
+    ['holiday-small.png']
+  )
+})
+
+test('planRename: regex groups, and an invalid pattern renames nothing', () => {
+  assert.deepEqual(
+    planRename(['IMG_1234.jpg'], {
+      mode: 'regex',
+      template: '',
+      find: 'IMG_(\\d+)',
+      replace: 'photo-$1',
+      start: 1,
+      pad: 2
+    }),
+    ['photo-1234.jpg']
+  )
+  assert.deepEqual(
+    planRename(['a.txt'], { mode: 'regex', template: '', find: '(', replace: 'x', start: 1, pad: 2 }),
+    ['a.txt']
+  )
+})
+
+test('dirOf / joinPath keep the platform separator', () => {
+  assert.equal(dirOf('/home/maxv/a.txt'), '/home/maxv')
+  assert.equal(dirOf('/a'), '/')
+  assert.equal(dirOf('C:\\x\\y.txt'), 'C:\\x')
+  assert.equal(joinPath('/a/b', 'c.txt'), '/a/b/c.txt')
+  assert.equal(joinPath('/a/b/', 'c.txt'), '/a/b/c.txt')
+  assert.equal(joinPath('C:\\a', 'c.txt'), 'C:\\a\\c.txt')
+})
+
+test('groupLabel prefers the duplicate group number', () => {
+  assert.equal(groupLabel({ ...e('x.txt', false, 1, 0, 'txt'), group: 2 }), 'گروه ۲')
+  assert.equal(groupLabel(e('d', true)), 'پوشه')
 })

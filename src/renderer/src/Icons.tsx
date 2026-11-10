@@ -258,3 +258,32 @@ export const DriveIcon = () => (
     <path d="M7 12h.01M17 12h.01" />
   </S>
 )
+export const PauseIcon = () => (
+  <S>
+    <path d="M9 5v14M15 5v14" />
+  </S>
+)
+export const PlayIcon = () => (
+  <S>
+    <path d="M7 4.5l12 7.5-12 7.5z" />
+  </S>
+)
+export const LayersIcon = () => (
+  <S>
+    <path d="M12 3l9 5-9 5-9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </S>
+)
+export const DupeIcon = () => (
+  <S>
+    <rect x="3.5" y="3.5" width="12" height="12" rx="2" />
+    <path d="M8.5 20.5h10a2 2 0 0 0 2-2v-10" />
+  </S>
+)
+export const UndoIcon = () => (
+  <S>
+    <path d="M4 10a8 8 0 1 1 2.4 8.6" />
+    <path d="M4 4.5V10h5.5" />
+  </S>
+)
+

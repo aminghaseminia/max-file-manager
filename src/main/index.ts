@@ -3,9 +3,10 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
-import { runOp, type OpKind } from './ops'
-
-type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number; ext: string }
+import { createEngine, type JobKind } from './jobs.ts'
+import { remove } from './ops.ts'
+import { findDupes, walk, type WalkOpts } from './search.ts'
+import type { DirRef, Entry } from './types.ts'
 
 // mfm:// serves local files to <img> so the renderer never gets a filesystem API.
 protocol.registerSchemesAsPrivileged([
@@ -45,7 +46,7 @@ async function list(dir: string, showHidden: boolean) {
 }
 
 /** Subfolders only, no stat: what the sidebar tree needs. */
-async function dirs(dir: string) {
+async function dirs(dir: string): Promise<DirRef[]> {
   const kids = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
   return kids
     .filter((k) => k.isDirectory() && !k.name.startsWith('.'))
@@ -55,8 +56,8 @@ async function dirs(dir: string) {
 const isDir = (p: string) => fs.stat(p).then((s) => s.isDirectory(), () => false)
 
 /** Mount points + home, so removable media show up without a volume manager. */
-async function roots(): Promise<{ name: string; path: string }[]> {
-  const out: { name: string; path: string }[] = []
+async function roots(): Promise<DirRef[]> {
+  const out: DirRef[] = []
   if (process.platform === 'win32') {
     for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
       const p = `${letter}:\\`
@@ -143,6 +144,11 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(p).toString())
   })
 
+  const win = createWindow()
+  const engine = createEngine((job) => {
+    if (!win.isDestroyed()) win.webContents.send('job:update', job)
+  })
+
   ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean) => list(dir, showHidden))
   ipcMain.handle('fs:dirs', (_e, dir: string) => dirs(dir))
   ipcMain.handle('fs:roots', () => roots())
@@ -150,9 +156,29 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:size', (_e, p: string) =>
     path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
   )
-  ipcMain.handle('fs:op', (_e, a: { kind: OpKind; paths: string[]; dest?: string; name?: string }) =>
-    runOp(a.kind, a.paths ?? [], { dest: a.dest, name: a.name, trash: (p) => shell.trashItem(p) })
+  ipcMain.handle('fs:remove', (_e, a: { paths: string[]; permanent: boolean }) =>
+    remove(a.paths ?? [], a.permanent ? {} : { trash: (p) => shell.trashItem(p) })
   )
+  ipcMain.handle('fs:walk', (_e, dir: string, opts: WalkOpts) =>
+    path.isAbsolute(dir) ? walk(dir, opts ?? {}) : { entries: [], scanned: 0, capped: false }
+  )
+  ipcMain.handle('fs:dupes', (_e, dir: string) =>
+    path.isAbsolute(dir) ? findDupes(dir) : { entries: [], capped: false }
+  )
+  ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
+  ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
+    engine.renameMany(pairs ?? [])
+  )
+  ipcMain.handle('job:start', (_e, a: { kind: JobKind; sources: string[]; dest: string }) =>
+    engine.start(a.kind, a.sources ?? [], a.dest)
+  )
+  ipcMain.handle('job:pause', (_e, id: string) => engine.pause(id))
+  ipcMain.handle('job:resume', (_e, id: string) => engine.resume(id))
+  ipcMain.handle('job:cancel', (_e, id: string) => engine.cancel(id))
+  ipcMain.handle('job:list', () => engine.list())
+  ipcMain.handle('job:clear', () => engine.clear())
+  ipcMain.handle('undo:run', () => engine.undo())
+  ipcMain.handle('undo:depth', () => engine.undoDepth())
   ipcMain.handle('shell:open', (_e, p: string) =>
     path.isAbsolute(p) ? shell.openPath(p) : Promise.resolve('bad path')
   )
@@ -163,18 +189,19 @@ app.whenReady().then(() => {
     return true
   })
 
-  const win = createWindow()
-
-  // SMOKE_SHOT=<file.png> renders the window once, saves a screenshot and quits — used by the smoke check.
+  // SMOKE_SHOT=<file.png> renders the window once, saves a screenshot and quits; SMOKE_JS drives the UI first.
   const shot = process.env['SMOKE_SHOT']
+  const js = process.env['SMOKE_JS']
   if (shot) {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
+        if (js) await win.webContents.executeJavaScript(js).catch((e) => console.log('SMOKE_JS_ERR ' + e))
+        await new Promise((r) => setTimeout(r, 900))
         const img = await win.webContents.capturePage()
         await fs.writeFile(shot, img.toPNG())
         console.log('SMOKE_OK ' + shot)
         app.quit()
-      }, 1800)
+      }, 900)
     })
   }
 

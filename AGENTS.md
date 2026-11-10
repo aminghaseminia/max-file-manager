@@ -26,9 +26,10 @@ npm install
 npm run dev                # اجرای محیط توسعه (hot reload رندرر)
 npm run build              # بیلد به out/  ← پیش از هر تحویل
 npm run typecheck          # tsc روی main/preload و renderer
-npm test                   # تست‌های واحد (node --test): عملیات فایل + توابع خالص
+npm test                   # تست‌های واحد (node --test): انتقال/Undo، جست‌وجو/تکراری، تغییر نام، توابع خالص
 # دیدن خروجی واقعی بدون باز کردن پنجره روی میزکار:
 SMOKE_SHOT=/tmp/mfm.png xvfb-run -a npx electron .   # یک اسکرین‌شات می‌گیرد و خارج می‌شود
+SMOKE_JS="<js>" SMOKE_SHOT=/tmp/mfm.png xvfb-run -a npx electron .   # همان، ولی اول UI را با JS کلیک کن
 npm run dist:linux         # AppImage + deb
 npm run dist:win           # NSIS (روی لینوکس با wine؛ روی ویندوز مستقیم)
 ```
@@ -40,13 +41,18 @@ npm run dist:win           # NSIS (روی لینوکس با wine؛ روی وین
 
 ```
 src/main/index.ts      فرایند اصلی: پنجره، IPC فایل‌سیستم، محاسبهٔ اندازه، state، پروتکل mfm://
-src/main/ops.ts        کپی/انتقال/سطل/حذف/پوشه/تغییر نام — تنها جای منطق مخرب فایل (+ تست)
+src/main/jobs.ts       صف انتقال (پیشرفت/مکث/لغو)، Undo، تغییر نام گروهی، پوشهٔ نو — + تست
+src/main/search.ts     walk بازگشتی، تطبیق نام (wildcard/regex)، جست‌وجوی محتوا، یابندهٔ تکراری — + تست
+src/main/ops.ts        حذف/سطل بازیافت + freeName — تنها جای حذف، + تست
+src/main/types.ts      تایپ‌های مشترک فرایند اصلی (Entry/DirRef/Listing/Result)
 src/preload/index.ts   تنها پل به رندرر؛ هرچه اینجا نباشد از رندرر در دسترس نیست
 src/renderer/src/App.tsx      حالت دو پنجره، کلیدهای میان‌بر، عملیات، ذخیرهٔ نشست، دیالوگ‌ها
-src/renderer/src/Pane.tsx     یک پنجره: تب، مسیر، صافی، نوار عملیات، لیست/شبکه مجازی‌شده
+src/renderer/src/Pane.tsx     یک پنجره: تب، مسیر، صافی، جست‌وجو، نوار عملیات، لیست/شبکه مجازی
 src/renderer/src/Sidebar.tsx  درخت پوشه‌ها (باز شدن تنبل) + نشان‌شده‌ها
+src/renderer/src/JobsBar.tsx  نوار عملیات‌ها: پیشرفت، سرعت، مکث/ادامه، لغو، خطا
+src/renderer/src/RenameDialog.tsx  تغییر نام گروهی با پیش‌نمایش زنده
 src/renderer/src/Icons.tsx    همهٔ آیکون‌های SVG خطی (currentColor) + نگاشت نوع→آیکون
-src/renderer/src/format.ts    توابع خالص (اندازه، تاریخ، مسیر، مرتب‌سازی، صافی، نوع) + تست
+src/renderer/src/format.ts    توابع خالص (اندازه، تاریخ، مسیر، مرتب‌سازی، صافی، نوع، planRename) + تست
 src/renderer/src/style.css    تمام ظاهر؛ متغیرهای تم بالا، رنگ هر نوع فایل
 docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبندی
 ```
@@ -61,6 +67,8 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 - **آیکون تازه فقط در `Icons.tsx`**: SVG خطی با `currentColor` و ضخامت ۱.۷، هم‌اندازه با بقیه. ایموجی، فونت‌آیکون و کتابخانهٔ آیکون اضافه نکن.
 - **فونت از npm می‌آید، نه CDN** (Vazirmatn) — برنامه باید کاملاً آفلاین کار کند.
 - **بازخورد عملیات:** هر عملیات طولانی باید وضعیت را در نوار پایین نشان دهد، نه اینکه بی‌صدا بماند.
+- **کپی/انتقال فقط از راه `jobs.ts`** (صف + پیشرفت + لغو). هیچ‌جا `fs.cp` مستقیم برای انتقال ننویس و برای حذف فقط از `ops.remove` استفاده کن.
+- **انتخاب چندتایی با حالت `toggle`**: کامپوننت فقط intent می‌فرستد و `App` آن را روی state تازه حل می‌کند؛ محاسبه روی `pane.sel` قدیمی، کلیک‌های سریع را از دست می‌دهد (یک بار همین اشتباه رخ داد).
 - کامنت فقط برای «چرا»یی که کد نشان نمی‌دهد؛ میان‌بر آگاهانه با قالب `shortcut: <محدودیت>, <کِی ارتقا>`.
 
 ## تست و تحویل
