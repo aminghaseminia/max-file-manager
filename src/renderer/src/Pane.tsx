@@ -138,8 +138,11 @@ export function Pane(props: Props) {
   }, [])
 
   const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
+  const pinSet = useMemo(() => new Set(pane.listing?.pins ?? []), [pane.listing?.pins])
+
   const entries = useMemo(
-    () => orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst),
+    () =>
+      orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst, pinSet),
     [source, pane.filter, sort, props.foldersFirst]
   )
 
@@ -522,7 +525,9 @@ export function Pane(props: Props) {
             {entries.slice(start, end).map((e, k) => (
               <div
                 key={e.path}
-                className={'row' + (pane.sel.includes(e.path) ? ' on' : '')}
+                className={
+                  'row' + (pane.sel.includes(e.path) ? ' on' : '') + (pinSet.has(e.name) ? ' pinned' : '')
+                }
                 style={{ top: (start + k) * ROW, gridTemplateColumns: gridTemplate }}
                 title={e.path}
                 draggable
@@ -534,6 +539,11 @@ export function Pane(props: Props) {
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
+                  {pinSet.has(e.name) && (
+                    <span className="pinmark" title="سنجاق‌شده">
+                      <PinIcon filled />
+                    </span>
+                  )}
                   {e.dir ? <FolderGlyph entry={e} /> : e.icon ? <img className="ic-img" src={mediaUrl(e.icon)} alt="" /> : <TypeIcon entry={e} />}
                   <span dir="auto" className="trunc">{e.name}</span>
                 </span>

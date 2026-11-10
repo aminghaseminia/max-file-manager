@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { iconsIn, themeDirs } from './icons.ts'
-import { META_FILE, readMeta, setMeta } from './meta.ts'
+import { META_FILE, readMeta, setMeta, togglePin } from './meta.ts'
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'mfm-meta-'))
 
@@ -59,4 +59,19 @@ test('themeDirs lists system themes and user-added packs', async () => {
   const themes = await themeDirs([pack])
   assert.ok(themes.some((t) => t.dir === pack), 'the extra pack is offered')
   assert.ok(themes.length >= 1)
+})
+
+test('pins round-trip and reject names that could escape the folder', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-pins-'))
+  assert.deepEqual(await togglePin(dir, 'photo.png'), ['photo.png'])
+  assert.deepEqual(await togglePin(dir, 'notes.txt'), ['photo.png', 'notes.txt'])
+  assert.deepEqual(await togglePin(dir, 'photo.png'), ['notes.txt'], 'second toggle removes it')
+  assert.deepEqual((await readMeta(dir))?.pins, ['notes.txt'])
+
+  assert.deepEqual(await togglePin(dir, '../escape'), [])
+  assert.deepEqual(await togglePin(dir, 'a/b'), [])
+  assert.deepEqual((await readMeta(dir))?.pins, ['notes.txt'], 'bad names change nothing')
+
+  await togglePin(dir, 'notes.txt')
+  assert.equal(await readMeta(dir), null, 'the meta file disappears when nothing is left')
 })

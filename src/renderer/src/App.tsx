@@ -267,6 +267,12 @@ export default function App() {
     void api.statfs(p).then((r) => setFree(r?.free ?? null))
   }, [path0, path1, active])
 
+  const transferOpts = () => ({
+    skipExisting: prefs.transferSkipExisting,
+    newerOnly: prefs.transferNewerOnly,
+    limitBps: prefs.speedLimitKB > 0 ? prefs.speedLimitKB * 1024 : 0
+  })
+
   const reloadAll = () => {
     if (!panes) return
     void load(0, tabOf(panes[0]))
@@ -332,7 +338,7 @@ export default function App() {
     }
     if (kind === 'copy' || kind === 'move') {
       const dest = tabOf(panes[1 - i])
-      await api.jobs.start(kind, me.sel, dest)
+      await api.jobs.start(kind, me.sel, dest, transferOpts())
       setNote(`${OP_LABEL[kind]} ${fa(me.sel.length)} مورد آغاز شد`)
       setPanes((p) => p && patch(p, i, { sel: [] }))
       return
@@ -520,14 +526,14 @@ export default function App() {
 
   const dropInternal = async (paths: string[], dest: string, copy: boolean) => {
     if (!paths.length) return
-    await api.jobs.start(copy ? 'copy' : 'move', paths, dest)
+    await api.jobs.start(copy ? 'copy' : 'move', paths, dest, transferOpts())
     setNote(`${copy ? 'کپی' : 'انتقال'} ${fa(paths.length)} مورد به ${baseName(dest)}`)
   }
 
   const dropFiles = async (files: File[], dest: string) => {
     const paths = files.map((f) => api.pathForFile(f)).filter((p) => typeof p === 'string' && p)
     if (!paths.length) return
-    await api.jobs.start('copy', paths, dest)
+    await api.jobs.start('copy', paths, dest, transferOpts())
     setNote(`کپی ${fa(paths.length)} مورد از بیرون`)
   }
 
@@ -705,6 +711,15 @@ export default function App() {
       case 'openTab':
         if (path) addTab(active, path)
         break
+      case 'pinFile': {
+        if (!path) break
+        const dir = dirOf(path)
+        const name = baseName(path)
+        const wasPinned = (me.listing?.pins ?? []).includes(name)
+        void api.togglePin(dir, name).then(() => load(active, tabOf(panes![active])))
+        setNote(wasPinned ? 'سنجاق برداشته شد' : 'به بالای پوشه سنجاق شد')
+        break
+      }
       case 'tabNew':
         addTab(active, tabOf(me))
         break
@@ -798,6 +813,16 @@ export default function App() {
       { id: 'copyPath', label: 'کپی مسیر', icon: <CopyIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
     )
+    const pinDir = path ? dirOf(path) : ''
+    const pinName = path ? baseName(path) : ''
+    const isPinned = !!pinName && (panes[active].listing?.pins ?? []).includes(pinName)
+    if (path) {
+      items.push({
+        id: 'pinFile',
+        label: isPinned ? 'برداشتن سنجاق' : 'سنجاق به بالای پوشه',
+        icon: <PinIcon filled={isPinned} />
+      })
+    }
     if (entry?.dir) {
       items.push(
         { id: 'openTab', label: 'باز کردن در تب نو', icon: <PlusIcon /> },

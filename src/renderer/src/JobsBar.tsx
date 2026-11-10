@@ -50,6 +50,11 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
                   : STATE_LABEL[j.state]}
               </span>
               <span className="spacer" />
+              {!!j.skipped && (
+                <span className="job-skip" title="با فیلتر انتقال رد شد">
+                  {fa(j.skipped)} رد‌شده
+                </span>
+              )}
               {j.errors.length > 0 && (
                 <span className="job-err" title={j.errors.join('\n')}>
                   {fa(j.errors.length)} خطا

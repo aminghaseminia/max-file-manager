@@ -1678,3 +1678,23 @@ html[data-rounded='1'] .app {
   color: #e8a9a3;
   font-size: 11.5px;
 }
+
+/* ---------- pinned files inside a folder ---------- */
+.pinmark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  flex: none;
+  margin-inline-end: -2px;
+}
+.pinmark svg {
+  width: 11px;
+  height: 11px;
+}
+.row.pinned {
+  background: linear-gradient(90deg, transparent, var(--accent-soft));
+}
+.job-skip {
+  color: var(--dim);
+  font-size: 11px;
+}

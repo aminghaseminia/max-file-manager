@@ -17,7 +17,7 @@ export type Entry = {
   w?: number
   h?: number
 }
-export type Listing = { path: string; parent: string | null; entries: Entry[] }
+export type Listing = { path: string; parent: string | null; entries: Entry[]; pins?: string[] }
 export type DirRef = { name: string; path: string }
 export type Result = { done: number; errors: string[] }
 export type SizeResult = { bytes: number; files: number; capped: boolean }
@@ -45,6 +45,7 @@ export type Job = {
   files: number
   filesDone: number
   speed: number
+  skipped?: number
   current: string
   errors: string[]
 }
@@ -96,6 +97,7 @@ export type Api = {
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
   extract(archive: string, names: string[], dest: string): Promise<Result>
   getMeta(dir: string): Promise<FolderMeta | null>
+  togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
   iconThemes(extra: string[]): Promise<IconTheme[]>
   iconsIn(themeDir: string): Promise<IconRef[]>
@@ -106,7 +108,12 @@ export type Api = {
   hash(paths: string[], algo: string): Promise<HashResult[]>
   pathForFile(file: File): string
   jobs: {
-    start(kind: JobKind, sources: string[], dest: string): Promise<Job>
+    start(
+      kind: JobKind,
+      sources: string[],
+      dest: string,
+      opts?: { skipExisting?: boolean; newerOnly?: boolean; limitBps?: number }
+    ): Promise<Job>
     pause(id: string): Promise<void>
     resume(id: string): Promise<void>
     cancel(id: string): Promise<void>

@@ -13,6 +13,11 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Pin a file to the top of its folder (stored in the folder's own `.mfm.json`), and transfer filters that leave existing files alone:
+
+![pin](docs/screenshot-pin.png)
+![transfer filter](docs/screenshot-transfer-filter.png)
+
 One toolbar row (window buttons inline, no wasted title strip), a configurable command toolbar, and a shortcut editor with conflict detection:
 
 ![toolbar](docs/screenshot-toolbar.png)
@@ -51,7 +56,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.9** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
+**Status: v0.10** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
@@ -64,6 +69,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - `Ctrl+L` address bar, selection size and free space in the status bar
 - **Every command lives in one registry** (`commands.ts`) and every key is rebindable in preferences → «کلید میان‌بر», with conflict detection and per-command reset; the accelerators are plain text in `state.json`
 - **Configurable command toolbar** (add/remove/order) under the title row
+- **Pin files inside a folder** — pinned names sort to the very top with a pin mark and live in the folder's `.mfm.json`
+- **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit
 - **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails
 - Virtualized rendering in both views: a 100k-entry folder mounts only the visible slice

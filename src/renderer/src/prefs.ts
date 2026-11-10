@@ -57,6 +57,11 @@ export type Prefs = {
   // tabs
   newTabPos: 'end' | 'next'
   middleClickClosesTab: boolean
+  // transfer filters
+  transferSkipExisting: boolean
+  transferNewerOnly: boolean
+  /** KB/s ceiling for transfers, 0 = unlimited */
+  speedLimitKB: number
   // file operations
   doubleClick: DoubleClick
   confirmDelete: boolean
@@ -89,6 +94,9 @@ export const DEFAULTS: Prefs = {
   newTabPos: 'next',
   middleClickClosesTab: true,
   doubleClick: 'gallery',
+  transferSkipExisting: false,
+  transferNewerOnly: false,
+  speedLimitKB: 0,
   confirmDelete: true,
   trashByDefault: true,
   singleInstance: true,
@@ -133,6 +141,12 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
+    transferSkipExisting: p.transferSkipExisting === true,
+    transferNewerOnly: p.transferNewerOnly === true,
+    speedLimitKB:
+      typeof p.speedLimitKB === 'number' && p.speedLimitKB > 0 && p.speedLimitKB < 10_000_000
+        ? Math.floor(p.speedLimitKB)
+        : 0,
     confirmDelete: p.confirmDelete !== false,
     trashByDefault: p.trashByDefault !== false,
     singleInstance: p.singleInstance !== false,

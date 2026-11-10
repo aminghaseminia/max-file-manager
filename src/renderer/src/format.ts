@@ -120,11 +120,17 @@ export function orderEntries(
   key: SortKey,
   asc: boolean,
   filter = '',
-  foldersFirst = true
+  foldersFirst = true,
+  pins?: Set<string>
 ): Entry[] {
   const q = filter.trim().toLowerCase()
-  const kept = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
-  return sortEntries(kept, key, asc, foldersFirst)
+  let kept = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+  const sorted = sortEntries(kept, key, asc, foldersFirst)
+  if (!pins || !pins.size) return sorted
+  // pinned names float to the very top, keeping the sort order among themselves
+  const pinned = sorted.filter((e) => pins.has(e.name))
+  if (!pinned.length) return sorted
+  return [...pinned, ...sorted.filter((e) => !pins.has(e.name))]
 }
 
 export function baseName(p: string): string {

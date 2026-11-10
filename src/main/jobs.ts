@@ -18,13 +18,25 @@ export type Job = {
   speed: number
   current: string
   errors: string[]
+  /** sources left alone by the transfer filters */
+  skipped: number
 }
 
-type Ctl = { paused: boolean; cancelled: boolean }
+/** Transfer filters the user can set in preferences. */
+export type JobOpts = {
+  /** a name that already exists in the destination is left alone instead of becoming "name (2)" */
+  skipExisting?: boolean
+  /** only copy when the source is newer than the existing destination file */
+  newerOnly?: boolean
+  /** bytes per second ceiling, 0 or missing = unlimited */
+  limitBps?: number
+}
+
+type Ctl = { paused: boolean; cancelled: boolean; limitBps?: number }
 type UndoRec = { label: string; pairs: [string, string][]; inverse: 'rename' | 'rmdir' }
 
 export type Engine = {
-  start(kind: JobKind, sources: string[], dest: string): Job
+  start(kind: JobKind, sources: string[], dest: string, opts?: JobOpts): Job
   pause(id: string): void
   resume(id: string): void
   cancel(id: string): void
@@ -73,6 +85,8 @@ async function copyFile(
   const rs = createReadStream(src, { highWaterMark: 1 << 20 })
   const ws = createWriteStream(dest)
   let aborted = false
+  let sent = 0
+  const startedAt = Date.now()
   try {
     for await (const chunk of rs) {
       if (ctl.cancelled) {
@@ -87,6 +101,13 @@ async function copyFile(
       const buf = chunk as Buffer
       if (!ws.write(buf)) await new Promise<void>((r) => ws.once('drain', () => r()))
       onBytes(buf.length)
+      // shortcut: pacing is a sleep after each chunk, so the rate is a rough average, fine for a UI limit
+      if (ctl.limitBps && ctl.limitBps > 0) {
+        sent += buf.length
+        const due = (sent / ctl.limitBps) * 1000
+        const spent = Date.now() - startedAt
+        if (due > spent) await sleep(Math.min(500, due - spent))
+      }
     }
   } finally {
     if (aborted) {
@@ -150,7 +171,7 @@ export function createEngine(emit: (job: Job) => void): Engine {
     if (undoStack.length > 20) undoStack.shift()
   }
 
-  function start(kind: JobKind, sources: string[], dest: string): Job {
+  function start(kind: JobKind, sources: string[], dest: string, opts: JobOpts = {}): Job {
     const job: Job = {
       id: 'j' + ++seq,
       kind,
@@ -162,9 +183,10 @@ export function createEngine(emit: (job: Job) => void): Engine {
       filesDone: 0,
       speed: 0,
       current: '',
-      errors: []
+      errors: [],
+      skipped: 0
     }
-    const ctl: Ctl = { paused: false, cancelled: false }
+    const ctl: Ctl = { paused: false, cancelled: false, limitBps: opts.limitBps ?? 0 }
     jobs.set(job.id, job)
     ctls.set(job.id, ctl)
     push(job, true)
@@ -183,7 +205,25 @@ export function createEngine(emit: (job: Job) => void): Engine {
       try {
         if (!path.isAbsolute(dest)) throw new Error('no destination')
         for (const s of sources) {
-          pairs.push([s, await freeName(path.join(dest, path.basename(s)))])
+          const natural = path.join(dest, path.basename(s))
+          if (opts.skipExisting || opts.newerOnly) {
+            const there = await fs.stat(natural).catch(() => null)
+            if (there) {
+              if (opts.skipExisting) {
+                job.skipped++
+                continue
+              }
+              const here = await fs.stat(s).catch(() => null)
+              if (here && there.mtimeMs >= here.mtimeMs) {
+                job.skipped++
+                continue
+              }
+              // newerOnly and the destination is older: this run replaces it on purpose
+              pairs.push([s, natural])
+              continue
+            }
+          }
+          pairs.push([s, await freeName(natural)])
           const m = await measure(s)
           job.bytes += m.bytes
           job.files += m.files

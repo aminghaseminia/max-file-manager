@@ -118,3 +118,50 @@ test('a bad destination fails the job instead of guessing', async () => {
   assert.equal(job.state, 'error')
   assert.match(job.errors[0], /destination/)
 })
+
+test('skipExisting leaves an existing destination file alone and counts it', async () => {
+  const root = await tmp()
+  const src = path.join(root, 'src')
+  const dest = path.join(root, 'dest')
+  await fs.mkdir(src)
+  await fs.mkdir(dest)
+  await fs.writeFile(path.join(src, 'same.txt'), 'new content')
+  await fs.writeFile(path.join(src, 'fresh.txt'), 'only here')
+  await fs.writeFile(path.join(dest, 'same.txt'), 'old')
+
+  const { e, seen } = engine()
+  e.start('copy', [path.join(src, 'same.txt'), path.join(src, 'fresh.txt')], dest, {
+    skipExisting: true
+  })
+  const job = await settle(seen)
+
+  assert.equal(job.state, 'done')
+  assert.equal(job.skipped, 1)
+  assert.equal(await fs.readFile(path.join(dest, 'same.txt'), 'utf8'), 'old', 'existing file untouched')
+  assert.equal(await fs.readFile(path.join(dest, 'fresh.txt'), 'utf8'), 'only here')
+  assert.equal(await exists(path.join(dest, 'same (2).txt')), false, 'skipExisting must not rename')
+})
+
+test('newerOnly copies an older destination file but skips a newer one', async () => {
+  const root = await tmp()
+  const src = path.join(root, 'src')
+  const dest = path.join(root, 'dest')
+  await fs.mkdir(src)
+  await fs.mkdir(dest)
+  await fs.writeFile(path.join(src, 'older.txt'), 'from source')
+  await fs.writeFile(path.join(dest, 'older.txt'), 'from dest')
+  const old = new Date(Date.now() - 60_000)
+  await fs.utimes(path.join(dest, 'older.txt'), old, old)
+
+  await fs.writeFile(path.join(src, 'newer.txt'), 'from source')
+  await fs.writeFile(path.join(dest, 'newer.txt'), 'from dest')
+
+  const { e, seen } = engine()
+  e.start('copy', [path.join(src, 'older.txt'), path.join(src, 'newer.txt')], dest, { newerOnly: true })
+  const job = await settle(seen)
+
+  assert.equal(job.state, 'done')
+  assert.equal(job.skipped, 1, 'the destination copy is newer, so it stays')
+  assert.equal(await fs.readFile(path.join(dest, 'older.txt'), 'utf8'), 'from source', 'older dest is replaced')
+  assert.equal(await fs.readFile(path.join(dest, 'newer.txt'), 'utf8'), 'from dest')
+})

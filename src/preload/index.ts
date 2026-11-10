@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('api', {
   extract: (archive: string, names: string[], dest: string) =>
     ipcRenderer.invoke('fs:extract', { archive, names, dest }),
   getMeta: (dir: string) => ipcRenderer.invoke('meta:get', dir),
+  togglePin: (dir: string, name: string, on?: boolean) =>
+    ipcRenderer.invoke('meta:togglePin', { dir, name, on }),
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),
   iconThemes: (extra: string[]) => ipcRenderer.invoke('icons:themes', extra),
   iconsIn: (themeDir: string) => ipcRenderer.invoke('icons:in', themeDir),
@@ -31,8 +33,8 @@ contextBridge.exposeInMainWorld('api', {
   // a dropped File only becomes a path here, in preload
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   jobs: {
-    start: (kind: string, sources: string[], dest: string) =>
-      ipcRenderer.invoke('job:start', { kind, sources, dest }),
+    start: (kind: string, sources: string[], dest: string, opts?: unknown) =>
+      ipcRenderer.invoke('job:start', { kind, sources, dest, opts }),
     pause: (id: string) => ipcRenderer.invoke('job:pause', id),
     resume: (id: string) => ipcRenderer.invoke('job:resume', id),
     cancel: (id: string) => ipcRenderer.invoke('job:cancel', id),

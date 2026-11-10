@@ -8,8 +8,8 @@ import { saveImage } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
-import { readMeta, setMeta, type FolderMeta } from './meta.ts'
-import { createEngine, type JobKind } from './jobs.ts'
+import { readMeta, setMeta, togglePin, type FolderMeta } from './meta.ts'
+import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import type { DirRef, Entry } from './types.ts'
@@ -243,9 +243,11 @@ app.whenReady().then(async () => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   })
 
-  ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean, dims = false) =>
-    list(dir, showHidden, dims)
-  )
+  ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
+    const l = await list(dir, showHidden, dims)
+    const pins = path.isAbsolute(dir) ? ((await readMeta(dir))?.pins ?? []) : []
+    return { ...l, pins }
+  })
   ipcMain.handle('fs:statfs', async (_e, p: string) => {
     if (!path.isAbsolute(p)) return null
     const s = await fs.statfs(p).catch(() => null)
@@ -297,14 +299,19 @@ app.whenReady().then(async () => {
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
+  ipcMain.handle('meta:togglePin', (_e, a: { dir: string; name: string; on?: boolean }) =>
+    path.isAbsolute(a?.dir ?? '') ? togglePin(a.dir, String(a.name ?? ''), a.on) : []
+  )
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
   )
-  ipcMain.handle('job:start', (_e, a: { kind: JobKind; sources: string[]; dest: string }) =>
-    engine.start(a.kind, a.sources ?? [], a.dest)
+  ipcMain.handle(
+    'job:start',
+    (_e, a: { kind: JobKind; sources: string[]; dest: string; opts?: JobOpts }) =>
+      engine.start(a.kind, a.sources ?? [], a.dest, a.opts ?? {})
   )
   ipcMain.handle('job:pause', (_e, id: string) => engine.pause(id))
   ipcMain.handle('job:resume', (_e, id: string) => engine.resume(id))

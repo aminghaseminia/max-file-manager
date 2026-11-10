@@ -11,6 +11,7 @@ type Page =
   | 'toolbar'
   | 'keys'
   | 'layout'
+  | 'transfer'
   | 'operations'
   | 'launch'
   | 'advanced'
@@ -22,6 +23,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'toolbar', label: 'نوار ابزار' },
   { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'transfer', label: 'انتقال' },
   { id: 'operations', label: 'عملیات فایل' },
   { id: 'launch', label: 'راه‌اندازی' },
   { id: 'advanced', label: 'پیشرفته' }
@@ -360,6 +362,41 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
                 seg(prefs.sidebar, [{ v: 'docked', label: 'چسبیده' }, { v: 'float', label: 'شناور' }], 'sidebar')
               )}
               {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+            </>
+          )}
+
+          {page === 'transfer' && (
+            <>
+              {row(
+                'رد کردن فایل‌های موجود',
+                'اگر نامی در مقصد هست، همان‌جا بمانَد و کپی نشود (به‌جای ساختن «نام (۲)»)',
+                check(prefs.transferSkipExisting, 'transferSkipExisting')
+              )}
+              {row(
+                'فقط جدیدترها',
+                'اگر فایل مقصد جدیدتر یا هم‌زمان باشد، منتقل نشود',
+                check(prefs.transferNewerOnly, 'transferNewerOnly')
+              )}
+              {row(
+                'محدودیت سرعت',
+                'کیلوبایت بر ثانیه؛ ۰ یعنی بی‌نهایت',
+                <div className="inline-field">
+                  <input
+                    type="number"
+                    min={0}
+                    step={256}
+                    value={prefs.speedLimitKB}
+                    onChange={(e) =>
+                      onChange({ speedLimitKB: Math.max(0, Number(e.target.value) || 0) })
+                    }
+                  />
+                  <span>KB/s</span>
+                </div>
+              )}
+              <div className="hint">
+                فیلترها روی هر سه مسیر کپی/انتقال (دکمه‌ها، کلیدها و کشیدن‌و‌رهاکردن) اعمال می‌شوند و
+                تعداد فایل‌های رد‌شده در نوار عملیات‌ها نوشته می‌شود.
+              </div>
             </>
           )}
 
