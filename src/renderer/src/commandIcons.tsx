@@ -1,0 +1,58 @@
+import type { JSX } from 'react'
+import {
+  ArchiveOpenIcon,
+  ChevronLeftIcon,
+  CopyIcon,
+  DupeIcon,
+  EyeIcon,
+  FileIcon,
+  FolderPlusIcon,
+  GaugeIcon,
+  GridIcon,
+  ListIcon,
+  MoveIcon,
+  PinIcon,
+  PlusIcon,
+  PreviewIcon,
+  RefreshIcon,
+  RenameIcon,
+  SearchIcon,
+  SettingsIcon,
+  SplitIcon,
+  StarIcon,
+  TrashIcon,
+  UndoIcon,
+  XIcon
+} from './Icons'
+import type { CommandId } from './commands'
+
+/** Icon per command, used by the toolbar and the function-key bar. */
+export const CMD_ICON: Record<CommandId, JSX.Element> = {
+  copy: <CopyIcon />,
+  move: <MoveIcon />,
+  rename: <RenameIcon />,
+  batchRename: <RenameIcon />,
+  mkdir: <FolderPlusIcon />,
+  trash: <TrashIcon />,
+  hardDelete: <XIcon size={12} />,
+  size: <GaugeIcon />,
+  undo: <UndoIcon />,
+  selectAll: <FileIcon />,
+  refresh: <RefreshIcon />,
+  up: <ChevronLeftIcon />,
+  previewPane: <PreviewIcon />,
+  gallery: <EyeIcon />,
+  flat: <ListIcon />,
+  dupes: <DupeIcon />,
+  filter: <SearchIcon />,
+  hidden: <EyeIcon />,
+  bookmark: <StarIcon />,
+  newTab: <PlusIcon />,
+  closeTab: <XIcon size={12} />,
+  reopenTab: <ArchiveOpenIcon />,
+  nextTab: <SplitIcon />,
+  addressBar: <PinIcon />,
+  toggleView: <GridIcon />,
+  toggleLayout: <SplitIcon />,
+  prefs: <SettingsIcon />
+}

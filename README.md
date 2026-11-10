@@ -13,6 +13,11 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+One toolbar row (window buttons inline, no wasted title strip), a configurable command toolbar, and a shortcut editor with conflict detection:
+
+![toolbar](docs/screenshot-toolbar.png)
+![shortcuts](docs/screenshot-keys.png)
+
 Full tab support — pinned tabs, drag to reorder, and a tab menu:
 
 ![tabs](docs/screenshot-tabs.png)
@@ -46,7 +51,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.8** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
+**Status: v0.9** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
@@ -57,6 +62,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Simple image edits in the gallery**: rotate 90°, flip, crop by dragging a box, resize with a locked aspect ratio, save as a copy (`name-edit.png`) or overwrite
 - **Configurable columns**: type, size, date (ISO or Jalali), permissions, owner, hard links, image dimensions — toggled and ordered in preferences, with a header that scrolls with the rows
 - `Ctrl+L` address bar, selection size and free space in the status bar
+- **Every command lives in one registry** (`commands.ts`) and every key is rebindable in preferences → «کلید میان‌بر», with conflict detection and per-command reset; the accelerators are plain text in `state.json`
+- **Configurable command toolbar** (add/remove/order) under the title row
 - **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails
 - Virtualized rendering in both views: a 100k-entry folder mounts only the visible slice

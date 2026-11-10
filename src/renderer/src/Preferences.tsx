@@ -1,12 +1,26 @@
-import { useState } from 'react'
-import { COLUMNS, type ColId, type Prefs } from './prefs'
+import { useEffect, useState } from 'react'
+import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
+import { XIcon } from './Icons'
+import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_LABEL, type CommandGroup } from './commands'
+import { accelFromEvent, findConflicts, formatAccel } from './keys'
 
-type Page = 'appearance' | 'display' | 'columns' | 'layout' | 'operations' | 'launch' | 'advanced'
+type Page =
+  | 'appearance'
+  | 'display'
+  | 'columns'
+  | 'toolbar'
+  | 'keys'
+  | 'layout'
+  | 'operations'
+  | 'launch'
+  | 'advanced'
 
 const PAGES: { id: Page; label: string }[] = [
   { id: 'appearance', label: 'ظاهر و رنگ' },
   { id: 'display', label: 'نمایش فایل‌ها' },
   { id: 'columns', label: 'ستون‌ها' },
+  { id: 'toolbar', label: 'نوار ابزار' },
+  { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
   { id: 'operations', label: 'عملیات فایل' },
   { id: 'launch', label: 'راه‌اندازی' },
@@ -21,6 +35,28 @@ type Props = {
 
 export function Preferences({ prefs, onChange, onClose }: Props) {
   const [page, setPage] = useState<Page>('appearance')
+  const [capturing, setCapturing] = useState<string | null>(null)
+
+  // while capturing, the next keydown becomes the accelerator for that command
+  useEffect(() => {
+    if (!capturing) return
+    const onKey = (ev: KeyboardEvent) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (ev.key === 'Escape') {
+        setCapturing(null)
+        return
+      }
+      const accel = accelFromEvent(ev)
+      if (!accel) return
+      onChange({ shortcuts: { ...prefs.shortcuts, [capturing]: accel } })
+      setCapturing(null)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [capturing, prefs.shortcuts])
+
+  const conflicts = findConflicts(prefs.shortcuts)
 
   const row = (label: string, hint: string | null, control: React.ReactNode) => (
     <div className="pref-row">
@@ -184,6 +220,129 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
               })}
               <div className="hint">
                 ستون «نام» همیشه اول است. ترتیب انتخاب‌شده در فهرست اعمال می‌شود.
+              </div>
+            </>
+          )}
+
+          {page === 'toolbar' && (
+            <>
+              <div className="hint">
+                دکمه‌های نوار فرمان را انتخاب و مرتب کن. نوار خالی یعنی نوار پنهان.
+              </div>
+              {COMMANDS.map((c) => {
+                const on = prefs.toolbar.includes(c.id)
+                const move = (delta: number) => {
+                  const next = [...prefs.toolbar]
+                  const at = next.indexOf(c.id)
+                  const to = at + delta
+                  if (at < 0 || to < 0 || to >= next.length) return
+                  ;[next[at], next[to]] = [next[to], next[at]]
+                  onChange({ toolbar: next })
+                }
+                return (
+                  <div className="pref-row" key={c.id}>
+                    <div className="pref-label">
+                      <span>{c.label}</span>
+                      <span className="hint">{GROUP_LABEL[c.group]}</span>
+                    </div>
+                    <div className="pref-control">
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) =>
+                            onChange({
+                              toolbar: e.target.checked
+                                ? [...prefs.toolbar, c.id]
+                                : prefs.toolbar.filter((x) => x !== c.id)
+                            })
+                          }
+                        />
+                      </label>
+                      <button className="tb" title="بالا" disabled={!on} onClick={() => move(-1)}>
+                        ▲
+                      </button>
+                      <button className="tb" title="پایین" disabled={!on} onClick={() => move(1)}>
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="pref-row">
+                <div className="pref-label">
+                  <span>بازنشانی نوار ابزار</span>
+                </div>
+                <div className="pref-control">
+                  <button className="btn ghost" onClick={() => onChange({ toolbar: DEFAULT_TOOLBAR })}>
+                    پیش‌فرض
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {page === 'keys' && (
+            <>
+              {conflicts.length > 0 && (
+                <div className="warn">
+                  تعارض: {conflicts.map((id) => COMMAND_BY_ID[id]?.label ?? id).join(' ، ')} — یک کلید
+                  به چند فرمان داده شده؛ اولی در فهرست اجرا می‌شود.
+                </div>
+              )}
+              {(Object.keys(GROUP_LABEL) as CommandGroup[]).map((g) => (
+                <div key={g}>
+                  <div className="pref-group">{GROUP_LABEL[g]}</div>
+                  {COMMANDS.filter((c) => c.group === g).map((c) => {
+                    const accel = prefs.shortcuts[c.id] ?? ''
+                    const bad = conflicts.includes(c.id)
+                    return (
+                      <div className="pref-row" key={c.id}>
+                        <div className="pref-label">
+                          <span className={bad ? 'bad' : ''}>{c.label}</span>
+                        </div>
+                        <div className="pref-control">
+                          <button
+                            className={'keycap' + (capturing === c.id ? ' live' : '') + (bad ? ' bad' : '')}
+                            onClick={() => setCapturing(capturing === c.id ? null : c.id)}
+                          >
+                            {capturing === c.id ? 'کلید را بزن…' : accel ? formatAccel(accel) : 'بدون کلید'}
+                          </button>
+                          <button
+                            className="tb"
+                            title="حذف کلید"
+                            onClick={() =>
+                              onChange({ shortcuts: { ...prefs.shortcuts, [c.id]: '' } })
+                            }
+                          >
+                            <XIcon size={11} />
+                          </button>
+                          <button
+                            className="tb"
+                            title="پیش‌فرض"
+                            onClick={() =>
+                              onChange({
+                                shortcuts: { ...prefs.shortcuts, [c.id]: DEFAULT_SHORTCUTS[c.id] }
+                              })
+                            }
+                          >
+                            ↺
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+              <div className="pref-row">
+                <div className="pref-label">
+                  <span>بازنشانی همهٔ کلیدها</span>
+                </div>
+                <div className="pref-control">
+                  <button className="btn ghost" onClick={() => onChange({ shortcuts: DEFAULT_SHORTCUTS })}>
+                    همه پیش‌فرض
+                  </button>
+                </div>
               </div>
             </>
           )}

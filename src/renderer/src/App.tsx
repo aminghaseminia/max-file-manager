@@ -10,7 +10,10 @@ import { RenameDialog } from './RenameDialog'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { Sidebar } from './Sidebar'
-import { TitleBar } from './TitleBar'
+import { WindowButtons } from './WindowButtons'
+import { CMD_ICON } from './commandIcons'
+import { COMMAND_BY_ID, COMMANDS, type CommandId } from './commands'
+import { formatAccel, matchAccel } from './keys'
 import {
   baseName,
   dirOf,
@@ -882,6 +885,41 @@ export default function App() {
     return orderEntries(source, sort.key, sort.asc, pane.filter)
   }
 
+  const RUN: Record<CommandId, () => void> = {
+    copy: () => void runSel(active, 'copy'),
+    move: () => void runSel(active, 'move'),
+    rename: () => openRename(active),
+    batchRename: () => openRename(active),
+    mkdir: () => setPrompt({ kind: 'mkdir', value: '' }),
+    trash: () => void runSel(active, prefs.trashByDefault ? 'trash' : 'delete'),
+    hardDelete: () => void runSel(active, 'delete'),
+    size: () => void computeSizes(active),
+    refresh: () => void load(active, tabOf(panes![active])),
+    up: () => up(active),
+    previewPane: togglePreview,
+    gallery: () => openGallery(active),
+    flat: () => void runFlat(active),
+    dupes: () => void runDupes(active),
+    undo: () => void doUndo(),
+    selectAll: () =>
+      setPanes((p) => p && patch(p, active, { sel: visibleOf(active).map((e) => e.path) })),
+    filter: () => filterEls.current[active]?.focus(),
+    hidden: () => setHidden((h) => !h),
+    bookmark: () => toggleMark(active),
+    newTab: () => addTab(active, tabOf(panes![active])),
+    closeTab: () => closeTab(active, panes![active].ti),
+    reopenTab,
+    nextTab: () =>
+      setPanes(
+        (p) =>
+          p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] })
+      ),
+    addressBar: () => setAddr(tabOf(panes![active])),
+    toggleView: () => setView((v) => (v === 'list' ? 'grid' : 'list')),
+    toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
+    prefs: () => setSettingsOpen(true)
+  }
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null
@@ -896,29 +934,20 @@ export default function App() {
       }
       if (typing) return
 
-      if (ev.ctrlKey && (ev.key === 'l' || ev.key === 'L')) {
+      // keys that stay hard: they are navigation inside the selection, not commands
+      if (ev.key === 'Tab' && !ev.ctrlKey) {
         ev.preventDefault()
-        setAddr(tabOf(me))
+        setActive((a) => 1 - a)
         return
       }
-      if (ev.ctrlKey && ev.key === 'Tab') {
+      if (ev.key === 'Enter') {
         ev.preventDefault()
-        setPanes((p) => p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] }))
+        if (me.sel[0]) openEntry(active, me.sel[0])
         return
       }
-      if (ev.ctrlKey && (ev.key === 't' || ev.key === 'T')) {
+      if (ev.key === 'Escape') {
         ev.preventDefault()
-        addTab(active, tabOf(me))
-        return
-      }
-      if (ev.ctrlKey && ev.shiftKey && (ev.key === 'T' || ev.key === 't')) {
-        ev.preventDefault()
-        reopenTab()
-        return
-      }
-      if (ev.ctrlKey && (ev.key === 'w' || ev.key === 'W')) {
-        ev.preventDefault()
-        closeTab(active, panes[active].ti)
+        setPanes((p) => p && patch(p, active, { sel: [], filter: '' }))
         return
       }
       if (ev.ctrlKey && /^[1-9]$/.test(ev.key)) {
@@ -926,106 +955,14 @@ export default function App() {
         jumpTab(Number(ev.key) - 1)
         return
       }
-      if (ev.ctrlKey && ev.shiftKey && (ev.key === 'F' || ev.key === 'f')) {
-        ev.preventDefault()
-        void runFlat(active)
-        return
-      }
 
-      switch (ev.key) {
-        case 'Tab':
-          ev.preventDefault()
-          setActive((a) => 1 - a)
-          break
-        case 'F5':
-          ev.preventDefault()
-          void runSel(active, 'copy')
-          break
-        case 'F6':
-          ev.preventDefault()
-          void runSel(active, 'move')
-          break
-        case 'F7':
-          ev.preventDefault()
-          setPrompt({ kind: 'mkdir', value: '' })
-          break
-        case 'F2':
-          ev.preventDefault()
-          openRename(active)
-          break
-        case 'F3':
-          ev.preventDefault()
-          previewInOther(active)
-          break
-        case ' ':
-          ev.preventDefault()
-          if (me.sel[0] && isImage((entryOf(active, me.sel[0])?.ext ?? ''))) openGallery(active, me.sel[0])
-          break
-        case 'r':
-        case 'R':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            void load(active, tabOf(me))
-          }
-          break
-        case 'F9':
-          ev.preventDefault()
-          void computeSizes(active)
-          break
-        case 'F8':
-        case 'Delete':
-          ev.preventDefault()
-          void runSel(active, ev.shiftKey ? 'delete' : prefs.trashByDefault ? 'trash' : 'delete')
-          break
-        case 'Backspace':
-        case 'ArrowUp':
-          if (ev.key === 'ArrowUp' && !ev.ctrlKey) break
-          ev.preventDefault()
-          up(active)
-          break
-        case 'Enter':
-          ev.preventDefault()
-          if (me.sel[0]) openEntry(active, me.sel[0])
-          break
-        case 'Escape':
-          ev.preventDefault()
-          setPanes((p) => p && patch(p, active, { sel: [], filter: '' }))
-          break
-        case 'a':
-        case 'A':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            setPanes((p) => p && patch(p, active, { sel: visibleOf(active).map((e) => e.path) }))
-          }
-          break
-        case 'z':
-        case 'Z':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            void doUndo()
-          }
-          break
-        case 'f':
-        case 'F':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            filterEls.current[active]?.focus()
-          }
-          break
-        case 'h':
-        case 'H':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            setHidden((h) => !h)
-          }
-          break
-        case 'd':
-        case 'D':
-          if (ev.ctrlKey) {
-            ev.preventDefault()
-            toggleMark(active)
-          }
-          break
+      // everything else comes from the shortcut table, so the editor can rebind it
+      for (const c of COMMANDS) {
+        const accel = prefs.shortcuts[c.id] ?? c.key
+        if (!accel || !matchAccel(accel, ev)) continue
+        ev.preventDefault()
+        RUN[c.id]()
+        return
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1047,16 +984,17 @@ export default function App() {
 
   return (
     <div className="app">
-      {chrome.customTitlebar && <TitleBar note={note} />}
-      <header className="topbar">
-        {!chrome.customTitlebar && (
-          <span className="brand">
-            <span className="logo">
-              <FolderIcon />
-            </span>
-            مدیر فایل مکس
-          </span>
-        )}
+      <header
+        className="topbar"
+        onDoubleClick={(ev) => {
+          if (!chrome.customTitlebar) return
+          if ((ev.target as HTMLElement).closest('button')) return
+          void api.window.maximize()
+        }}
+      >
+        <span className="logo-mark" title="مدیر فایل مکس">
+          <FolderIcon />
+        </span>
         <button
           className={'tb' + (ui.sidebarOpen ? ' on' : '')}
           title="سایدبار"
@@ -1072,7 +1010,7 @@ export default function App() {
           <SettingsIcon />
         </button>
         <span className="spacer" />
-        {!chrome.customTitlebar && <span className="note">{note}</span>}
+        <span className="note">{note}</span>
         <button
           className={'tb' + (prefs.layout === 'single' ? ' on' : '')}
           title={prefs.layout === 'dual' ? 'تک‌پنجره' : 'دوپنجره'}
@@ -1114,7 +1052,28 @@ export default function App() {
         >
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
+        {chrome.customTitlebar && <WindowButtons />}
       </header>
+
+      {prefs.toolbar.length > 0 && (
+        <div className="cmdbar">
+          {(prefs.toolbar as CommandId[]).map((id) => {
+            const c = COMMAND_BY_ID[id]
+            if (!c) return null
+            return (
+              <button
+                key={id}
+                className="cmdb"
+                title={`${c.label} (${formatAccel(prefs.shortcuts[id] ?? c.key)})`}
+                onClick={() => RUN[id]?.()}
+              >
+                {CMD_ICON[id]}
+                <span>{c.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {settingsOpen && (
         <Preferences

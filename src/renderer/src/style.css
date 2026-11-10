@@ -1566,3 +1566,115 @@ html[data-rounded='1'] .app {
   flex: none;
   opacity: 0.9;
 }
+
+/* ---------- single toolbar row: brand text gone, window buttons inline ---------- */
+.topbar {
+  -webkit-app-region: drag;
+}
+.topbar button,
+.topbar .note,
+.topbar input {
+  -webkit-app-region: no-drag;
+}
+.logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-inline-end: 2px;
+  color: var(--accent);
+  opacity: 0.95;
+}
+.logo-mark svg {
+  width: 17px;
+  height: 17px;
+}
+.winbtns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-start: 6px;
+  padding-inline-start: 6px;
+  border-inline-start: 1px solid var(--line);
+}
+
+/* ---------- configurable command toolbar ---------- */
+.cmdbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cmdbar::-webkit-scrollbar {
+  height: 0;
+}
+.cmdb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cmdb:hover {
+  color: var(--text);
+  background: var(--panel-3, rgba(255, 255, 255, 0.06));
+  border-color: var(--line);
+}
+.cmdb svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- shortcut editor ---------- */
+.pref-group {
+  margin: 12px 0 4px;
+  font-size: 11.5px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+.keycap {
+  min-width: 132px;
+  padding: 4px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.keycap:hover {
+  border-color: var(--accent);
+}
+.keycap.live {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.keycap.bad,
+.bad {
+  border-color: #d1584f;
+  color: #e88b83;
+}
+.warn {
+  margin: 8px 0;
+  padding: 7px 10px;
+  background: rgba(209, 88, 79, 0.14);
+  border: 1px solid rgba(209, 88, 79, 0.4);
+  border-radius: 6px;
+  color: #e8a9a3;
+  font-size: 11.5px;
+}

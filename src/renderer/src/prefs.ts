@@ -1,3 +1,19 @@
+import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS } from './commands.ts'
+
+/** The toolbar the app ships with; the user can change it in preferences. */
+export const DEFAULT_TOOLBAR = [
+  'copy',
+  'move',
+  'rename',
+  'mkdir',
+  'trash',
+  'size',
+  'previewPane',
+  'undo',
+  'flat',
+  'dupes'
+]
+
 export type View = 'list' | 'grid'
 export type Layout = 'dual' | 'single'
 export type DoubleClick = 'open' | 'gallery' | 'preview'
@@ -34,6 +50,10 @@ export type Prefs = {
   layout: Layout
   sidebar: 'docked' | 'float'
   sidebarOpen: boolean
+  /** command id → accelerator text; '' means the command has no key */
+  shortcuts: Record<string, string>
+  /** command ids shown as buttons in the toolbar, in order */
+  toolbar: string[]
   // tabs
   newTabPos: 'end' | 'next'
   middleClickClosesTab: boolean
@@ -64,6 +84,8 @@ export const DEFAULTS: Prefs = {
   layout: 'dual',
   sidebar: 'docked',
   sidebarOpen: true,
+  shortcuts: DEFAULT_SHORTCUTS,
+  toolbar: DEFAULT_TOOLBAR,
   newTabPos: 'next',
   middleClickClosesTab: true,
   doubleClick: 'gallery',
@@ -73,6 +95,18 @@ export const DEFAULTS: Prefs = {
   startFolder: '',
   iconDirs: [],
   iconTheme: ''
+}
+
+/** Only known commands survive; a missing or garbage value falls back to the default key. */
+function normalShortcuts(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = { ...DEFAULT_SHORTCUTS }
+  if (raw && typeof raw === 'object') {
+    for (const c of COMMANDS) {
+      const v = (raw as Record<string, unknown>)[c.id]
+      if (typeof v === 'string') out[c.id] = v.trim()
+    }
+  }
+  return out
 }
 
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
@@ -92,6 +126,10 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
     sidebarOpen: p.sidebarOpen !== false,
+    shortcuts: normalShortcuts(p.shortcuts),
+    toolbar: Array.isArray(p.toolbar)
+      ? p.toolbar.filter((id) => typeof id === 'string' && COMMAND_BY_ID[id])
+      : DEFAULTS.toolbar,
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
