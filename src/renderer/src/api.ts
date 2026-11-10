@@ -95,6 +95,12 @@ export type Api = {
   walk(dir: string, opts: WalkOpts): Promise<WalkResult>
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
+  createArchive(
+    dir: string,
+    name: string,
+    sources: string[],
+    level?: number
+  ): Promise<{ path: string; files: number; bytes: number } | { error: string }>
   extract(archive: string, names: string[], dest: string): Promise<Result>
   getMeta(dir: string): Promise<FolderMeta | null>
   togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
@@ -104,7 +110,7 @@ export type Api = {
   mkdir(dir: string, name: string): Promise<Result>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<string>
-  preview(p: string): Promise<Preview | null>
+  preview(p: string, maxKB?: number): Promise<Preview | null>
   hash(paths: string[], algo: string): Promise<HashResult[]>
   pathForFile(file: File): string
   jobs: {

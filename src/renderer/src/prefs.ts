@@ -57,6 +57,14 @@ export type Prefs = {
   // tabs
   newTabPos: 'end' | 'next'
   middleClickClosesTab: boolean
+  // archives, gallery and preview
+  zipLevel: number
+  imageFormat: 'png' | 'jpeg' | 'webp'
+  /** 50..100, only used for jpeg/webp */
+  imageQuality: number
+  slideshowSec: number
+  galleryLoop: boolean
+  previewMaxKB: number
   // transfer filters
   transferSkipExisting: boolean
   transferNewerOnly: boolean
@@ -94,6 +102,12 @@ export const DEFAULTS: Prefs = {
   newTabPos: 'next',
   middleClickClosesTab: true,
   doubleClick: 'gallery',
+  zipLevel: 6,
+  imageFormat: 'png',
+  imageQuality: 90,
+  slideshowSec: 3,
+  galleryLoop: true,
+  previewMaxKB: 200,
   transferSkipExisting: false,
   transferNewerOnly: false,
   speedLimitKB: 0,
@@ -141,6 +155,23 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
+    zipLevel:
+      typeof p.zipLevel === 'number' && p.zipLevel >= 0 && p.zipLevel <= 9 ? Math.floor(p.zipLevel) : 6,
+    imageFormat:
+      p.imageFormat === 'jpeg' || p.imageFormat === 'webp' ? p.imageFormat : 'png',
+    imageQuality:
+      typeof p.imageQuality === 'number' && p.imageQuality >= 50 && p.imageQuality <= 100
+        ? Math.round(p.imageQuality)
+        : 90,
+    slideshowSec:
+      typeof p.slideshowSec === 'number' && p.slideshowSec >= 1 && p.slideshowSec <= 60
+        ? Math.round(p.slideshowSec)
+        : 3,
+    galleryLoop: p.galleryLoop !== false,
+    previewMaxKB:
+      typeof p.previewMaxKB === 'number' && p.previewMaxKB >= 16 && p.previewMaxKB <= 8192
+        ? Math.round(p.previewMaxKB)
+        : 200,
     transferSkipExisting: p.transferSkipExisting === true,
     transferNewerOnly: p.transferNewerOnly === true,
     speedLimitKB:

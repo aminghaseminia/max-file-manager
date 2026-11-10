@@ -13,11 +13,14 @@ type Props = {
   onGallery?(): void
   onOpen(path: string): void
   onClose(): void
+  /** text previews stop at this size */
+  maxKB?: number
 }
 
 const MAX_INLINE_IMAGE = 8_000_000
 
 export function PreviewPanel({
+  maxKB = 200,
   entry,
   fill,
   imageIndex,
@@ -35,13 +38,15 @@ export function PreviewPanel({
     if (!entry || entry.dir) return
     let live = true
     void api
-      .preview(entry.path)
+      .preview(entry.path, maxKB)
       .then((p) => live && (p ? setData(p) : setErr('پیش‌نمایش ممکن نشد')))
       .catch((e) => live && setErr(String(e?.message ?? e)))
     return () => {
       live = false
     }
-  }, [entry])
+  }, [entry, maxKB])
+
+  const lines = (data?.text ?? '').split(/\r?\n/)
 
   return (
     <aside className={'preview' + (fill ? ' fill' : '')}>
@@ -96,9 +101,17 @@ export function PreviewPanel({
               <video className="preview-media" controls src={mediaUrl(entry.path)} />
             )}
             {data?.kind === 'text' && (
-              <pre className="preview-text" dir="auto">
-                {data.text}
-              </pre>
+              <div className="preview-text" dir="auto">
+                {lines.slice(0, 4000).map((ln, n) => (
+                  <div className="pline" key={n}>
+                    <span className="pln">{n + 1}</span>
+                    <span className="ptext">{ln || ' '}</span>
+                  </div>
+                ))}
+                {lines.length > 4000 && (
+                  <div className="pln-more">… {lines.length - 4000} خط دیگر نمایش داده نشد</div>
+                )}
+              </div>
             )}
             {data?.kind === 'binary' && (
               <div className="preview-empty">

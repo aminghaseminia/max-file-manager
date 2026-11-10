@@ -1,10 +1,13 @@
-import { gunzipSync, unzipSync } from 'fflate'
-import { promises as fs } from 'node:fs'
+import { promises as fs, createReadStream, createWriteStream } from 'node:fs'
 import path from 'node:path'
+import { AsyncZipDeflate, Zip, gunzipSync, unzipSync } from 'fflate'
+import { freeName } from './ops.ts'
 import type { Entry } from './types.ts'
 
 /** Archives are read whole into memory; beyond this the user gets a clear error instead of an OOM. */
 export const ARCHIVE_CAP = 256 * 1024 * 1024
+
+export type ZipLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 export const isArchive = (p: string): boolean => /\.(zip|tar|tgz|tar\.gz|tar\.bz2|tbz2)$/i.test(p)
 
@@ -80,6 +83,102 @@ export async function listArchive(archive: string): Promise<{ entries: Entry[]; 
 }
 
 /** Writes the chosen inner paths (or everything when `names` is empty) under `dest`. */
+/** every file under a source, paired with the name it gets inside the archive */
+async function collect(root: string): Promise<[string, string][]> {
+  const out: [string, string][] = []
+  const base = path.basename(root.replace(/[\\/]+$/, ''))
+  const walk = async (abs: string, rel: string) => {
+    const st = await fs.lstat(abs).catch(() => null)
+    if (!st) return
+    if (st.isDirectory()) {
+      for (const k of await fs.readdir(abs)) await walk(path.join(abs, k), `${rel}/${k}`)
+      return
+    }
+    out.push([abs, rel])
+  }
+  const st = await fs.lstat(root)
+  if (st.isDirectory()) for (const k of await fs.readdir(root)) await walk(path.join(root, k), `${base}/${k}`)
+  else out.push([root, base])
+  return out
+}
+
+/**
+ * Streams a zip into `dest/name`; nothing is held in memory except the current chunk.
+ * shortcut: zip only (no 7z/rar/encryption), upgrade when those formats are actually needed.
+ */
+export async function createZip(
+  dir: string,
+  name: string,
+  sources: string[],
+  level: ZipLevel = 6
+): Promise<{ path: string; files: number; bytes: number } | { error: string }> {
+  if (!path.isAbsolute(dir)) return { error: 'مقصد نامعتبر است' }
+  const out = await freeName(path.join(dir, name.toLowerCase().endsWith('.zip') ? name : `${name}.zip`))
+  const files: [string, string][] = []
+  try {
+    for (const s of sources) {
+      if (!path.isAbsolute(s)) return { error: 'مسیر نامعتبر' }
+      files.push(...(await collect(s)))
+    }
+  } catch (e: any) {
+    return { error: String(e?.message ?? e) }
+  }
+  if (!files.length) return { error: 'چیزی برای آرشیو کردن نیست' }
+
+  const ws = createWriteStream(out)
+  let failure: Error | null = null
+  let writing = Promise.resolve()
+  let resolveAll!: () => void
+  let rejectAll!: (e: Error) => void
+  const written = new Promise<void>((res, rej) => {
+    resolveAll = res
+    rejectAll = rej
+  })
+  const zip = new Zip((err, chunk, final) => {
+    if (err) {
+      failure = err
+      rejectAll(err)
+      return
+    }
+    writing = writing.then(
+      () =>
+        new Promise<void>((res) => {
+          if (ws.write(Buffer.from(chunk))) res()
+          else ws.once('drain', () => res())
+        })
+    )
+    // the stream is only complete once the last chunk has actually been written
+    if (final) writing.then(resolveAll, rejectAll)
+  })
+
+  let bytes = 0
+  try {
+    for (const [abs, rel] of files) {
+      if (failure) throw failure
+      const entry = new AsyncZipDeflate(rel, { level })
+      zip.add(entry)
+      for await (const chunk of createReadStream(abs)) {
+        const buf = chunk as Uint8Array
+        bytes += buf.length
+        entry.push(buf, false)
+      }
+      entry.push(new Uint8Array(0), true)
+      await writing
+    }
+    zip.end()
+    await written
+    await new Promise<void>((res, rej) => {
+      ws.on('error', rej)
+      ws.end(() => res())
+    })
+  } catch (e: any) {
+    ws.destroy()
+    await fs.rm(out, { force: true })
+    return { error: String(e?.message ?? e) }
+  }
+  return { path: out, files: files.length, bytes }
+}
+
 export async function extract(
   archive: string,
   names: string[],

@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { zipSync } from 'fflate'
-import { extract, isArchive, listArchive } from './archives.ts'
+import { createZip, extract, isArchive, listArchive } from './archives.ts'
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'mfm-arc-'))
 const enc = (s: string) => new TextEncoder().encode(s)
@@ -83,4 +83,48 @@ test('a tar archive is read by the built-in parser', async () => {
   await fs.mkdir(dest)
   await extract(tar, [], dest)
   assert.equal(await fs.readFile(path.join(dest, 'greeting.txt'), 'utf8'), 'hello tar')
+})
+
+test('createZip writes an archive that lists and extracts back to the same bytes', async () => {
+  const root = await tmp()
+  const src = path.join(root, 'pack')
+  await fs.mkdir(path.join(src, 'deep'), { recursive: true })
+  await fs.writeFile(path.join(src, 'one.txt'), 'first file')
+  await fs.writeFile(path.join(src, 'deep', 'two.txt'), 'second file')
+  const outDir = path.join(root, 'out')
+  await fs.mkdir(outDir)
+
+  const made = await createZip(outDir, 'بکاپ', [src])
+  assert.ok('path' in made, JSON.stringify(made))
+  if (!('path' in made)) return
+  assert.equal(path.basename(made.path), 'بکاپ.zip')
+  assert.equal(made.files, 2)
+  assert.equal(isArchive(made.path), true)
+
+  const listed = await listArchive(made.path)
+  const names = listed.entries.map((e) => e.name.replace(/\\/g, '/')).sort()
+  assert.deepEqual(names, ['pack/deep/two.txt', 'pack/one.txt'])
+
+  const back = path.join(root, 'back')
+  await fs.mkdir(back)
+  const res = await extract(made.path, [], back)
+  assert.deepEqual(res.errors, [])
+  assert.equal(await fs.readFile(path.join(back, 'pack', 'one.txt'), 'utf8'), 'first file')
+  assert.equal(await fs.readFile(path.join(back, 'pack', 'deep', 'two.txt'), 'utf8'), 'second file')
+})
+
+test('createZip never overwrites an existing archive and is empty-safe', async () => {
+  const root = await tmp()
+  const src = path.join(root, 'f.txt')
+  await fs.writeFile(src, 'x')
+  const dir = path.join(root, 'out')
+  await fs.mkdir(dir)
+  await fs.writeFile(path.join(dir, 'a.zip'), 'old')
+
+  const first = await createZip(dir, 'a', [src])
+  assert.ok('path' in first)
+  if ('path' in first) assert.equal(path.basename(first.path), 'a (2).zip', 'freeName guards the name')
+
+  const empty = await createZip(dir, 'empty', [])
+  assert.deepEqual(empty, { error: 'چیزی برای آرشیو کردن نیست' })
 })

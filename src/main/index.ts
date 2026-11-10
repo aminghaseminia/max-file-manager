@@ -3,7 +3,7 @@ import { readFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
-import { extract, listArchive } from './archives.ts'
+import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
 import { saveImage } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
@@ -284,6 +284,16 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:archive', (_e, p: string) =>
     path.isAbsolute(p) ? listArchive(p) : { entries: [], capped: false }
   )
+  ipcMain.handle(
+    'fs:archiveCreate',
+    (_e, a: { dir: string; name: string; sources: string[]; level?: number }) =>
+      createZip(
+        a?.dir ?? '',
+        String(a?.name ?? 'archive'),
+        a?.sources ?? [],
+        Math.min(9, Math.max(0, Number(a?.level ?? 6))) as ZipLevel
+      )
+  )
   ipcMain.handle('fs:extract', (_e, a: { archive: string; names: string[]; dest: string }) =>
     path.isAbsolute(a.archive) && path.isAbsolute(a.dest)
       ? extract(a.archive, a.names ?? [], a.dest)
@@ -292,8 +302,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
   )
-  ipcMain.handle('fs:preview', (_e, p: string) =>
-    path.isAbsolute(p) ? preview(p).catch(() => null) : null
+  ipcMain.handle('fs:preview', (_e, p: string, maxKB?: number) =>
+    path.isAbsolute(p) ? preview(p, maxKB) : null
   )
   ipcMain.handle('fs:hash', (_e, paths: string[], algo: string) =>
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')

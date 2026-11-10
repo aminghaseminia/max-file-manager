@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
   walk: (dir: string, opts: unknown) => ipcRenderer.invoke('fs:walk', dir, opts),
   dupes: (dir: string) => ipcRenderer.invoke('fs:dupes', dir),
   archive: (p: string) => ipcRenderer.invoke('fs:archive', p),
+  createArchive: (dir: string, name: string, sources: string[], level?: number) =>
+    ipcRenderer.invoke('fs:archiveCreate', { dir, name, sources, level }),
   extract: (archive: string, names: string[], dest: string) =>
     ipcRenderer.invoke('fs:extract', { archive, names, dest }),
   getMeta: (dir: string) => ipcRenderer.invoke('meta:get', dir),

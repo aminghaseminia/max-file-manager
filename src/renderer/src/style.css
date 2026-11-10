@@ -1698,3 +1698,37 @@ html[data-rounded='1'] .app {
   color: var(--dim);
   font-size: 11px;
 }
+
+/* ---------- preview text with line numbers ---------- */
+.preview-text {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 10px;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre;
+  text-align: start;
+}
+.pline {
+  display: flex;
+  gap: 10px;
+}
+.pln {
+  flex: none;
+  min-width: 34px;
+  text-align: end;
+  color: var(--dim);
+  opacity: 0.65;
+  user-select: none;
+}
+.ptext {
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+}
+.pln-more {
+  color: var(--dim);
+  padding: 6px 0;
+}

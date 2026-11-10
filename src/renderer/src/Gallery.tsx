@@ -27,7 +27,22 @@ type Props = {
   onFullscreen(): void
   onSaved(msg: string): void
   onChanged(): void
+  slideshowSec: number
+  loop: boolean
+  imageFormat: ImageFormat
+  imageQuality: number
 }
+
+export type ImageFormat = 'png' | 'jpeg' | 'webp'
+
+const MIME: Record<ImageFormat, string> = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' }
+
+/** A file keeps its own container: overwriting a .png with jpeg bytes would be a lie. */
+const formatOf = (p: string): ImageFormat =>
+  /\.(jpe?g)$/i.test(p) ? 'jpeg' : /\.webp$/i.test(p) ? 'webp' : 'png'
+
+const encode = (c: HTMLCanvasElement, fmt: ImageFormat, quality: number): string =>
+  c.toDataURL(MIME[fmt], fmt === 'png' ? undefined : Math.min(100, Math.max(50, quality)) / 100)
 
 type Edit = { url: string; w: number; h: number }
 type Rect = { x: number; y: number; w: number; h: number }
@@ -37,6 +52,10 @@ export function Gallery({
   images,
   startPath,
   fullscreen,
+  slideshowSec,
+  loop,
+  imageFormat,
+  imageQuality,
   onClose,
   onFullscreen,
   onSaved,
@@ -67,7 +86,12 @@ export function Gallery({
   }
 
   const go = (d: number) => {
-    setAt((i) => (total ? (i + d + total) % total : 0))
+    setAt((i) => {
+      if (!total) return 0
+      const next = i + d
+      // with loop off the strip stops at the ends instead of wrapping
+      return loop ? (next + total) % total : Math.min(total - 1, Math.max(0, next))
+    })
     setEdit(null)
     setCrop(null)
     setCropping(false)
@@ -76,9 +100,9 @@ export function Gallery({
 
   useEffect(() => {
     if (!slide || total < 2) return
-    const t = setInterval(() => go(1), 3000)
+    const t = setInterval(() => go(1), Math.max(1, slideshowSec) * 1000)
     return () => clearInterval(t)
-  }, [slide, total])
+  }, [slide, total, slideshowSec])
 
   /** Every edit runs on a canvas at full resolution, so no step loses pixels. */
   const loadCanvas = async (): Promise<HTMLCanvasElement | null> => {
@@ -108,7 +132,8 @@ export function Gallery({
   }
 
   const commit = (c: HTMLCanvasElement) => {
-    setEdit({ url: c.toDataURL('image/png'), w: c.width, h: c.height })
+    // the working copy stays in the file's own format so an overwrite is always safe
+    setEdit({ url: encode(c, cur ? formatOf(cur.path) : 'png', imageQuality), w: c.width, h: c.height })
     setCrop(null)
     resetView()
   }
@@ -167,10 +192,31 @@ export function Gallery({
     commit(out)
   }
 
+  /** Re-encodes the working data URL — this is where the preferred format and quality land. */
+  const reencode = async (dataUrl: string, fmt: ImageFormat, quality: number) => {
+    if (!dataUrl.startsWith(`data:${MIME[fmt]}`) || fmt === 'png' !== (quality === 100)) {
+      const img = new Image()
+      img.src = dataUrl
+      try {
+        await img.decode()
+      } catch {
+        return dataUrl
+      }
+      const c = document.createElement('canvas')
+      c.width = img.naturalWidth
+      c.height = img.naturalHeight
+      c.getContext('2d')!.drawImage(img, 0, 0)
+      return encode(c, fmt, quality)
+    }
+    return dataUrl
+  }
+
   const save = async (mode: 'copy' | 'overwrite') => {
     if (!cur || !edit) return
     setBusy(true)
-    const r = await api.saveImage(cur.path, edit.url, mode)
+    const fmt = mode === 'overwrite' ? formatOf(cur.path) : imageFormat
+    const url = await reencode(edit.url, fmt, imageQuality)
+    const r = await api.saveImage(cur.path, url, mode)
     setBusy(false)
     if ('error' in r) {
       onSaved(`ذخیره نشد — ${r.error}`)

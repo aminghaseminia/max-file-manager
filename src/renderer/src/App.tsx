@@ -675,6 +675,36 @@ export default function App() {
       case 'archive':
         if (path) void openArchive(active, path)
         break
+      case 'extractOther': {
+        if (!path) break
+        void (async () => {
+        const dest = tabOf(panes![1 - active])
+        const r = await api.extract(path, [], dest)
+        setNote(
+          r.errors.length
+            ? `استخراج: ${fa(r.done)} فایل، ${fa(r.errors.length)} خطا — ${r.errors[0]}`
+            : `استخراج: ${fa(r.done)} فایل به ${baseName(dest)}`
+        )
+        await load(1 - active, dest)
+        })()
+        break
+      }
+      case 'zipCreate': {
+        if (!me.sel.length) break
+        void (async () => {
+        const dest = tabOf(panes![1 - active])
+        const name = baseName(me.sel[0]).replace(/\.[^.]+$/, '')
+        setNote('در حال ساخت آرشیو…')
+        const r = await api.createArchive(dest, name, me.sel, prefs.zipLevel)
+        setNote(
+          'error' in r
+            ? `آرشیو ساخته نشد — ${r.error}`
+            : `آرشیو ساخته شد: ${baseName(r.path)} · ${fa(r.files)} فایل`
+        )
+        if (!('error' in r)) await Promise.all([load(1 - active, dest), load(active, tabOf(panes![active]))])
+        })()
+        break
+      }
       case 'copy':
         void runSel(active, 'copy')
         break
@@ -792,6 +822,12 @@ export default function App() {
     ]
     if (entry && !entry.dir && isArchiveName(entry.name)) {
       items.push({ id: 'archive', label: 'مرور آرشیو', icon: <ArchiveOpenIcon /> })
+    items.push({
+      id: 'extractOther',
+      label: 'استخراج به پنجرهٔ مقابل',
+      key: 'F5',
+      icon: <ArchiveOpenIcon />
+    })
     }
     items.push(
       { id: 'preview', label: 'پیش‌نمایش', icon: <PreviewIcon /> },
@@ -817,11 +853,14 @@ export default function App() {
     const pinName = path ? baseName(path) : ''
     const isPinned = !!pinName && (panes[active].listing?.pins ?? []).includes(pinName)
     if (path) {
-      items.push({
+      items.push(
+        { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
+        {
         id: 'pinFile',
         label: isPinned ? 'برداشتن سنجاق' : 'سنجاق به بالای پوشه',
         icon: <PinIcon filled={isPinned} />
-      })
+        }
+      )
     }
     if (entry?.dir) {
       items.push(
@@ -1235,6 +1274,7 @@ export default function App() {
           <div className="preview-slot">
           <PreviewPanel
             entry={entryOf(active, previewPath) ?? null}
+            maxKB={prefs.previewMaxKB}
             onOpen={(p) => void api.open(p)}
             onClose={() => setPreviewOn(false)}
           />
@@ -1366,6 +1406,10 @@ export default function App() {
           fullscreen={fullscreen}
           onSaved={setNote}
           onChanged={reloadAll}
+          slideshowSec={prefs.slideshowSec}
+          loop={prefs.galleryLoop}
+          imageFormat={prefs.imageFormat}
+          imageQuality={prefs.imageQuality}
           onFullscreen={() => void toggleFullscreen()}
           onClose={() => {
             setGallery(null)

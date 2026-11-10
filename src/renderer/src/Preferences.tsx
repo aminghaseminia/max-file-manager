@@ -11,6 +11,7 @@ type Page =
   | 'toolbar'
   | 'keys'
   | 'layout'
+  | 'archive'
   | 'transfer'
   | 'operations'
   | 'launch'
@@ -23,6 +24,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'toolbar', label: 'نوار ابزار' },
   { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'archive', label: 'بایگانی و گالری' },
   { id: 'transfer', label: 'انتقال' },
   { id: 'operations', label: 'عملیات فایل' },
   { id: 'launch', label: 'راه‌اندازی' },
@@ -362,6 +364,90 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
                 seg(prefs.sidebar, [{ v: 'docked', label: 'چسبیده' }, { v: 'float', label: 'شناور' }], 'sidebar')
               )}
               {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+            </>
+          )}
+
+          {page === 'archive' && (
+            <>
+              {row(
+                'سطح فشرده‌سازی zip',
+                '۰ = بدون فشرده‌سازی (سریع‌ترین)، ۹ = بیشترین فشرده‌سازی',
+                <div className="inline-field">
+                  <input
+                    type="number"
+                    min={0}
+                    max={9}
+                    value={prefs.zipLevel}
+                    onChange={(e) =>
+                      onChange({ zipLevel: Math.min(9, Math.max(0, Number(e.target.value) || 0)) })
+                    }
+                  />
+                </div>
+              )}
+              {row(
+                'قالب ذخیرهٔ تصویر',
+                'فقط روی «ذخیره به‌عنوان کپی» اثر دارد؛ جایگزینی همیشه قالب خود فایل را نگه می‌دارد',
+                seg(
+                  prefs.imageFormat,
+                  [
+                    { v: 'png', label: 'PNG' },
+                    { v: 'jpeg', label: 'JPEG' },
+                    { v: 'webp', label: 'WebP' }
+                  ],
+                  'imageFormat'
+                )
+              )}
+              {row(
+                'کیفیت تصویر',
+                '۵۰ تا ۱۰۰؛ برای PNG بی‌اثر است',
+                <div className="inline-field">
+                  <input
+                    type="number"
+                    min={50}
+                    max={100}
+                    step={5}
+                    value={prefs.imageQuality}
+                    onChange={(e) =>
+                      onChange({ imageQuality: Math.min(100, Math.max(50, Number(e.target.value) || 90)) })
+                    }
+                  />
+                  <span>%</span>
+                </div>
+              )}
+              {row(
+                'فاصلهٔ پخش خودکار گالری',
+                'ثانیه بین دو عکس در حالت اسلاید',
+                <div className="inline-field">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={prefs.slideshowSec}
+                    onChange={(e) =>
+                      onChange({ slideshowSec: Math.min(60, Math.max(1, Number(e.target.value) || 3)) })
+                    }
+                  />
+                  <span>ثانیه</span>
+                </div>
+              )}
+              {row('حلقه‌ای بودن گالری', 'در آخرین عکس به اولی برگردد', check(prefs.galleryLoop, 'galleryLoop'))}
+              {row(
+                'سقف پیش‌نمایش متن',
+                'کیلوبایت؛ فایل بزرگ‌تر بریده می‌شود',
+                <div className="inline-field">
+                  <input
+                    type="number"
+                    min={16}
+                    max={8192}
+                    step={16}
+                    value={prefs.previewMaxKB}
+                    onChange={(e) =>
+                      onChange({ previewMaxKB: Math.min(8192, Math.max(16, Number(e.target.value) || 200)) })
+                    }
+                  />
+                  <span>KB</span>
+                </div>
+              )}
             </>
           )}
 

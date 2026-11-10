@@ -15,10 +15,10 @@ const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'
 const AUDIO = new Set(['mp3', 'flac', 'wav', 'ogg', 'm4a', 'opus'])
 const VIDEO = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi'])
 
-const TEXT_CAP = 200 * 1024
 
-// shortcut: text previews stop at 200 KB and images above the cap are not inlined; upgrade to a paging reader when huge logs matter.
-export async function preview(p: string): Promise<Preview> {
+// shortcut: text previews stop at the configured cap (200 KB default) — upgrade to a paging reader when huge logs matter.
+export async function preview(p: string, maxKB = 200): Promise<Preview> {
+  const cap = Math.min(8192, Math.max(16, maxKB || 200)) * 1024
   const st = await fs.stat(p)
   if (st.isDirectory()) return { kind: 'dir', size: 0, mtime: st.mtimeMs }
 
@@ -31,7 +31,7 @@ export async function preview(p: string): Promise<Preview> {
   const fh = await fs.open(p, 'r').catch(() => null)
   if (!fh) return { kind: 'binary', ...base }
   try {
-    const len = Math.min(TEXT_CAP, st.size)
+    const len = Math.min(cap, st.size)
     const buf = Buffer.alloc(len)
     await fh.read(buf, 0, len, 0)
     if (buf.subarray(0, 4096).includes(0)) return { kind: 'binary', ...base }
