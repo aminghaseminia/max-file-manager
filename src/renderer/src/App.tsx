@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FolderDialog } from './FolderDialog'
+import { Gallery } from './Gallery'
 import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
-import { SettingsPanel, type UiPrefs } from './SettingsPanel'
+import { Preferences } from './Preferences'
+import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { Sidebar } from './Sidebar'
 import { TitleBar } from './TitleBar'
 import {
@@ -15,6 +17,7 @@ import {
   fa,
   fmtSize,
   isArchiveName,
+  isImage,
   joinPath,
   orderEntries,
   type SortKey
@@ -40,9 +43,11 @@ import {
   RefreshIcon,
   RenameIcon,
   SettingsIcon,
+  SplitIcon,
   SunIcon,
   TrashIcon,
-  UndoIcon
+  UndoIcon,
+  ConfirmIcon
 } from './Icons'
 
 const newPane = (dir: string): PaneState => ({
@@ -56,6 +61,7 @@ const newPane = (dir: string): PaneState => ({
   virtual: null,
   results: null,
   archive: null,
+  preview: null,
   error: '',
   loading: true
 })
@@ -78,9 +84,7 @@ export default function App() {
   const [panes, setPanes] = useState<PaneState[] | null>(null)
   const [roots, setRoots] = useState<DirRef[]>([])
   const [active, setActive] = useState(0)
-  const [hidden, setHidden] = useState(false)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-  const [view, setView] = useState<View>('list')
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'name', asc: true })
   const [marks, setMarks] = useState<string[]>([])
   const [sizes, setSizes] = useState<Record<string, string>>({})
@@ -88,26 +92,53 @@ export default function App() {
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
-  const [chrome, setChrome] = useState<Chrome>({ customTitlebar: true, rounded: true })
-  const [ui, setUi] = useState<UiPrefs>({ sidebar: 'docked', sidebarOpen: true })
+  const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menu, setMenu] = useState<{ path: string | null; x: number; y: number } | null>(null)
   const [previewOn, setPreviewOn] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
   const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
     null
   )
   const [booted, setBooted] = useState(false)
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
+
+  const updatePrefs = (patch: Partial<Prefs>) => {
+    setPrefs((p) => ({ ...p, ...patch }))
+    if (patch.titlebar !== undefined || patch.rounded !== undefined) {
+      // frame/transparent are window-creation options: main rebuilds the window and we reload
+      void api.window.setChrome({
+        customTitlebar: (patch.titlebar ?? prefs.titlebar) === 'app',
+        rounded: patch.rounded ?? prefs.rounded
+      })
+    }
+  }
+
+  const theme = prefs.theme
+  const setTheme = (t: Prefs['theme'] | ((cur: Prefs['theme']) => Prefs['theme'])) =>
+    updatePrefs({ theme: typeof t === 'function' ? t(prefs.theme) : t })
+  const view = prefs.view
+  const setView = (v: View | ((cur: View) => View)) =>
+    updatePrefs({ view: typeof v === 'function' ? v(prefs.view) : v })
+  const hidden = prefs.showHidden
+  const setHidden = (f: boolean | ((h: boolean) => boolean)) =>
+    updatePrefs({ showHidden: typeof f === 'function' ? f(prefs.showHidden) : f })
+  const chrome = { customTitlebar: prefs.titlebar === 'app', rounded: prefs.rounded }
+  const ui = {
+    sidebar: prefs.sidebar,
+    sidebarOpen: prefs.sidebarOpen,
+    iconDirs: prefs.iconDirs,
+    iconTheme: prefs.iconTheme
+  }
+  const setUi = (patch: Partial<typeof ui> | ((cur: typeof ui) => Partial<typeof ui>)) =>
+    updatePrefs((typeof patch === 'function' ? patch(ui) : patch) as Partial<Prefs>)
   const refreshRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
-
-  useEffect(() => {
-    void api.window.getChrome().then(setChrome)
-  }, [])
 
   // rounded corners are CSS on a transparent frameless window; nothing else can round it
   useEffect(() => {
@@ -120,26 +151,16 @@ export default function App() {
   useEffect(() => {
     Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
       setRoots(r)
-      const s = st ?? {}
-      if (typeof s.hidden === 'boolean') setHidden(s.hidden)
-      if (s.theme === 'light' || s.theme === 'dark') setTheme(s.theme)
-      if (s.view === 'grid' || s.view === 'list') setView(s.view)
+      const s: any = st ?? {}
+      setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
       if (s.sort && SORT_KEYS.includes(s.sort.key as SortKey)) {
         setSort({ key: s.sort.key as SortKey, asc: !!s.sort.asc })
       }
-      if (Array.isArray(s.marks)) setMarks(s.marks.filter((m) => typeof m === 'string' && m))
-      if (s.ui) {
-        setUi({
-          sidebar: s.ui.sidebar === 'float' ? 'float' : 'docked',
-          sidebarOpen: s.ui.sidebarOpen !== false,
-          iconDirs: Array.isArray(s.ui.iconDirs) ? s.ui.iconDirs.filter((d) => typeof d === 'string') : [],
-          iconTheme: typeof s.ui.iconTheme === 'string' ? s.ui.iconTheme : undefined
-        })
-      }
+      if (Array.isArray(s.marks)) setMarks(s.marks.filter((m: unknown) => typeof m === 'string' && m))
       if (s.active === 1) setActive(1)
       const mk = (p?: { tabs?: string[]; ti?: number }): PaneState => {
         const tabs = (p?.tabs ?? []).filter((t) => typeof t === 'string' && t)
-        const list = tabs.length ? tabs : [home]
+        const list = tabs.length ? tabs : [s.prefs?.startFolder || home]
         const ti = Math.min(Math.max(p?.ti ?? 0, 0), list.length - 1)
         return { ...newPane(list[ti]), tabs: list, ti }
       }
@@ -149,6 +170,19 @@ export default function App() {
   }, [])
 
   // transfers report progress from the main process; a finished job refreshes both panes
+  useEffect(() => {
+    return api.app.onOpenPath((p) => {
+      const dir = p
+      void api
+        .list(dir, prefs.showHidden)
+        .then((l) => go(active, l.path))
+        .catch(() => {
+          const parent = dirOf(p)
+          if (parent) go(active, parent)
+        })
+    })
+  })
+
   // a stray file dropped outside a pane must not navigate the window away
   useEffect(() => {
     const stop = (e: DragEvent) => e.preventDefault()
@@ -182,17 +216,14 @@ export default function App() {
       void api.state.set({
         panes: panes.map((p) => ({ tabs: p.tabs, ti: p.ti })),
         active,
-        hidden,
-        theme,
         sort,
-        view,
         marks,
-        chrome,
-        ui
+        prefs,
+        chrome: { customTitlebar: prefs.titlebar === 'app', rounded: prefs.rounded }
       })
     }, 500)
     return () => clearTimeout(t)
-  }, [booted, panes, active, hidden, theme, sort, view, marks, ui])
+  }, [booted, panes, active, sort, marks, prefs])
 
   const path0 = panes ? tabOf(panes[0]) : ''
   const path1 = panes ? tabOf(panes[1]) : ''
@@ -284,6 +315,10 @@ export default function App() {
       setPanes((p) => p && patch(p, i, { sel: [] }))
       return
     }
+    if (prefs.confirmDelete) {
+      setConfirmAsk({ kind, paths: me.sel })
+      return
+    }
     const res = await api.remove(me.sel, kind === 'delete')
     setNote(
       res.errors.length
@@ -291,6 +326,17 @@ export default function App() {
         : `${OP_LABEL[kind]}: ${fa(res.done)} مورد`
     )
     setPanes((p) => p && patch(p, i, { sel: [] }))
+    reloadAll()
+  }
+
+  const runRemove = async (kind: 'trash' | 'delete', paths: string[]) => {
+    const res = await api.remove(paths, kind === 'delete')
+    setNote(
+      res.errors.length
+        ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
+        : `${OP_LABEL[kind]}: ${fa(res.done)} مورد`
+    )
+    setPanes((p) => p && p.map((x, j) => ({ ...x, sel: [] })))
     reloadAll()
   }
 
@@ -353,6 +399,9 @@ export default function App() {
     if (!e) return
     if (e.dir) go(i, e.path)
     else if (isArchiveName(e.name)) void openArchive(i, e.path)
+    else if (prefs.doubleClick === 'preview') {
+      setPanes((p) => p && patch(p, 1 - i, { preview: { entry: e, from: i } }))
+    } else if (isImage(e.ext) && prefs.doubleClick === 'gallery') openGallery(i, e.path)
     else void api.open(e.path)
   }
 
@@ -522,6 +571,12 @@ export default function App() {
           setPreviewOn(true)
         }
         break
+      case 'previewOther':
+        previewInOther(active)
+        break
+      case 'gallery':
+        openGallery(active, path ?? undefined)
+        break
       case 'mkdir':
         setPrompt({ kind: 'mkdir', value: '' })
         break
@@ -562,6 +617,8 @@ export default function App() {
     }
     items.push(
       { id: 'preview', label: 'پیش‌نمایش', icon: <PreviewIcon /> },
+      { id: 'previewOther', label: 'پیش‌نمایش در پنجرهٔ مقابل', key: 'F3', icon: <PreviewIcon /> },
+      ...(entry && isImage(entry.ext) ? [{ id: 'gallery', label: 'گالری تصاویر', key: 'Space', icon: <GridIcon /> } as MenuItem] : []),
       { sep: true },
       { id: 'copy', label: 'کپی به پنجرهٔ مقابل', key: 'F5', icon: <CopyIcon /> },
       { id: 'move', label: 'انتقال به پنجرهٔ مقابل', key: 'F6', icon: <MoveIcon /> },
@@ -586,6 +643,64 @@ export default function App() {
       )
     }
     return items
+  }
+
+  const sourceOf = (i: number) => {
+    const me = panes?.[i]
+    if (!me) return []
+    return orderEntries(
+      me.virtual && me.results ? me.results : (me.listing?.entries ?? []),
+      sort.key,
+      sort.asc,
+      me.filter,
+      prefs.foldersFirst
+    )
+  }
+
+  const imagesOf = (i: number) => sourceOf(i).filter((e) => !e.dir && isImage(e.ext))
+
+  const openGallery = (i: number, path?: string) => {
+    const images = imagesOf(i)
+    if (!images.length) {
+      setNote('تصویری در این پوشه نیست')
+      return
+    }
+    const start = path ?? panes?.[i].sel[0] ?? images[0].path
+    setGallery({ images, start: images.some((x) => x.path === start) ? start : images[0].path })
+  }
+
+  /** F3: show the selection as a viewer in the *other* pane; pressing again returns its folder. */
+  const previewInOther = (i: number) => {
+    if (!panes) return
+    const path = panes[i].sel[0] ?? panes[i].preview?.entry.path
+    if (!path) {
+      setNote('یک فایل انتخاب کن')
+      return
+    }
+    const entry = entryOf(i, path) ?? panes[i].preview?.entry
+    if (!entry) return
+    const target = 1 - i
+    if (panes[target].preview?.entry.path === entry.path) {
+      setPanes((p) => p && patch(p, target, { preview: null }))
+      return
+    }
+    setPanes((p) => p && patch(p, target, { preview: { entry, from: i } }))
+  }
+
+  const navPreviewImage = (target: number, delta: number) => {
+    const pv = panes?.[target].preview
+    if (!pv) return
+    const images = imagesOf(pv.from)
+    const at = images.findIndex((e) => e.path === pv.entry.path)
+    if (at < 0) return
+    const next = images[(at + delta + images.length) % images.length]
+    setPanes((p) => p && patch(p, target, { preview: { entry: next, from: pv.from } }))
+  }
+
+  const toggleFullscreen = async () => {
+    const on = !fullscreen
+    setFullscreen(on)
+    await api.window.setFullscreen(on)
   }
 
   const exitVirtual = (i: number) =>
@@ -620,6 +735,26 @@ export default function App() {
       }
       if (typing) return
 
+      if (ev.ctrlKey && ev.key === 'Tab') {
+        ev.preventDefault()
+        setPanes((p) => p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] }))
+        return
+      }
+      if (ev.ctrlKey && (ev.key === 't' || ev.key === 'T')) {
+        ev.preventDefault()
+        addTab(active, tabOf(me))
+        return
+      }
+      if (ev.ctrlKey && (ev.key === 'w' || ev.key === 'W')) {
+        ev.preventDefault()
+        setPanes((p) => {
+          if (!p) return p
+          const tabs = p[active].tabs.filter((_, j) => j !== p[active].ti)
+          if (!tabs.length) return p
+          return patch(p, active, { tabs, ti: Math.min(p[active].ti, tabs.length - 1) })
+        })
+        return
+      }
       if (ev.ctrlKey && ev.shiftKey && (ev.key === 'F' || ev.key === 'f')) {
         ev.preventDefault()
         void runFlat(active)
@@ -649,7 +784,18 @@ export default function App() {
           break
         case 'F3':
           ev.preventDefault()
-          void load(active, tabOf(me))
+          previewInOther(active)
+          break
+        case ' ':
+          ev.preventDefault()
+          if (me.sel[0] && isImage((entryOf(active, me.sel[0])?.ext ?? ''))) openGallery(active, me.sel[0])
+          break
+        case 'r':
+        case 'R':
+          if (ev.ctrlKey) {
+            ev.preventDefault()
+            void load(active, tabOf(me))
+          }
           break
         case 'F9':
           ev.preventDefault()
@@ -658,7 +804,7 @@ export default function App() {
         case 'F8':
         case 'Delete':
           ev.preventDefault()
-          void runSel(active, ev.shiftKey ? 'delete' : 'trash')
+          void runSel(active, ev.shiftKey ? 'delete' : prefs.trashByDefault ? 'trash' : 'delete')
           break
         case 'Backspace':
         case 'ArrowUp':
@@ -752,6 +898,13 @@ export default function App() {
         <span className="spacer" />
         {!chrome.customTitlebar && <span className="note">{note}</span>}
         <button
+          className={'tb' + (prefs.layout === 'single' ? ' on' : '')}
+          title={prefs.layout === 'dual' ? 'تک‌پنجره' : 'دوپنجره'}
+          onClick={() => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' })}
+        >
+          <SplitIcon />
+        </button>
+        <button
           className={'tb' + (previewOn ? ' on' : '')}
           title="پنل پیش‌نمایش"
           onClick={togglePreview}
@@ -788,16 +941,9 @@ export default function App() {
       </header>
 
       {settingsOpen && (
-        <SettingsPanel
-          chrome={chrome}
-          ui={ui}
-          theme={theme}
-          onChrome={(c) => {
-            setChrome(c)
-            void api.window.setChrome(c)
-          }}
-          onUi={(p) => setUi((u) => ({ ...u, ...p }))}
-          onTheme={setTheme}
+        <Preferences
+          prefs={prefs}
+          onChange={updatePrefs}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -813,7 +959,9 @@ export default function App() {
           />
         )}
 
-        {panes.map((pane, i) => (
+        {(prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
+          const pane = panes[i]
+          return (
           <Pane
             key={i}
             index={i}
@@ -873,18 +1021,35 @@ export default function App() {
             onSearch={(q) => void runSearch(i, q)}
             onExitVirtual={() => exitVirtual(i)}
             onFolderLook={() => openFolderLook(i)}
+            previewIndex={
+              pane.preview
+                ? (() => {
+                    const imgs = imagesOf(pane.preview!.from)
+                    const at = imgs.findIndex((e) => e.path === pane.preview!.entry.path)
+                    return at >= 0 ? { at: at + 1, total: imgs.length } : null
+                  })()
+                : null
+            }
+            onPreviewNav={(delta) => navPreviewImage(i, delta)}
+            onPreviewClose={() => setPanes((p) => p && patch(p, i, { preview: null }))}
+            foldersFirst={prefs.foldersFirst}
+            showTypeColumn={prefs.showTypeColumn}
+            onGallery={() => pane.preview && openGallery(pane.preview.from, pane.preview.entry.path)}
             onContext={(path, x, y) => setMenu({ path, x, y })}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
             onDropFiles={(files, dest) => void dropFiles(files, dest)}
           />
-        ))}
+          )
+        })}
 
         {previewOn && (
+          <div className="preview-slot">
           <PreviewPanel
             entry={entryOf(active, previewPath) ?? null}
             onOpen={(p) => void api.open(p)}
             onClose={() => setPreviewOn(false)}
           />
+          </div>
         )}
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
@@ -931,6 +1096,11 @@ export default function App() {
         </span>
         <span>{panes[active].sel.length ? `${fa(panes[active].sel.length)} انتخاب‌شده` : ''}</span>
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
+        {prefs.layout === 'single' && (
+          <span title="مقصد کپی/انتقال در حالت تک‌پنجره">
+            مقصد: {baseName(tabOf(panes[1 - active]))}
+          </span>
+        )}
         <span className="spacer" />
         <div className="status-actions">
           <button className="sbtn" title="کپی (F5)" onClick={() => void runSel(active, 'copy')}>
@@ -957,12 +1127,56 @@ export default function App() {
             <GaugeIcon />
             <span>اندازه</span>
           </button>
+          <button className="sbtn" title="پیش‌نمایش در پنجرهٔ مقابل (F3)" onClick={() => previewInOther(active)}>
+            <PreviewIcon />
+            <span>پیش‌نمایش</span>
+          </button>
           <button className="sbtn" title="بازگردانی (Ctrl+Z)" onClick={() => void doUndo()}>
             <UndoIcon />
             <span>بازگردانی</span>
           </button>
         </div>
       </footer>
+
+      {confirmAsk && (
+        <div className="modal" onMouseDown={() => setConfirmAsk(null)}>
+          <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="dlg-title">
+              {confirmAsk.kind === 'trash' ? 'به سطل بازیافت برود؟' : 'برای همیشه حذف شود؟'}
+            </div>
+            <div className="hint" dir="auto">
+              {fa(confirmAsk.paths.length)} مورد · {confirmAsk.paths.slice(0, 3).map(baseName).join('، ')}
+              {confirmAsk.paths.length > 3 ? ' …' : ''}
+            </div>
+            <div className="dlg-actions">
+              <button
+                onClick={() => {
+                  const ask = confirmAsk
+                  setConfirmAsk(null)
+                  void runRemove(ask.kind, ask.paths)
+                }}
+              >
+                بله
+              </button>
+              <button onClick={() => setConfirmAsk(null)}>انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gallery && (
+        <Gallery
+          key={gallery.start + gallery.images.length}
+          images={gallery.images}
+          startPath={gallery.start}
+          fullscreen={fullscreen}
+          onFullscreen={() => void toggleFullscreen()}
+          onClose={() => {
+            setGallery(null)
+            if (fullscreen) void toggleFullscreen()
+          }}
+        />
+      )}
 
       {menu && (
         <ContextMenu

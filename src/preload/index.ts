@@ -39,12 +39,20 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('job:update', fn)
     }
   },
+  app: {
+    onOpenPath: (cb: (p: string) => void) => {
+      const fn = (_e: unknown, p: string) => cb(p)
+      ipcRenderer.on('app:open-path', fn)
+      return () => ipcRenderer.removeListener('app:open-path', fn)
+    }
+  },
   undo: { run: () => ipcRenderer.invoke('undo:run'), depth: () => ipcRenderer.invoke('undo:depth') },
   window: {
     minimize: () => ipcRenderer.invoke('window:control', 'minimize'),
     maximize: () => ipcRenderer.invoke('window:control', 'maximize'),
     close: () => ipcRenderer.invoke('window:control', 'close'),
     isMaximized: () => ipcRenderer.invoke('window:isMax'),
+    setFullscreen: (on: boolean) => ipcRenderer.invoke('window:fullscreen', on),
     getChrome: () => ipcRenderer.invoke('window:getChrome'),
     setChrome: (c: { customTitlebar: boolean; rounded: boolean }) =>
       ipcRenderer.invoke('window:setChrome', c),

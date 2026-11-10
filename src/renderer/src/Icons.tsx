@@ -363,3 +363,22 @@ export const PreviewIcon = () => (
     <path d="M14.5 4v16" />
   </S>
 )
+export const RotateIcon = () => (
+  <S>
+    <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+    <path d="M20 4v4.5h-4.5" />
+    <path d="M12 8.5v4l3 2" />
+  </S>
+)
+export const SplitIcon = () => (
+  <S>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M12 4v16" />
+  </S>
+)
+export const ConfirmIcon = () => (
+  <S>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v4.5M12 16h.01" />
+  </S>
+)

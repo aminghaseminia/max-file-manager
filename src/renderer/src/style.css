@@ -580,6 +580,8 @@ input {
 .modal {
   position: fixed;
   inset: 0;
+  /* .body is position:relative for the floating sidebar, so an auto z-index modal would paint under it */
+  z-index: 80;
   background: rgba(0, 0, 0, 0.45);
   display: grid;
   place-items: center;
@@ -822,7 +824,7 @@ input {
   padding: 1px 4px;
   font-size: 11px;
 }
-.preview {
+.rn-preview {
   max-height: 168px;
   overflow-y: auto;
   border: 1px solid var(--line);
@@ -833,17 +835,17 @@ input {
   flex-direction: column;
   gap: 2px;
 }
-.preview-row {
+.rn-row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 11.5px;
   color: var(--dim);
 }
-.preview-row .arrow {
+.rn-row .arrow {
   color: var(--line);
 }
-.preview-row.chg .new {
+.rn-row.chg .new {
   color: var(--c-code);
 }
 .old,
@@ -1149,11 +1151,42 @@ html[data-rounded='1'] .app {
 .preview {
   width: 330px;
   flex: none;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--panel);
   border-inline-start: 1px solid var(--line);
+}
+/* grid slot: a percentage/flex height inside a flex row proved unreliable, a 1fr grid row is definite */
+.preview-slot {
+  flex: none;
+  width: 330px;
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  border-inline-start: 1px solid var(--line);
+}
+.preview-slot .preview {
+  width: 100%;
+  border-inline-start: 0;
+}
+.pane.previewing {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.pane.previewing .preview {
+  min-height: 0;
+}
+
+/* same surface, but filling a whole pane instead of a side strip */
+.preview.fill {
+  width: auto;
+  flex: 1 1 auto;
+  height: auto;
+  min-width: 0;
+  border-inline-start: 0;
 }
 .preview-head {
   display: flex;
@@ -1173,9 +1206,15 @@ html[data-rounded='1'] .app {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px;
+}
+.preview-body.text {
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
 }
 .preview-empty {
   display: flex;
@@ -1228,4 +1267,185 @@ html[data-rounded='1'] .app {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* ---------- photo gallery ---------- */
+.gallery {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 9, 12, 0.96);
+  display: flex;
+  flex-direction: column;
+}
+.gallery-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+.gallery-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-size {
+  color: var(--dim);
+  font-size: 11.5px;
+}
+.gallery-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.gallery-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform 0.12s ease;
+}
+.gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.gallery-nav:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.gallery-nav.prev {
+  inset-inline-start: 14px;
+}
+.gallery-nav.next {
+  inset-inline-end: 14px;
+}
+.gallery-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.thumb-btn {
+  flex: none;
+  width: 62px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  opacity: 0.6;
+}
+.thumb-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumb-btn.on {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+/* ---------- preferences dialog ---------- */
+.prefs {
+  width: 780px;
+  max-width: 94vw;
+  height: 530px;
+  max-height: 88vh;
+  display: grid;
+  grid-template-columns: 196px 1fr;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.prefs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  background: var(--panel-2);
+  border-inline-end: 1px solid var(--line);
+}
+.prefs-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 4px 9px 9px;
+}
+.prefs-tab {
+  text-align: start;
+  padding: 6px 9px;
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.prefs-tab:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.prefs-tab.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.prefs-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.pref-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pref-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+.pref-label .hint {
+  font-size: 11px;
+  color: var(--dim);
+}
+.pref-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.pref-input {
+  width: 280px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+}
+
+/* three-column layout when the type column is hidden */
+.pane.notype .head,
+.pane.notype .row {
+  grid-template-columns: minmax(0, 1fr) 92px 118px;
 }

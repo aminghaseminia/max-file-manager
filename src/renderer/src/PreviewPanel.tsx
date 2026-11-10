@@ -1,17 +1,31 @@
 import { useEffect, useState } from 'react'
 import { api, type Entry, type Preview } from './api'
-import { fmtDate, fmtSize, mediaUrl } from './format'
-import { FileIcon, XIcon } from './Icons'
+import { fa, fmtDate, fmtSize, mediaUrl } from './format'
+import { ChevronLeftIcon, ChevronRightIcon, FileIcon, GridIcon, XIcon } from './Icons'
 
 type Props = {
   entry: Entry | null
+  /** fill a whole pane instead of the narrow side strip */
+  fill?: boolean
+  /** position inside the folder's image list, when the entry is an image */
+  imageIndex?: { at: number; total: number } | null
+  onNavImage?(delta: number): void
+  onGallery?(): void
   onOpen(path: string): void
   onClose(): void
 }
 
 const MAX_INLINE_IMAGE = 8_000_000
 
-export function PreviewPanel({ entry, onOpen, onClose }: Props) {
+export function PreviewPanel({
+  entry,
+  fill,
+  imageIndex,
+  onNavImage,
+  onGallery,
+  onOpen,
+  onClose
+}: Props) {
   const [data, setData] = useState<Preview | null>(null)
   const [err, setErr] = useState('')
 
@@ -30,27 +44,51 @@ export function PreviewPanel({ entry, onOpen, onClose }: Props) {
   }, [entry])
 
   return (
-    <aside className="preview">
+    <aside className={'preview' + (fill ? ' fill' : '')}>
       <div className="preview-head">
+        {onNavImage && (
+          <button className="tb" title="تصویر قبلی (←)" onClick={() => onNavImage(-1)}>
+            <ChevronRightIcon />
+          </button>
+        )}
         <span className="preview-title" dir="auto">
           {entry ? entry.name : 'پیش‌نمایش'}
         </span>
+        {imageIndex && (
+          <span className="pill">
+            {fa(imageIndex.at)} از {fa(imageIndex.total)}
+          </span>
+        )}
         <span className="spacer" />
-        <button className="tb" title="بستن پنل" onClick={onClose}>
+        {onGallery && imageIndex && (
+          <button className="tb" title="گالری (Space)" onClick={onGallery}>
+            <GridIcon />
+          </button>
+        )}
+        {onNavImage && (
+          <button className="tb" title="تصویر بعدی (→)" onClick={() => onNavImage(1)}>
+            <ChevronLeftIcon />
+          </button>
+        )}
+        <button className="tb" title="بستن پیش‌نمایش (F3)" onClick={onClose}>
           <XIcon size={12} />
         </button>
       </div>
 
       {!entry ? (
         <div className="preview-empty">یک فایل انتخاب کن</div>
+      ) : entry.dir ? (
+        <div className="preview-empty">پوشه — برای دیدن محتوا بازش کن</div>
       ) : (
         <>
-          <div className="preview-body">
-            {entry.dir && <div className="preview-empty">پوشه — برای دیدن محتوا بازش کن</div>}
-            {!entry.dir && data?.kind === 'image' && entry.size < MAX_INLINE_IMAGE && (
+          <div
+            className={'preview-body' + (data?.kind === 'text' ? ' text' : '')}
+            onDoubleClick={() => imageIndex && onGallery?.()}
+          >
+            {data?.kind === 'image' && entry.size < MAX_INLINE_IMAGE && (
               <img className="preview-img" src={mediaUrl(entry.path)} alt="" />
             )}
-            {!entry.dir && data?.kind === 'image' && entry.size >= MAX_INLINE_IMAGE && (
+            {data?.kind === 'image' && entry.size >= MAX_INLINE_IMAGE && (
               <div className="preview-empty">تصویر بزرگ است؛ برای دیدن بازش کن</div>
             )}
             {data?.kind === 'audio' && <audio className="preview-media" controls src={mediaUrl(entry.path)} />}

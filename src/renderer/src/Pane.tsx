@@ -11,6 +11,7 @@ import {
   typeLabel,
   type SortKey
 } from './format'
+import { PreviewPanel } from './PreviewPanel'
 import { FolderGlyph } from './Icons'
 import {
   ArrowUpIcon,
@@ -50,6 +51,8 @@ export type PaneState = {
   results: Entry[] | null
   /** archive path while virtual.kind === 'archive' */
   archive: string | null
+  /** this pane shows a preview of an entry instead of a listing */
+  preview: { entry: Entry; from: number } | null
   error: string
   loading: boolean
 }
@@ -62,6 +65,8 @@ type Props = {
   active: boolean
   sort: { key: SortKey; asc: boolean }
   view: View
+  foldersFirst: boolean
+  showTypeColumn: boolean
   sizes: Record<string, string>
   marked: boolean
   filterRef(el: HTMLInputElement | null): void
@@ -86,6 +91,10 @@ type Props = {
   onSearch(q: SearchQuery): void
   onExitVirtual(): void
   onFolderLook(): void
+  previewIndex?: { at: number; total: number } | null
+  onPreviewNav?(delta: number): void
+  onPreviewClose?(): void
+  onGallery?(): void
   onContext(path: string | null, x: number, y: number): void
   onDropInternal(paths: string[], dest: string, copy: boolean): void
   onDropFiles(files: File[], dest: string): void
@@ -117,8 +126,8 @@ export function Pane(props: Props) {
 
   const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
   const entries = useMemo(
-    () => orderEntries(source, sort.key, sort.asc, pane.filter),
-    [source, pane.filter, sort]
+    () => orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst),
+    [source, pane.filter, sort, props.foldersFirst]
   )
 
   const cur = pane.tabs[pane.ti]
@@ -146,6 +155,25 @@ export function Pane(props: Props) {
       props.onSel([path], 'set')
       anchor.current = idx
     }
+  }
+
+  if (pane.preview) {
+    return (
+      <section
+        className={'pane previewing' + (active ? ' active' : '')}
+        onMouseDown={props.onActivate}
+      >
+        <PreviewPanel
+          fill
+          entry={pane.preview.entry}
+          imageIndex={props.previewIndex ?? null}
+          onNavImage={props.onPreviewNav}
+          onGallery={props.onGallery}
+          onOpen={props.onOpen}
+          onClose={() => props.onPreviewClose?.()}
+        />
+      </section>
+    )
   }
 
   const sortMark = (k: SortKey) => (sort.key === k ? (sort.asc ? ' ▲' : ' ▼') : '')
@@ -194,7 +222,10 @@ export function Pane(props: Props) {
   }
 
   return (
-    <section className={'pane' + (active ? ' active' : '')} onMouseDown={props.onActivate}>
+    <section
+      className={'pane' + (active ? ' active' : '') + (props.showTypeColumn ? '' : ' notype')}
+      onMouseDown={props.onActivate}
+    >
       <div className="tabs">
         <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? 'مبدأ' : 'مقصد'}</span>
         {pane.tabs.map((t, i) => (
@@ -268,7 +299,7 @@ export function Pane(props: Props) {
         <button className="tb" title="بالا (Backspace)" onClick={props.onUp}>
           <ArrowUpIcon />
         </button>
-        <button className="tb" title="نوسازی (F3)" onClick={props.onRefresh}>
+        <button className="tb" title="نوسازی (Ctrl+R)" onClick={props.onRefresh}>
           <RefreshIcon />
         </button>
         <span className="divider" />
@@ -361,9 +392,11 @@ export function Pane(props: Props) {
           <button className="col" onClick={() => props.onSort('name')}>
             نام{sortMark('name')}
           </button>
-          <button className="col" onClick={() => props.onSort('ext')}>
-            نوع{sortMark('ext')}
-          </button>
+          {props.showTypeColumn && (
+            <button className="col" onClick={() => props.onSort('ext')}>
+              نوع{sortMark('ext')}
+            </button>
+          )}
           <button className="col num" onClick={() => props.onSort('size')}>
             اندازه{sortMark('size')}
           </button>
@@ -413,7 +446,9 @@ export function Pane(props: Props) {
                   {e.dir ? <FolderGlyph entry={e} /> : e.icon ? <img className="ic-img" src={mediaUrl(e.icon)} alt="" /> : <TypeIcon entry={e} />}
                   <span dir="auto" className="trunc">{e.name}</span>
                 </span>
-                <span className="kind">{e.group ? groupLabel(e) : typeLabel(e)}</span>
+                {props.showTypeColumn && (
+                  <span className="kind">{e.group ? groupLabel(e) : typeLabel(e)}</span>
+                )}
                 <span className="num">{props.sizes[e.path] ?? fmtSize(e.size, e.dir)}</span>
                 <span className="dim">{fmtDate(e.mtime)}</span>
               </div>

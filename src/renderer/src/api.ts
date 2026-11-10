@@ -52,6 +52,7 @@ export type StoredState = {
   view?: 'list' | 'grid'
   marks?: string[]
   chrome?: { customTitlebar: boolean; rounded: boolean }
+  prefs?: Record<string, unknown>
   ui?: {
     sidebar: 'docked' | 'float'
     sidebarOpen: boolean
@@ -104,12 +105,14 @@ export type Api = {
     clear(): Promise<void>
     onUpdate(cb: (job: Job) => void): () => void
   }
+  app: { onOpenPath(cb: (p: string) => void): () => void }
   undo: { run(): Promise<{ done: number; label: string }>; depth(): Promise<number> }
   window: {
     minimize(): Promise<void>
     maximize(): Promise<void>
     close(): Promise<void>
     isMaximized(): Promise<boolean>
+    setFullscreen(on: boolean): Promise<boolean>
     getChrome(): Promise<Chrome>
     setChrome(c: Chrome): Promise<Chrome>
     onMaximized(cb: (max: boolean) => void): () => void

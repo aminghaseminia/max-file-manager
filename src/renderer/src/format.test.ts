@@ -161,3 +161,9 @@ test('groupLabel prefers the duplicate group number', () => {
   assert.equal(groupLabel({ ...e('x.txt', false, 1, 0, 'txt'), group: 2 }), 'گروه ۲')
   assert.equal(groupLabel(e('d', true)), 'پوشه')
 })
+
+test('sortEntries: foldersFirst=false mixes folders into the order', () => {
+  const list = [e('zdir', true), e('a.txt', false), e('bfile', false)]
+  assert.deepEqual(sortEntries(list, 'name', true, false).map((x) => x.name), ['a.txt', 'bfile', 'zdir'])
+  assert.deepEqual(sortEntries(list, 'name', true).map((x) => x.name), ['zdir', 'a.txt', 'bfile'])
+})

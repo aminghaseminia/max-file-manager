@@ -13,6 +13,12 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Preferences dialog, single-pane layout, and the photo gallery (arrows browse the folder):
+
+![preferences](docs/screenshot-preferences.png)
+![single pane](docs/screenshot-single-pane.png)
+![gallery](docs/screenshot-gallery.png)
+
 Right-click menu and the preview panel (text, image, audio, video):
 
 ![context menu](docs/screenshot-menu.png)
@@ -30,11 +36,15 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.5** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction) and phase 5 started (context menu, drag and drop, preview panel). See [docs/FEATURES.md](docs/FEATURES.md) for the honest gaps: folder sync, filters on copy, 7z/rar, network protocols, dragging *out* to the desktop, tray/shell integration.
+**Status: v0.6** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
-- Two independent panes (source / destination), tabs in each, per-pane back/forward history
+- **Single pane or dual pane** — dual is a setting, not a requirement; the copy/move target stays tracked and is shown in the status bar
+- Two panes (source / destination) with tabs in each (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`) and per-pane back/forward history
+- **Single instance**: launching again focuses the open window and opens the path you passed
+- **Photo gallery**: arrows browse the folder's images, `+`/`-` zoom, `R` rotate, `Space` slideshow, `F` fullscreen, thumbnail strip
+- **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails
 - Virtualized rendering in both views: a 100k-entry folder mounts only the visible slice
 - **Window chrome**: app-owned title bar (drag, minimize/maximize/close, double-click) or the system title bar — your choice, plus **rounded corners** on a transparent frameless window
@@ -52,7 +62,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **SHA-256** of the selection from the context menu, copied to the clipboard
 - Folder size on demand (F9), bookmarks (Ctrl+D), hidden files (Ctrl+H), dark/light theme
 - Status bar with icon actions, not just shortcuts
-- Session restore: panes, tabs, theme, view, sort, bookmarks, chrome and sidebar prefs survive a restart
+- **Preferences dialog** (appearance, file display, layout, file operations, launching, advanced) — one typed prefs object, persisted
+- Session restore: panes, tabs, sort, bookmarks and every preference survive a restart
 - Safety: existing names are never overwritten (`name (2).ext`), relative paths are refused, trash goes through the OS trash, a cancelled transfer removes its partial file
 
 ## Keyboard
@@ -104,9 +115,11 @@ src/main/ops.ts       remove (trash / permanent) + name-collision helper
 src/main/preview.ts   text/image/audio/video preview with size caps
 src/main/hash.ts      streaming sha256 (checksums and the duplicate finder)
 src/preload/index.ts  the only bridge into the renderer
-src/renderer/src/     React UI: App, Pane, Sidebar, TitleBar, SettingsPanel, FolderDialog,
-                      ContextMenu, PreviewPanel, JobsBar, RenameDialog, Icons, format.ts
+src/renderer/src/     React UI: App, Pane, Sidebar, TitleBar, Preferences, FolderDialog,
+                      ContextMenu, PreviewPanel, Gallery, JobsBar, RenameDialog, Icons,
+                      format.ts, prefs.ts
 docs/FEATURES.md      Directory Opus feature matrix and phases
+docs/PREFERENCES.md   settings roadmap derived from Opus / Krusader / FreeCommander
 AGENTS.md             rules for AI agents working in this repo
 ```
 

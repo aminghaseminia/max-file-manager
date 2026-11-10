@@ -88,9 +88,9 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
           </div>
         )}
 
-        <div className="preview">
+        <div className="rn-preview">
           {names.slice(0, 8).map((n, i) => (
-            <div key={n + i} className={'preview-row' + (planned[i] === n ? '' : ' chg')}>
+            <div key={n + i} className={'rn-row' + (planned[i] === n ? '' : ' chg')}>
               <span dir="auto" className="old">{n}</span>
               <span className="arrow">←</span>
               <span dir="auto" className="new">{planned[i]}</span>

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
-import { promises as fs } from 'node:fs'
+import { readFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -20,9 +20,44 @@ protocol.registerSchemesAsPrivileged([
 
 type Chrome = { customTitlebar: boolean; rounded: boolean }
 
+const statePath = () => path.join(app.getPath('userData'), 'state.json')
+
+/** Read synchronously, before `ready`: frame/transparent and the instance lock need it that early. */
+function bootState(): any {
+  try {
+    return JSON.parse(readFileSync(statePath(), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+const boot = bootState()
+const bootPrefs = boot.prefs ?? {}
+
 // frame/transparent are window-construction options, so the chrome choice is read before the window exists
-let chrome: Chrome = { customTitlebar: true, rounded: true }
+let chrome: Chrome = {
+  customTitlebar: bootPrefs.titlebar !== 'system' && boot.chrome?.customTitlebar !== false,
+  rounded: bootPrefs.rounded !== false && boot.chrome?.rounded !== false
+}
 let win: BrowserWindow | null = null
+
+const firstPath = process.argv.slice(1).find((a) => path.isAbsolute(a))
+
+// single instance: a second launch focuses the window and opens the path it was given
+if (bootPrefs.singleInstance !== false) {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit()
+  } else {
+    app.on('second-instance', (_e, argv) => {
+      if (!win) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+      const target = argv.slice(1).find((a) => path.isAbsolute(a))
+      if (target) win.webContents.send('app:open-path', target)
+    })
+  }
+}
 
 /** Sizes/mtimes need one stat per file; chunked so a 10k-file folder can't exhaust fds. */
 async function fillStats(entries: Entry[]): Promise<void> {
@@ -181,11 +216,6 @@ app.whenReady().then(async () => {
     return net.fetch(pathToFileURL(p).toString())
   })
 
-  const boot = await readState()
-  if (boot?.chrome) {
-    chrome = { customTitlebar: !!boot.chrome.customTitlebar, rounded: !!boot.chrome.rounded }
-  }
-
   win = createWindow()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
@@ -251,6 +281,10 @@ app.whenReady().then(async () => {
     else win.close()
   })
   ipcMain.handle('window:isMax', () => !!win?.isMaximized())
+  ipcMain.handle('window:fullscreen', (_e, on: boolean) => {
+    win?.setFullScreen(!!on)
+    return !!on
+  })
   ipcMain.handle('window:getChrome', () => chrome)
   ipcMain.handle('window:setChrome', async (_e, next: Chrome) => {
     chrome = { customTitlebar: !!next.customTitlebar, rounded: !!next.rounded }
@@ -267,6 +301,10 @@ app.whenReady().then(async () => {
     await fs.writeFile(stateFile(), JSON.stringify(s, null, 2))
     return true
   })
+
+  if (firstPath) {
+    win.webContents.once('did-finish-load', () => win?.webContents.send('app:open-path', firstPath))
+  }
 
   // SMOKE_SHOT=<file.png> renders the window once, saves a screenshot and quits; SMOKE_JS drives the UI first.
   const shot = process.env['SMOKE_SHOT']

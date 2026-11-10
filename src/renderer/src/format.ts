@@ -54,10 +54,10 @@ export function crumbs(p: string): Crumb[] {
 const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Folders always first (Directory Opus default), then the chosen column. */
-export function sortEntries(entries: Entry[], key: SortKey, asc: boolean): Entry[] {
+export function sortEntries(entries: Entry[], key: SortKey, asc: boolean, foldersFirst = true): Entry[] {
   const dir = asc ? 1 : -1
   return [...entries].sort((a, b) => {
-    if (a.dir !== b.dir) return a.dir ? -1 : 1
+    if (foldersFirst && a.dir !== b.dir) return a.dir ? -1 : 1
     if (key === 'size' && a.size !== b.size) return (a.size - b.size) * dir
     if (key === 'mtime' && a.mtime !== b.mtime) return (a.mtime - b.mtime) * dir
     if (key === 'ext' && a.ext !== b.ext) return COLLATOR.compare(a.ext, b.ext) * dir
@@ -66,10 +66,16 @@ export function sortEntries(entries: Entry[], key: SortKey, asc: boolean): Entry
 }
 
 /** What the pane shows: live name filter, then sort. */
-export function orderEntries(entries: Entry[], key: SortKey, asc: boolean, filter = ''): Entry[] {
+export function orderEntries(
+  entries: Entry[],
+  key: SortKey,
+  asc: boolean,
+  filter = '',
+  foldersFirst = true
+): Entry[] {
   const q = filter.trim().toLowerCase()
   const kept = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
-  return sortEntries(kept, key, asc)
+  return sortEntries(kept, key, asc, foldersFirst)
 }
 
 export function baseName(p: string): string {
