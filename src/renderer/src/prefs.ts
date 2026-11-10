@@ -1,6 +1,18 @@
 export type View = 'list' | 'grid'
 export type Layout = 'dual' | 'single'
 export type DoubleClick = 'open' | 'gallery' | 'preview'
+export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dims'
+
+/** Optional columns, in the order the user arranged them (name is always first). */
+export const COLUMNS: { id: ColId; label: string }[] = [
+  { id: 'type', label: 'نوع' },
+  { id: 'size', label: 'اندازه' },
+  { id: 'date', label: 'تاریخ' },
+  { id: 'mode', label: 'مجوز' },
+  { id: 'owner', label: 'مالک' },
+  { id: 'links', label: 'لینک' },
+  { id: 'dims', label: 'ابعاد' }
+]
 
 /**
  * Every user-facing option in one place, mirroring the categories Directory Opus, Krusader and
@@ -12,7 +24,10 @@ export type Prefs = {
   view: View
   foldersFirst: boolean
   showHidden: boolean
-  showTypeColumn: boolean
+  columns: ColId[]
+  sizeFormat: 'human' | 'bytes'
+  dateFormat: 'iso' | 'jalali' | 'short'
+  showSeconds: boolean
   // window
   titlebar: 'app' | 'system'
   rounded: boolean
@@ -37,7 +52,10 @@ export const DEFAULTS: Prefs = {
   view: 'list',
   foldersFirst: true,
   showHidden: false,
-  showTypeColumn: true,
+  columns: ['type', 'size', 'date'],
+  sizeFormat: 'human',
+  dateFormat: 'iso',
+  showSeconds: false,
   titlebar: 'app',
   rounded: true,
   layout: 'dual',
@@ -53,14 +71,17 @@ export const DEFAULTS: Prefs = {
 }
 
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
-export function mergePrefs(raw: Partial<Prefs> | null | undefined): Prefs {
+export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) | null | undefined): Prefs {
   const p = { ...DEFAULTS, ...(raw ?? {}) }
   return {
     theme: p.theme === 'light' ? 'light' : 'dark',
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,
     showHidden: p.showHidden === true,
-    showTypeColumn: p.showTypeColumn !== false,
+    columns: normalColumns(p.columns, p.showTypeColumn),
+    sizeFormat: p.sizeFormat === 'bytes' ? 'bytes' : 'human',
+    dateFormat: p.dateFormat === 'jalali' || p.dateFormat === 'short' ? p.dateFormat : 'iso',
+    showSeconds: p.showSeconds === true,
     titlebar: p.titlebar === 'system' ? 'system' : 'app',
     rounded: p.rounded !== false,
     layout: p.layout === 'single' ? 'single' : 'dual',
@@ -93,4 +114,13 @@ export function migrateLegacy(s: any): Partial<Prefs> {
     if (typeof s.ui.iconTheme === 'string') p.iconTheme = s.ui.iconTheme
   }
   return p
+}
+
+function normalColumns(raw: unknown, legacyShowType: unknown): ColId[] {
+  const known = new Set(COLUMNS.map((c) => c.id))
+  const list = Array.isArray(raw) ? raw.filter((c): c is ColId => known.has(c as ColId)) : []
+  const unique = [...new Set(list)]
+  if (unique.length) return unique
+  // old state files only had showTypeColumn
+  return legacyShowType === false ? ['size', 'date'] : ['type', 'size', 'date']
 }

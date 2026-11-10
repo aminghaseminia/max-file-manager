@@ -2,7 +2,12 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
-  list: (dir: string, showHidden: boolean) => ipcRenderer.invoke('fs:list', dir, showHidden),
+  list: (dir: string, showHidden: boolean, dims = false) =>
+    ipcRenderer.invoke('fs:list', dir, showHidden, dims),
+  statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
+  imageData: (p: string) => ipcRenderer.invoke('fs:imageData', p),
+  saveImage: (src: string, dataUrl: string, mode: string) =>
+    ipcRenderer.invoke('image:save', { src, dataUrl, mode }),
   dirs: (dir: string) => ipcRenderer.invoke('fs:dirs', dir),
   roots: () => ipcRenderer.invoke('fs:roots'),
   home: () => ipcRenderer.invoke('fs:home'),

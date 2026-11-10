@@ -92,6 +92,9 @@ export default function App() {
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
+  const [addr, setAddr] = useState<string | null>(null)
+  const [home, setHome] = useState('')
+  const [free, setFree] = useState<number | null>(null)
   const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menu, setMenu] = useState<{ path: string | null; x: number; y: number } | null>(null)
@@ -151,6 +154,7 @@ export default function App() {
   useEffect(() => {
     Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
       setRoots(r)
+      setHome(home)
       const s: any = st ?? {}
       setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
       if (s.sort && SORT_KEYS.includes(s.sort.key as SortKey)) {
@@ -174,7 +178,7 @@ export default function App() {
     return api.app.onOpenPath((p) => {
       const dir = p
       void api
-        .list(dir, prefs.showHidden)
+        .list(dir, prefs.showHidden, prefs.columns.includes('dims'))
         .then((l) => go(active, l.path))
         .catch(() => {
           const parent = dirOf(p)
@@ -231,7 +235,7 @@ export default function App() {
   const load = async (i: number, dir: string) => {
     setPanes((p) => p && patch(p, i, { loading: true }))
     try {
-      const listing = await api.list(dir, hidden)
+      const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
       setPanes((p) => p && patch(p, i, { listing, error: '', loading: false }))
     } catch (e: any) {
       setPanes((p) => p && patch(p, i, { listing: null, error: String(e?.message ?? e), loading: false }))
@@ -244,6 +248,12 @@ export default function App() {
   useEffect(() => {
     if (path1) void load(1, path1)
   }, [path1, hidden])
+
+  useEffect(() => {
+    const p = panes?.[active] ? tabOf(panes[active]) : ''
+    if (!p) return
+    void api.statfs(p).then((r) => setFree(r?.free ?? null))
+  }, [path0, path1, active])
 
   const reloadAll = () => {
     if (!panes) return
@@ -735,6 +745,11 @@ export default function App() {
       }
       if (typing) return
 
+      if (ev.ctrlKey && (ev.key === 'l' || ev.key === 'L')) {
+        ev.preventDefault()
+        setAddr(tabOf(me))
+        return
+      }
       if (ev.ctrlKey && ev.key === 'Tab') {
         ev.preventDefault()
         setPanes((p) => p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] }))
@@ -867,6 +882,11 @@ export default function App() {
 
   const visible = visibleOf(active)
   const curPath = tabOf(panes[active])
+  const selSize = (() => {
+    const me = panes[active]
+    const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
+    return source.filter((e) => me.sel.includes(e.path)).reduce((n, e) => n + e.size, 0)
+  })()
   const running = jobs.filter((j) => j.state === 'running' || j.state === 'paused').length
 
   return (
@@ -946,6 +966,29 @@ export default function App() {
           onChange={updatePrefs}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {addr !== null && (
+        <div className="addrbar">
+          <input
+            autoFocus
+            dir="ltr"
+            value={addr}
+            placeholder="/path/to/folder"
+            onChange={(e) => setAddr(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setAddr(null)
+              if (e.key === 'Enter') {
+                const raw = addr.trim()
+                setAddr(null)
+                if (!raw) return
+                const path = raw === '~' || raw.startsWith('~/') ? raw.replace('~', home) : raw
+                go(active, path)
+              }
+            }}
+          />
+          <span className="hint">مسیر را بنویس و Enter بزن · Esc انصراف</span>
+        </div>
       )}
 
       <div className="body" onMouseDown={() => settingsOpen && setSettingsOpen(false)}>
@@ -1033,7 +1076,10 @@ export default function App() {
             onPreviewNav={(delta) => navPreviewImage(i, delta)}
             onPreviewClose={() => setPanes((p) => p && patch(p, i, { preview: null }))}
             foldersFirst={prefs.foldersFirst}
-            showTypeColumn={prefs.showTypeColumn}
+            columns={prefs.columns}
+            sizeFormat={prefs.sizeFormat}
+            dateFormat={prefs.dateFormat}
+            showSeconds={prefs.showSeconds}
             onGallery={() => pane.preview && openGallery(pane.preview.from, pane.preview.entry.path)}
             onContext={(path, x, y) => setMenu({ path, x, y })}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
@@ -1094,7 +1140,12 @@ export default function App() {
                 ? 'در حال خواندن…'
                 : 'فهرستی نیست'}
         </span>
-        <span>{panes[active].sel.length ? `${fa(panes[active].sel.length)} انتخاب‌شده` : ''}</span>
+        <span>
+          {panes[active].sel.length
+            ? `${fa(panes[active].sel.length)} انتخاب‌شده · ${fmtSize(selSize, false, prefs.sizeFormat)}`
+            : ''}
+        </span>
+        {free != null && <span>آزاد: {fmtSize(free, false, prefs.sizeFormat)}</span>}
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         {prefs.layout === 'single' && (
           <span title="مقصد کپی/انتقال در حالت تک‌پنجره">
@@ -1170,6 +1221,8 @@ export default function App() {
           images={gallery.images}
           startPath={gallery.start}
           fullscreen={fullscreen}
+          onSaved={setNote}
+          onChanged={reloadAll}
           onFullscreen={() => void toggleFullscreen()}
           onClose={() => {
             setGallery(null)

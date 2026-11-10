@@ -13,6 +13,12 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Configurable columns (permissions, owner, links, image size) with Jalali dates, the gallery editor (crop), and the columns page in preferences:
+
+![columns](docs/screenshot-columns.png)
+![crop](docs/screenshot-crop.png)
+![columns prefs](docs/screenshot-pref-columns.png)
+
 Preferences dialog, single-pane layout, and the photo gallery (arrows browse the folder):
 
 ![preferences](docs/screenshot-preferences.png)
@@ -36,7 +42,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.6** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
+**Status: v0.7** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction), phase 5 started (context menu, drag and drop, preview, gallery) and the preferences shell landed. The settings roadmap is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md). Remaining gaps are listed honestly in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What works today
 
@@ -44,6 +50,9 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - Two panes (source / destination) with tabs in each (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`) and per-pane back/forward history
 - **Single instance**: launching again focuses the open window and opens the path you passed
 - **Photo gallery**: arrows browse the folder's images, `+`/`-` zoom, `R` rotate, `Space` slideshow, `F` fullscreen, thumbnail strip
+- **Simple image edits in the gallery**: rotate 90°, flip, crop by dragging a box, resize with a locked aspect ratio, save as a copy (`name-edit.png`) or overwrite
+- **Configurable columns**: type, size, date (ISO or Jalali), permissions, owner, hard links, image dimensions — toggled and ordered in preferences, with a header that scrolls with the rows
+- `Ctrl+L` address bar, selection size and free space in the status bar
 - **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails
 - Virtualized rendering in both views: a 100k-entry folder mounts only the visible slice

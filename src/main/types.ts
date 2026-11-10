@@ -10,6 +10,14 @@ export type Entry = {
   /** per-folder look from the folder's own .mfm.json */
   color?: string
   icon?: string
+  /** unix mode bits, owner, hard links — filled by list() */
+  mode?: number
+  uid?: number
+  gid?: number
+  nlink?: number
+  /** image pixel size, only when the caller asked for it */
+  w?: number
+  h?: number
 }
 export type DirRef = { name: string; path: string }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }

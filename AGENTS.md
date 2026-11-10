@@ -58,6 +58,7 @@ src/renderer/src/JobsBar.tsx  نوار عملیات‌ها: پیشرفت، سر�
 src/renderer/src/RenameDialog.tsx  تغییر نام گروهی با پیش‌نمایش زنده
 src/renderer/src/TitleBar.tsx      تایتل‌بار خود برنامه (drag، کوچک/بزرگ/بستن)
 src/renderer/src/Preferences.tsx پنجرهٔ تنظیمات: دسته‌ها، صفحه‌ها، اعمال فوری
+src/main/image.ts      ذخیرهٔ تصویر ویرایش‌شده (data URL → فایل، اتمیک) — + تست
 src/renderer/src/prefs.ts    تنها منبع تنظیمات (نوع Prefs + DEFAULTS + mergePrefs + مهاجرت) — + تست
 src/renderer/src/Gallery.tsx گالری تصاویر تمام‌پنجره (پیمایش، بزرگ‌نمایی، چرخش، پخش خودکار)
 src/renderer/src/FolderDialog.tsx  رنگ و آیکون پوشه + انتخاب پک آیکون

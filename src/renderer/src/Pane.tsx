@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Entry, Listing } from './api'
+import type { ColId } from './prefs'
 import {
   crumbs,
+  fa,
   fmtDate,
   fmtSize,
   groupLabel,
+  modeString,
   isImage,
   mediaUrl,
   orderEntries,
@@ -66,7 +69,10 @@ type Props = {
   sort: { key: SortKey; asc: boolean }
   view: View
   foldersFirst: boolean
-  showTypeColumn: boolean
+  columns: ColId[]
+  sizeFormat: 'human' | 'bytes'
+  dateFormat: 'iso' | 'jalali' | 'short'
+  showSeconds: boolean
   sizes: Record<string, string>
   marked: boolean
   filterRef(el: HTMLInputElement | null): void
@@ -113,6 +119,7 @@ export function Pane(props: Props) {
   const [content, setContent] = useState('')
   const [regex, setRegex] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLDivElement>(null)
   const anchor = useRef(0)
 
   useEffect(() => {
@@ -176,6 +183,42 @@ export function Pane(props: Props) {
     )
   }
 
+  const cell = (id: ColId, e: Entry): string => {
+    switch (id) {
+      case 'type':
+        return e.group ? groupLabel(e) : typeLabel(e)
+      case 'size':
+        return props.sizes[e.path] ?? fmtSize(e.size, e.dir, props.sizeFormat)
+      case 'date':
+        return fmtDate(e.mtime, props.dateFormat, props.showSeconds)
+      case 'mode':
+        return e.mode != null ? modeString(e.mode) : ''
+      case 'owner':
+        return e.uid != null ? `${fa(e.uid)}:${fa(e.gid ?? 0)}` : ''
+      case 'links':
+        return e.nlink != null ? fa(e.nlink) : ''
+      case 'dims':
+        return e.w && e.h ? `${fa(e.w)}×${fa(e.h)}` : ''
+    }
+  }
+
+  const COL_META: Record<ColId, { label: string; width: number; sort?: SortKey; end?: boolean }> = {
+    type: { label: 'نوع', width: 88, sort: 'ext' },
+    size: { label: 'اندازه', width: 94, sort: 'size', end: true },
+    date: { label: 'تاریخ', width: 120, sort: 'mtime' },
+    mode: { label: 'مجوز', width: 92 },
+    owner: { label: 'مالک', width: 72, end: true },
+    links: { label: 'لینک', width: 52, end: true },
+    dims: { label: 'ابعاد', width: 90, end: true }
+  }
+
+  const gridTemplate =
+    'minmax(0, 1fr) ' + props.columns.map((c) => `${COL_META[c].width}px`).join(' ')
+
+  // with many columns a narrow pane has to scroll sideways instead of clipping them
+  const minWidth =
+    200 + props.columns.reduce((n, c) => n + COL_META[c].width + 8, 0)
+
   const sortMark = (k: SortKey) => (sort.key === k ? (sort.asc ? ' ▲' : ' ▼') : '')
 
   // rows carry their own paths (not text) so a drag between panes stays typed
@@ -223,7 +266,7 @@ export function Pane(props: Props) {
 
   return (
     <section
-      className={'pane' + (active ? ' active' : '') + (props.showTypeColumn ? '' : ' notype')}
+      className={'pane' + (active ? ' active' : '')}
       onMouseDown={props.onActivate}
     >
       <div className="tabs">
@@ -388,28 +431,35 @@ export function Pane(props: Props) {
       )}
 
       {view === 'list' && (
-        <div className="head">
+        <div className="headwrap" ref={headRef}>
+        <div className="head" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
           <button className="col" onClick={() => props.onSort('name')}>
             نام{sortMark('name')}
           </button>
-          {props.showTypeColumn && (
-            <button className="col" onClick={() => props.onSort('ext')}>
-              نوع{sortMark('ext')}
-            </button>
-          )}
-          <button className="col num" onClick={() => props.onSort('size')}>
-            اندازه{sortMark('size')}
-          </button>
-          <button className="col" onClick={() => props.onSort('mtime')}>
-            تاریخ{sortMark('mtime')}
-          </button>
+          {props.columns.map((c) => {
+            const meta = COL_META[c]
+            return (
+              <button
+                key={c}
+                className={'col' + (meta.end ? ' num' : '')}
+                onClick={() => meta.sort && props.onSort(meta.sort)}
+              >
+                {meta.label}
+                {meta.sort ? sortMark(meta.sort) : ''}
+              </button>
+            )
+          })}
+        </div>
         </div>
       )}
 
       <div
         className="rows"
         ref={listRef}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          setScrollTop(e.currentTarget.scrollTop)
+          if (headRef.current) headRef.current.scrollLeft = e.currentTarget.scrollLeft
+        }}
         onDragOver={allowDrop}
         onDrop={(e) => dropOn(e, cur)}
         onContextMenu={(e) => menu(e, null)}
@@ -427,12 +477,12 @@ export function Pane(props: Props) {
                   : 'پوشه خالی است'}
           </div>
         ) : view === 'list' ? (
-          <div style={{ height: entries.length * ROW, position: 'relative' }}>
+          <div style={{ height: entries.length * ROW, position: 'relative', minWidth }}>
             {entries.slice(start, end).map((e, k) => (
               <div
                 key={e.path}
                 className={'row' + (pane.sel.includes(e.path) ? ' on' : '')}
-                style={{ top: (start + k) * ROW }}
+                style={{ top: (start + k) * ROW, gridTemplateColumns: gridTemplate }}
                 title={e.path}
                 draggable
                 onDragStart={(ev) => startDrag(ev, e.path)}
@@ -446,11 +496,11 @@ export function Pane(props: Props) {
                   {e.dir ? <FolderGlyph entry={e} /> : e.icon ? <img className="ic-img" src={mediaUrl(e.icon)} alt="" /> : <TypeIcon entry={e} />}
                   <span dir="auto" className="trunc">{e.name}</span>
                 </span>
-                {props.showTypeColumn && (
-                  <span className="kind">{e.group ? groupLabel(e) : typeLabel(e)}</span>
-                )}
-                <span className="num">{props.sizes[e.path] ?? fmtSize(e.size, e.dir)}</span>
-                <span className="dim">{fmtDate(e.mtime)}</span>
+                {props.columns.map((c) => (
+                  <span key={c} className={COL_META[c].sort === 'mtime' || !COL_META[c].sort ? 'dim' : 'kind'}>
+                    {cell(c, e)}
+                  </span>
+                ))}
               </div>
             ))}
           </div>

@@ -11,9 +11,11 @@ import {
   joinPath,
   kindOf,
   mediaUrl,
+  modeString,
   orderEntries,
   planRename,
   sortEntries,
+  toJalali,
   typeLabel
 } from './format.ts'
 
@@ -166,4 +168,27 @@ test('sortEntries: foldersFirst=false mixes folders into the order', () => {
   const list = [e('zdir', true), e('a.txt', false), e('bfile', false)]
   assert.deepEqual(sortEntries(list, 'name', true, false).map((x) => x.name), ['a.txt', 'bfile', 'zdir'])
   assert.deepEqual(sortEntries(list, 'name', true).map((x) => x.name), ['zdir', 'a.txt', 'bfile'])
+})
+
+test('toJalali: Nowruz 1403 is 2024-03-20', () => {
+  assert.deepEqual(toJalali(Date.UTC(2024, 2, 20, 12)), [1403, 1, 1])
+  assert.deepEqual(toJalali(Date.UTC(2024, 2, 21, 12)), [1403, 1, 2])
+})
+
+test('fmtDate honours the format setting', () => {
+  const t = Date.UTC(2024, 2, 20, 9, 5, 7)
+  assert.match(fmtDate(t, 'jalali'), /^۱۴۰۳-۰۱-۰۱/)
+  assert.match(fmtDate(t, 'short'), /^[۰-۹]{2}:[۰-۹]{2}$/)
+  assert.match(fmtDate(t, 'short', true), /^[۰-۹]{2}:[۰-۹]{2}:[۰-۹]{2}$/)
+})
+
+test('fmtSize can print exact bytes', () => {
+  assert.equal(fmtSize(1536, false, 'bytes'), '۱۵۳۶ بایت')
+  assert.equal(fmtSize(1536, false), '۱٫۵ کیلوبایت')
+})
+
+test('modeString', () => {
+  assert.equal(modeString(0o755), 'rwxr-xr-x')
+  assert.equal(modeString(0o644), 'rw-r--r--')
+  assert.equal(modeString(0o000), '---------')
 })

@@ -9,9 +9,44 @@ export const fa = (s: string | number): string => String(s).replace(/[0-9]/g, (d
 
 const UNITS = ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت', 'پتابایت']
 
+/** Persian civil (Jalali) date from a unix ms timestamp — the conversion users actually read. */
+export function toJalali(ms: number): [number, number, number] {
+  const d = new Date(ms)
+  let gy = d.getFullYear()
+  const gm = d.getMonth() + 1
+  const gd = d.getDate()
+  const gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+  let jy = gy <= 1600 ? 0 : 979
+  gy -= gy <= 1600 ? 621 : 1600
+  const gy2 = gm > 2 ? gy + 1 : gy
+  let days =
+    365 * gy +
+    Math.floor((gy2 + 3) / 4) -
+    Math.floor((gy2 + 99) / 100) +
+    Math.floor((gy2 + 399) / 400) -
+    80 +
+    gd +
+    gdm[gm - 1]
+  jy += 33 * Math.floor(days / 12053)
+  days %= 12053
+  jy += 4 * Math.floor(days / 1461)
+  days %= 1461
+  if (days > 365) {
+    jy += Math.floor((days - 1) / 365)
+    days = (days - 1) % 365
+  }
+  const jm = days < 186 ? 1 + Math.floor(days / 31) : 7 + Math.floor((days - 186) / 30)
+  const jd = 1 + (days < 186 ? days % 31 : (days - 186) % 30)
+  return [jy, jm, jd]
+}
+
+export type SizeFormat = 'human' | 'bytes'
+export type DateFormat = 'iso' | 'jalali' | 'short'
+
 /** Human size; folders report nothing unless their size was computed. */
-export function fmtSize(bytes: number, dir: boolean): string {
+export function fmtSize(bytes: number, dir: boolean, format: SizeFormat = 'human'): string {
   if (dir) return ''
+  if (format === 'bytes') return `${fa(bytes)} بایت`
   if (!bytes) return `۰ ${UNITS[0]}`
   const i = Math.min(UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
   const v = bytes / 1024 ** i
@@ -19,12 +54,26 @@ export function fmtSize(bytes: number, dir: boolean): string {
   return `${fa(n)} ${UNITS[i]}`
 }
 
-/** ۲۰۲۶-۱۱-۱۱ ۰۱:۰۵ — zero-padded, no locale surprises. */
-export function fmtDate(ms: number): string {
+/** ۲۰۲۶-۱۱-۱۱ ۰۱:۰۵ (میلادی) · ۱۴۰۵-۰۸-۲۰ (شمسی) · ۰۱:۰۵ امروز (کوتاه) */
+export function fmtDate(ms: number, format: DateFormat = 'iso', seconds = false): string {
   if (!ms) return ''
   const d = new Date(ms)
   const p = (n: number) => String(n).padStart(2, '0')
-  return fa(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`)
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}${seconds ? ':' + p(d.getSeconds()) : ''}`
+  if (format === 'jalali') {
+    const [jy, jm, jd] = toJalali(ms)
+    return fa(`${jy}-${p(jm)}-${p(jd)} ${time}`)
+  }
+  if (format === 'short') return fa(time)
+  return fa(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${time}`)
+}
+
+/** Unix mode bits → rwxr-xr-x */
+export function modeString(mode: number): string {
+  const bits = ['r', 'w', 'x']
+  let out = ''
+  for (let i = 8; i >= 0; i--) out += mode & (1 << i) ? bits[(8 - i) % 3] : '-'
+  return out
 }
 
 export type Crumb = { name: string; path: string }

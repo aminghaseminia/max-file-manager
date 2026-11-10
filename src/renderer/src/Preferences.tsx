@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import type { Prefs } from './prefs'
+import { COLUMNS, type ColId, type Prefs } from './prefs'
 
-type Page = 'appearance' | 'display' | 'layout' | 'operations' | 'launch' | 'advanced'
+type Page = 'appearance' | 'display' | 'columns' | 'layout' | 'operations' | 'launch' | 'advanced'
 
 const PAGES: { id: Page; label: string }[] = [
   { id: 'appearance', label: 'ظاهر و رنگ' },
   { id: 'display', label: 'نمایش فایل‌ها' },
+  { id: 'columns', label: 'ستون‌ها' },
   { id: 'layout', label: 'پنجره و چیدمان' },
   { id: 'operations', label: 'عملیات فایل' },
   { id: 'launch', label: 'راه‌اندازی' },
@@ -104,7 +105,86 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
               {row('نمای پیش‌فرض', null, seg(prefs.view, [{ v: 'list', label: 'فهرست' }, { v: 'grid', label: 'شبکه' }], 'view'))}
               {row('پوشه‌ها اول فهرست', 'مانند Directory Opus و FreeCommander', check(prefs.foldersFirst, 'foldersFirst'))}
               {row('نمایش فایل‌های مخفی', 'پیش‌فرضِ آغاز به کار', check(prefs.showHidden, 'showHidden'))}
-              {row('ستون «نوع»', null, check(prefs.showTypeColumn, 'showTypeColumn'))}
+              {row(
+                'قالب اندازه',
+                null,
+                seg(
+                  prefs.sizeFormat,
+                  [{ v: 'human', label: 'خوانا' }, { v: 'bytes', label: 'بایت دقیق' }],
+                  'sizeFormat'
+                )
+              )}
+              {row(
+                'قالب تاریخ',
+                null,
+                seg(
+                  prefs.dateFormat,
+                  [
+                    { v: 'jalali', label: 'شمسی' },
+                    { v: 'iso', label: 'میلادی' },
+                    { v: 'short', label: 'فقط ساعت' }
+                  ],
+                  'dateFormat'
+                )
+              )}
+              {row('ثانیه در تاریخ', null, check(prefs.showSeconds, 'showSeconds'))}
+            </>
+          )}
+
+          {page === 'columns' && (
+            <>
+              {COLUMNS.map((c, idx) => {
+                const on = prefs.columns.includes(c.id)
+                const move = (delta: number) => {
+                  const next = [...prefs.columns]
+                  const at = next.indexOf(c.id)
+                  const to = at + delta
+                  if (at < 0 || to < 0 || to >= next.length) return
+                  ;[next[at], next[to]] = [next[to], next[at]]
+                  onChange({ columns: next })
+                }
+                return (
+                  <div className="pref-row" key={c.id}>
+                    <div className="pref-label">
+                      <span>{c.label}</span>
+                    </div>
+                    <div className="pref-control">
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) =>
+                            onChange({
+                              columns: e.target.checked
+                                ? [...prefs.columns, c.id]
+                                : prefs.columns.filter((x) => x !== c.id)
+                            })
+                          }
+                        />
+                      </label>
+                      <button
+                        className="tb"
+                        title="بالا"
+                        disabled={!on || idx === 0}
+                        onClick={() => move(-1)}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        className="tb"
+                        title="پایین"
+                        disabled={!on || idx === 0}
+                        onClick={() => move(1)}
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="hint">
+                ستون «نام» همیشه اول است. ترتیب انتخاب‌شده در فهرست اعمال می‌شود.
+              </div>
             </>
           )}
 

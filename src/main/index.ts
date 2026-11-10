@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, shell } from 'electron'
 import { readFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive } from './archives.ts'
+import { saveImage } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
@@ -69,12 +70,18 @@ async function fillStats(entries: Entry[]): Promise<void> {
         e.dir = st.isDirectory()
         e.size = st.size
         e.mtime = st.mtimeMs
+        e.mode = st.mode
+        e.uid = st.uid
+        e.gid = st.gid
+        e.nlink = st.nlink
       })
     )
   }
 }
 
-async function list(dir: string, showHidden: boolean) {
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'])
+
+async function list(dir: string, showHidden: boolean, dims = false) {
   const dirents = await fs.readdir(dir, { withFileTypes: true })
   const entries: Entry[] = dirents
     .filter((d) => showHidden || !d.name.startsWith('.'))
@@ -97,6 +104,17 @@ async function list(dir: string, showHidden: boolean) {
         if (m?.icon) e.icon = m.icon
       })
     )
+  }
+  // pixel size needs a decoder, so it is opt-in and capped
+  if (dims) {
+    const images = entries.filter((e) => !e.dir && IMAGE_EXT.has(e.ext) && e.size < 20_000_000).slice(0, 400)
+    for (const e of images) {
+      const size = nativeImage.createFromPath(e.path).getSize()
+      if (size.width) {
+        e.w = size.width
+        e.h = size.height
+      }
+    }
   }
   const parent = path.dirname(dir)
   return { path: dir, parent: parent === dir ? null : parent, entries }
@@ -210,10 +228,14 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
-  protocol.handle('mfm', (req) => {
+  protocol.handle('mfm', async (req) => {
     const p = decodeURIComponent(new URL(req.url).pathname)
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
-    return net.fetch(pathToFileURL(p).toString())
+    const res = await net.fetch(pathToFileURL(p).toString())
+    // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
+    const headers = new Headers(res.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    return new Response(res.body, { status: res.status, headers })
   })
 
   win = createWindow()
@@ -221,7 +243,27 @@ app.whenReady().then(async () => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   })
 
-  ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean) => list(dir, showHidden))
+  ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean, dims = false) =>
+    list(dir, showHidden, dims)
+  )
+  ipcMain.handle('fs:statfs', async (_e, p: string) => {
+    if (!path.isAbsolute(p)) return null
+    const s = await fs.statfs(p).catch(() => null)
+    return s ? { free: Number(s.bavail) * Number(s.bsize), size: Number(s.blocks) * Number(s.bsize) } : null
+  })
+  ipcMain.handle('fs:imageData', async (_e, p: string) => {
+    if (!path.isAbsolute(p)) return { error: 'مسیر نامعتبر' }
+    const st = await fs.stat(p).catch(() => null)
+    if (!st || st.size > 40_000_000) return { error: 'فایل بیش از ۴۰ مگابایت است' }
+    const ext = path.extname(p).slice(1).toLowerCase()
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext === 'webp' ? 'webp' : 'png'
+    const buf = await fs.readFile(p).catch(() => null)
+    if (!buf) return { error: 'خواندن فایل ممکن نشد' }
+    return { dataUrl: `data:image/${mime};base64,${buf.toString('base64')}` }
+  })
+  ipcMain.handle('image:save', (_e, a: { src: string; dataUrl: string; mode: 'overwrite' | 'copy' }) =>
+    saveImage(a.src, a.dataUrl, a.mode)
+  )
   ipcMain.handle('fs:dirs', (_e, dir: string) => dirs(dir))
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())

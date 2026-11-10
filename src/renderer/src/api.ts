@@ -10,6 +10,12 @@ export type Entry = {
   /** per-folder look, from the folder's own .mfm.json */
   color?: string
   icon?: string
+  mode?: number
+  uid?: number
+  gid?: number
+  nlink?: number
+  w?: number
+  h?: number
 }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }
 export type DirRef = { name: string; path: string }
@@ -76,7 +82,10 @@ export type IconRef = { name: string; path: string }
 export type IconTheme = { name: string; dir: string }
 
 export type Api = {
-  list(dir: string, showHidden: boolean): Promise<Listing>
+  list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
+  statfs(p: string): Promise<{ free: number; size: number } | null>
+  imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
+  saveImage(src: string, dataUrl: string, mode: 'overwrite' | 'copy'): Promise<{ path: string } | { error: string }>
   dirs(dir: string): Promise<DirRef[]>
   roots(): Promise<DirRef[]>
   home(): Promise<string>
