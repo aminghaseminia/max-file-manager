@@ -26,7 +26,7 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
   const [saved, setSaved] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [wrap, setWrap] = useState(false)
+  const [wrap, setWrap] = useState(true)
   const [split, setSplit] = useState(true)
   const [fontSize, setFontSize] = useState(12.5)
   /** markdown opens in the visual (WYSIWYG) surface; source stays one click away */

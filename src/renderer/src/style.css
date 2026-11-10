@@ -2103,3 +2103,41 @@ html[data-rounded='1'] .app {
 .editor.docked .ed-md {
   flex: 1 1 50%;
 }
+
+/* ---------- side slot: preview/editor takes the opposite pane's place ---------- */
+.side-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+.side-slot .preview {
+  width: 100%;
+  border-inline-start: 0;
+}
+.side-slot .editor.docked {
+  flex: 1;
+}
+
+/* wrapping is the default: no horizontal scrollbar in the editor */
+.ed-hl,
+.ed-ta {
+  overflow-x: hidden;
+}
+
+/* ---------- html preview ---------- */
+.preview-html {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+.preview-html-toggle {
+  margin-inline-end: 6px;
+}
+.preview-html-toggle button {
+  font-size: 10.5px;
+  padding: 1px 7px;
+}

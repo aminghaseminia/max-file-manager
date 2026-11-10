@@ -3,6 +3,7 @@ import { api, type Entry, type Preview } from './api'
 import { fa, fmtDate, fmtSize, mediaUrl } from './format'
 import { ChevronLeftIcon, ChevronRightIcon, FileIcon, GridIcon, XIcon } from './Icons'
 import { renderMarkdown } from './md'
+import { cleanHtml, isHtmlPath } from './html'
 
 type Props = {
   entry: Entry | null
@@ -32,6 +33,7 @@ export function PreviewPanel({
 }: Props) {
   const [data, setData] = useState<Preview | null>(null)
   const [err, setErr] = useState('')
+  const [htmlCode, setHtmlCode] = useState(false)
 
   useEffect(() => {
     setData(null)
@@ -56,6 +58,16 @@ export function PreviewPanel({
           <button className="tb" title="تصویر قبلی (←)" onClick={() => onNavImage(-1)}>
             <ChevronRightIcon />
           </button>
+        )}
+        {entry && isHtmlPath(entry.path) && (
+          <div className="seg preview-html-toggle">
+            <button className={htmlCode ? '' : 'on'} onClick={() => setHtmlCode(false)}>
+              نمایش
+            </button>
+            <button className={htmlCode ? 'on' : ''} onClick={() => setHtmlCode(true)}>
+              کد
+            </button>
+          </div>
         )}
         <span className="preview-title" dir="auto">
           {entry ? entry.name : 'پیش‌نمایش'}
@@ -101,6 +113,25 @@ export function PreviewPanel({
             {data?.kind === 'video' && (
               <video className="preview-media" controls src={mediaUrl(entry.path)} />
             )}
+            {data?.kind === 'text' && isHtmlPath(entry.path) && !htmlCode && (
+              <iframe
+                className="preview-html"
+                sandbox=""
+                referrerPolicy="no-referrer"
+                title={entry.name}
+                srcDoc={cleanHtml(data.text ?? '')}
+              />
+            )}
+            {data?.kind === 'text' && isHtmlPath(entry.path) && htmlCode && (
+              <div className="preview-text" dir="ltr">
+                {(data.text ?? '').split('\n').slice(0, 4000).map((ln, n) => (
+                  <div className="pline" key={n}>
+                    <span className="pln">{n + 1}</span>
+                    <span className="ptext">{ln || ' '}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {data?.kind === 'text' && /\.(md|markdown|mdx)$/i.test(entry.path) && (
               <div
                 className="preview-body md-body"
@@ -108,7 +139,7 @@ export function PreviewPanel({
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(data.text ?? '') }}
               />
             )}
-            {data?.kind === 'text' && !/\.(md|markdown|mdx)$/i.test(entry.path) && (
+            {data?.kind === 'text' && !/\.(md|markdown|mdx)$/i.test(entry.path) && !isHtmlPath(entry.path) && (
               <div className="preview-text" dir="auto">
                 {lines.slice(0, 4000).map((ln, n) => (
                   <div className="pline" key={n}>

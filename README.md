@@ -87,8 +87,10 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - `Ctrl+L` address bar, selection size and free space in the status bar
 - **Every command lives in one registry** (`commands.ts`) and every key is rebindable in preferences → «کلید میان‌بر», with conflict detection and per-command reset; the accelerators are plain text in `state.json`
 - **Configurable command toolbar** (add/remove/order) under the title row
+- **Gap analysis** against Directory Opus 13 and Krusader: [`docs/GAPS.md`](docs/GAPS.md)
 - **Desktop integration**: «ترمینال اینجا» (`Ctrl+Alt+T`, konsole/gnome-terminal/xfce4/x-terminal or `cmd`), «نمایش در فایل‌منیجر سیستم», and dragging files **out** of the app into any other program
-- **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — loopback API + stdio bridge, read-only by default
+- **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
+- **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default
 - **Coloured labels** (8-colour palette) with a dot on the row, per-label counts in the sidebar and a `#label` filter — all stored in the folder's `.mfm.json`
 - **Pin files inside a folder** — pinned names sort to the very top with a pin mark and live in the folder's `.mfm.json`
 - **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit

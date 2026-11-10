@@ -1098,6 +1098,27 @@ export default function App() {
   })()
   const running = jobs.filter((j) => j.state === 'running' || j.state === 'paused').length
 
+  const sideOpen = previewOn || !!editor
+  const sideContent = editor && !editorMax ? (
+    <Editor
+      key={editor + ':dock'}
+      path={editor}
+      theme={theme}
+      docked
+      onToggleMax={() => setEditorMax(true)}
+      onClose={() => setEditor(null)}
+      onNote={setNote}
+      onSaved={() => void load(active, tabOf(panes![active]))}
+    />
+  ) : previewOn ? (
+    <PreviewPanel
+      entry={entryOf(active, previewPath) ?? null}
+      maxKB={prefs.previewMaxKB}
+      onOpen={(p) => void api.open(p)}
+      onClose={() => setPreviewOn(false)}
+    />
+  ) : null
+
   return (
     <div className="app">
       {editor && editorMax && (
@@ -1248,6 +1269,14 @@ export default function App() {
 
         {(prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
           const pane = panes[i]
+          // the preview/editor sits exactly where the opposite pane is
+          if (sideOpen && prefs.layout === 'dual' && i === 1 - active) {
+            return (
+              <div className="side-slot" key="side">
+                {sideContent}
+              </div>
+            )
+          }
           return (
           <Pane
             key={i}
@@ -1336,29 +1365,7 @@ export default function App() {
           )
         })}
 
-        {editor && !editorMax ? (
-          <div className="preview-slot wide">
-            <Editor
-              key={editor + ':dock'}
-              path={editor}
-              theme={theme}
-              docked
-              onToggleMax={() => setEditorMax(true)}
-              onClose={() => setEditor(null)}
-              onNote={setNote}
-              onSaved={() => void load(active, tabOf(panes![active]))}
-            />
-          </div>
-        ) : previewOn ? (
-          <div className="preview-slot">
-            <PreviewPanel
-              entry={entryOf(active, previewPath) ?? null}
-              maxKB={prefs.previewMaxKB}
-              onOpen={(p) => void api.open(p)}
-              onClose={() => setPreviewOn(false)}
-            />
-          </div>
-        ) : null}
+        {sideOpen && prefs.layout === 'single' && <div className="side-slot">{sideContent}</div>}
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
