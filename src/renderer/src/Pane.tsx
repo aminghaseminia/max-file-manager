@@ -95,6 +95,7 @@ type Props = {
   onTabMenu(idx: number, x: number, y: number): void
   onTabMove(from: number, to: number): void
   middleClickClosesTab: boolean
+  palette: { id: string; name: string; color: string }[]
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
   onBookmark(): void
@@ -139,10 +140,13 @@ export function Pane(props: Props) {
 
   const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
   const pinSet = useMemo(() => new Set(pane.listing?.pins ?? []), [pane.listing?.pins])
+  const labelMap = pane.listing?.labels ?? {}
+  const labelColor = (name: string) =>
+    props.palette.find((l) => l.id === labelMap[name])?.color ?? ''
 
   const entries = useMemo(
     () =>
-      orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst, pinSet),
+      orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst, pinSet, labelMap),
     [source, pane.filter, sort, props.foldersFirst]
   )
 
@@ -539,6 +543,9 @@ export function Pane(props: Props) {
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
+                  {labelColor(e.name) && (
+                    <span className="lbl" style={{ background: labelColor(e.name) }} title="برچسب" />
+                  )}
                   {pinSet.has(e.name) && (
                     <span className="pinmark" title="سنجاق‌شده">
                       <PinIcon filled />

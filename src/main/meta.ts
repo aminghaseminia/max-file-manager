@@ -11,6 +11,33 @@ export type FolderMeta = {
   icon?: string
   /** file names pinned to the top of this folder's listing */
   pins?: string[]
+  /** name → label id, for the coloured labels the user assigns */
+  labels?: Record<string, string>
+}
+
+/** The label palette; ids are stable because they are stored in `.mfm.json`. */
+export const LABELS: { id: string; name: string; color: string }[] = [
+  { id: 'red', name: 'قرمز', color: '#e0564d' },
+  { id: 'orange', name: 'نارنجی', color: '#e08b39' },
+  { id: 'yellow', name: 'زرد', color: '#d8b93f' },
+  { id: 'green', name: 'سبز', color: '#4fb56a' },
+  { id: 'blue', name: 'آبی', color: '#4f8ff0' },
+  { id: 'purple', name: 'بنفش', color: '#9a6ee0' },
+  { id: 'pink', name: 'صورتی', color: '#dd6b9c' },
+  { id: 'gray', name: 'خاکستری', color: '#8a93a3' }
+]
+
+const LABEL_IDS = new Set(LABELS.map((l) => l.id))
+
+const bare = (n: string) => !!n && !/[\\/]/.test(n) && n !== '.' && n !== '..' && n !== META_FILE
+
+const cleanLabels = (raw: unknown): Record<string, string> => {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [name, id] of Object.entries(raw as Record<string, unknown>)) {
+    if (bare(name) && typeof id === 'string' && LABEL_IDS.has(id)) out[name] = id
+  }
+  return out
 }
 
 /** A pin is a bare name inside the folder: no separators, no traversal, capped list. */
@@ -36,7 +63,9 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
     }
     const pins = cleanPins(m.pins)
     if (pins.length) out.pins = pins
-    return out.color || out.icon || out.pins ? out : null
+    const labels = cleanLabels(m.labels)
+    if (Object.keys(labels).length) out.labels = labels
+    return out.color || out.icon || out.pins || out.labels ? out : null
   } catch {
     return null
   }
@@ -51,8 +80,11 @@ export async function setMeta(dir: string, patch: FolderMeta): Promise<FolderMet
   const pins = cleanPins(next.pins)
   if (pins.length) next.pins = pins
   else delete next.pins
+  const labels = cleanLabels(next.labels)
+  if (Object.keys(labels).length) next.labels = labels
+  else delete next.labels
   const file = path.join(dir, META_FILE)
-  if (!next.color && !next.icon && !next.pins) {
+  if (!next.color && !next.icon && !next.pins && !next.labels) {
     await fs.rm(file, { force: true })
     return null
   }
@@ -69,4 +101,14 @@ export async function togglePin(dir: string, name: string, on?: boolean): Promis
   const next = want ? (has ? cur : [...cur, name]) : cur.filter((n) => n !== name)
   await setMeta(dir, { pins: next })
   return next
+}
+
+/** Sets or clears one file's label; returns the folder's label map afterwards. */
+export async function setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>> {
+  if (!bare(name)) return {}
+  const cur = { ...((await readMeta(dir))?.labels ?? {}) }
+  if (!label || !LABEL_IDS.has(label)) delete cur[name]
+  else cur[name] = label
+  await setMeta(dir, { labels: cur })
+  return cur
 }

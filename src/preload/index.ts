@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
   extract: (archive: string, names: string[], dest: string) =>
     ipcRenderer.invoke('fs:extract', { archive, names, dest }),
   getMeta: (dir: string) => ipcRenderer.invoke('meta:get', dir),
+  labelPalette: () => ipcRenderer.invoke('meta:labels'),
+  setLabel: (dir: string, name: string, label: string | null) =>
+    ipcRenderer.invoke('meta:setLabel', { dir, name, label }),
   togglePin: (dir: string, name: string, on?: boolean) =>
     ipcRenderer.invoke('meta:togglePin', { dir, name, on }),
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),

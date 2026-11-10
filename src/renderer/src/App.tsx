@@ -113,6 +113,8 @@ export default function App() {
   const [previewOn, setPreviewOn] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [editor, setEditor] = useState<string | null>(null)
+  const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
+  const [labelFor, setLabelFor] = useState<{ dir: string; name: string } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
@@ -168,6 +170,7 @@ export default function App() {
     Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
       setRoots(r)
       setHome(home)
+      void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
       setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
       if (s.sort && SORT_KEYS.includes(s.sort.key as SortKey)) {
@@ -743,6 +746,10 @@ export default function App() {
       case 'openTab':
         if (path) addTab(active, path)
         break
+      case 'label': {
+        if (path) setLabelFor({ dir: dirOf(path), name: baseName(path) })
+        break
+      }
       case 'edit': {
         if (path && !entryOf(active, path)?.dir) setEditor(path)
         break
@@ -861,6 +868,7 @@ export default function App() {
     if (path) {
       items.push(
         { id: 'edit', label: 'ویرایش متن', key: 'F4', icon: <RenameIcon /> },
+        { id: 'label', label: 'برچسب رنگی…', icon: <PaletteIcon /> },
         { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
         {
         id: 'pinFile',
@@ -1052,6 +1060,15 @@ export default function App() {
 
   const visible = visibleOf(active)
   const curPath = tabOf(panes[active])
+  const labelCounts = (() => {
+    const labels = panes?.[active]?.listing?.labels ?? {}
+    const counts: Record<string, number> = {}
+    for (const id of Object.values(labels)) counts[id] = (counts[id] ?? 0) + 1
+    return palette
+      .map((p) => ({ ...p, count: counts[p.id] ?? 0 }))
+      .filter((p) => p.count > 0)
+  })()
+
   const selSize = (() => {
     const me = panes[active]
     const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
@@ -1196,6 +1213,8 @@ export default function App() {
       <div className="body" onMouseDown={() => settingsOpen && setSettingsOpen(false)}>
         {ui.sidebarOpen && ui.sidebar === 'docked' && (
           <Sidebar
+            labels={labelCounts}
+            onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
             roots={roots}
             marks={marks}
             activePath={curPath}
@@ -1257,6 +1276,7 @@ export default function App() {
             onTabMenu={(idx, x, y) => setMenu({ path: null, tab: idx, x, y })}
             onTabMove={(from, to) => moveTab(i, from, to)}
             middleClickClosesTab={prefs.middleClickClosesTab}
+            palette={palette}
             onOp={(kind) => {
               if (kind === 'mkdir') setPrompt({ kind: 'mkdir', value: '' })
               else if (kind === 'rename') openRename(i)
@@ -1308,6 +1328,8 @@ export default function App() {
           <div className="side-float">
             <div className="side-float-panel">
               <Sidebar
+                labels={labelCounts}
+                onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
                 roots={roots}
                 marks={marks}
                 activePath={curPath}
@@ -1394,6 +1416,46 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {labelFor && (
+        <div className="modal" onMouseDown={() => setLabelFor(null)}>
+          <div className="dialog label-dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="dialog-title" dir="auto">
+              برچسب برای {labelFor.name}
+            </div>
+            <div className="label-grid">
+              {palette.map((l) => (
+                <button
+                  key={l.id}
+                  className="label-chip"
+                  onClick={() => {
+                    void api
+                      .setLabel(labelFor.dir, labelFor.name, l.id)
+                      .then(() => load(active, tabOf(panes![active])))
+                    setLabelFor(null)
+                    setNote(`برچسب «${l.name}» گذاشته شد`)
+                  }}
+                >
+                  <span className="lbl" style={{ background: l.color }} />
+                  <span>{l.name}</span>
+                </button>
+              ))}
+              <button
+                className="label-chip clear"
+                onClick={() => {
+                  void api
+                    .setLabel(labelFor.dir, labelFor.name, null)
+                    .then(() => load(active, tabOf(panes![active])))
+                  setLabelFor(null)
+                  setNote('برچسب برداشته شد')
+                }}
+              >
+                بدون برچسب
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmAsk && (
         <div className="modal" onMouseDown={() => setConfirmAsk(null)}>

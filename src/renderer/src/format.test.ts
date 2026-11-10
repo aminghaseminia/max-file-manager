@@ -192,3 +192,30 @@ test('modeString', () => {
   assert.equal(modeString(0o644), 'rw-r--r--')
   assert.equal(modeString(0o000), '---------')
 })
+
+test('the #token in the filter matches labels, not names', () => {
+  const entries = [
+    { name: 'a.txt', path: '/x/a.txt', dir: false, size: 1, mtime: 1, ext: 'txt' },
+    { name: 'b.txt', path: '/x/b.txt', dir: false, size: 1, mtime: 1, ext: 'txt' },
+    { name: 'c-red.txt', path: '/x/c-red.txt', dir: false, size: 1, mtime: 1, ext: 'txt' }
+  ]
+  const labels = { 'a.txt': 'red', 'b.txt': 'blue' }
+  assert.deepEqual(
+    orderEntries(entries, 'name', true, '#red', true, undefined, labels).map((e) => e.name),
+    ['a.txt']
+  )
+  assert.deepEqual(
+    orderEntries(entries, 'name', true, '#blu', true, undefined, labels).map((e) => e.name),
+    ['b.txt'],
+    'partial label ids match'
+  )
+  assert.deepEqual(
+    orderEntries(entries, 'name', true, '#nothing', true, undefined, labels).map((e) => e.name),
+    []
+  )
+  assert.equal(
+    orderEntries(entries, 'name', true, 'red', true, undefined, labels).length,
+    1,
+    'without # it stays a name filter'
+  )
+})

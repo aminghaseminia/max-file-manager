@@ -121,10 +121,18 @@ export function orderEntries(
   asc: boolean,
   filter = '',
   foldersFirst = true,
-  pins?: Set<string>
+  pins?: Set<string>,
+  labels?: Record<string, string>
 ): Entry[] {
   const q = filter.trim().toLowerCase()
-  let kept = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+  // `#red` / `#قرمز` keeps only the files carrying that label
+  let kept = q
+    ? entries.filter((e) =>
+        q.startsWith('#')
+          ? (labels?.[e.name] ?? '').includes(q.slice(1))
+          : e.name.toLowerCase().includes(q)
+      )
+    : entries
   const sorted = sortEntries(kept, key, asc, foldersFirst)
   if (!pins || !pins.size) return sorted
   // pinned names float to the very top, keeping the sort order among themselves

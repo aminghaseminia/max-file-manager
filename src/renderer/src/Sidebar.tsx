@@ -11,7 +11,11 @@ import {
   XIcon
 } from './Icons'
 
+type LabelCount = { id: string; name: string; color: string; count: number }
+
 type Props = {
+  labels: LabelCount[]
+  onPickLabel(id: string): void
   roots: DirRef[]
   marks: string[]
   activePath: string
@@ -19,12 +23,24 @@ type Props = {
   onUnmark(dir: string): void
 }
 
-export function Sidebar({ roots, marks, activePath, onNav, onUnmark }: Props) {
+export function Sidebar({ labels, onPickLabel, roots, marks, activePath, onNav, onUnmark }: Props) {
   return (
     <aside className="side">
       <div className="side-title">مکان‌ها</div>
       {roots.map((r) => (
         <TreeNode key={r.path} node={r} depth={0} activePath={activePath} onNav={onNav} />
+      ))}
+
+      {labels.length > 0 && <div className="side-title">برچسب‌ها</div>}
+      {labels.map((l) => (
+        <div key={l.id} className="tree-row">
+          <span className="twisty" />
+          <button className="tree-name" onClick={() => onPickLabel(l.id)} title={`فیلتر: ${l.name}`}>
+            <span className="lbl" style={{ background: l.color }} />
+            <span>{l.name}</span>
+            <span className="dim count">{l.count}</span>
+          </button>
+        </div>
       ))}
 
       {marks.length > 0 && <div className="side-title">نشان‌شده‌ها</div>}

@@ -13,6 +13,10 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Coloured labels per file, stored in the folder's own `.mfm.json`, with counts in the sidebar and a `#label` filter:
+
+![labels](docs/screenshot-labels.png)
+
 Built-in editor: syntax highlighting for ~35 languages (`F4`), and a markdown editor with a live preview side by side plus one-button PDF export:
 
 ![markdown editor](docs/screenshot-md-editor.png)
@@ -79,6 +83,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - `Ctrl+L` address bar, selection size and free space in the status bar
 - **Every command lives in one registry** (`commands.ts`) and every key is rebindable in preferences → «کلید میان‌بر», with conflict detection and per-command reset; the accelerators are plain text in `state.json`
 - **Configurable command toolbar** (add/remove/order) under the title row
+- **Coloured labels** (8-colour palette) with a dot on the row, per-label counts in the sidebar and a `#label` filter — all stored in the folder's `.mfm.json`
 - **Pin files inside a folder** — pinned names sort to the very top with a pin mark and live in the folder's `.mfm.json`
 - **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit
 - **Create zip archives** from a selection (streamed through fflate, compression level 0–9), extract to the opposite pane

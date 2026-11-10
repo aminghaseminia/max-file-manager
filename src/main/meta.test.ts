@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { iconsIn, themeDirs } from './icons.ts'
-import { META_FILE, readMeta, setMeta, togglePin } from './meta.ts'
+import { LABELS, META_FILE, readMeta, setLabel, setMeta, togglePin } from './meta.ts'
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'mfm-meta-'))
 
@@ -74,4 +74,19 @@ test('pins round-trip and reject names that could escape the folder', async () =
 
   await togglePin(dir, 'notes.txt')
   assert.equal(await readMeta(dir), null, 'the meta file disappears when nothing is left')
+})
+
+test('labels round-trip, reject unknown ids and unsafe names', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-labels-'))
+  assert.deepEqual(await setLabel(dir, 'a.txt', 'red'), { 'a.txt': 'red' })
+  assert.deepEqual(await setLabel(dir, 'b.txt', 'blue'), { 'a.txt': 'red', 'b.txt': 'blue' })
+  assert.deepEqual(await setLabel(dir, 'a.txt', 'blue'), { 'a.txt': 'blue', 'b.txt': 'blue' })
+  assert.deepEqual(await setLabel(dir, 'a.txt', null), { 'b.txt': 'blue' }, 'null clears')
+  assert.deepEqual(await setLabel(dir, 'c.txt', 'hotpink'), { 'b.txt': 'blue' }, 'unknown id ignored')
+  assert.deepEqual(await setLabel(dir, '../x', 'red'), {}, 'escaping name rejected')
+
+  await fs.writeFile(path.join(dir, META_FILE), JSON.stringify({ labels: { 'ok.txt': 'red', '../x': 'red', 'y.txt': 'nope' } }))
+  assert.deepEqual((await readMeta(dir))?.labels, { 'ok.txt': 'red' }, 'reading drops garbage')
+
+  assert.equal(LABELS.length, 8)
 })

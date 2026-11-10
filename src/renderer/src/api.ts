@@ -17,7 +17,13 @@ export type Entry = {
   w?: number
   h?: number
 }
-export type Listing = { path: string; parent: string | null; entries: Entry[]; pins?: string[] }
+export type Listing = {
+  path: string
+  parent: string | null
+  entries: Entry[]
+  pins?: string[]
+  labels?: Record<string, string>
+}
 export type DirRef = { name: string; path: string }
 export type Result = { done: number; errors: string[] }
 export type SizeResult = { bytes: number; files: number; capped: boolean }
@@ -106,6 +112,8 @@ export type Api = {
   ): Promise<{ path: string; files: number; bytes: number } | { error: string }>
   extract(archive: string, names: string[], dest: string): Promise<Result>
   getMeta(dir: string): Promise<FolderMeta | null>
+  labelPalette(): Promise<{ id: string; name: string; color: string }[]>
+  setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>>
   togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
   iconThemes(extra: string[]): Promise<IconTheme[]>

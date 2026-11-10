@@ -8,7 +8,7 @@ import { saveImage } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
-import { readMeta, setMeta, togglePin, type FolderMeta } from './meta.ts'
+import { LABELS, readMeta, setLabel, setMeta, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
@@ -246,8 +246,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
     const l = await list(dir, showHidden, dims)
-    const pins = path.isAbsolute(dir) ? ((await readMeta(dir))?.pins ?? []) : []
-    return { ...l, pins }
+    const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
+    return { ...l, pins: meta?.pins ?? [], labels: meta?.labels ?? {} }
   })
   ipcMain.handle('fs:statfs', async (_e, p: string) => {
     if (!path.isAbsolute(p)) return null
@@ -317,9 +317,13 @@ app.whenReady().then(async () => {
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
+  ipcMain.handle('meta:setLabel', (_e, a: { dir: string; name: string; label: string | null }) =>
+    path.isAbsolute(a?.dir ?? '') ? setLabel(a.dir, String(a.name ?? ''), a.label ?? null) : {}
+  )
   ipcMain.handle('meta:togglePin', (_e, a: { dir: string; name: string; on?: boolean }) =>
     path.isAbsolute(a?.dir ?? '') ? togglePin(a.dir, String(a.name ?? ''), a.on) : []
   )
+  ipcMain.handle('meta:labels', () => LABELS)
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
