@@ -1,6 +1,6 @@
 {
   "name": "max-file-manager",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Dual-pane file manager for KDE and Windows (Directory Opus class), Electron + TypeScript",
   "license": "MIT",
   "author": "Majid Asgari <majidasgari@users.noreply.github.com>",
@@ -15,6 +15,10 @@
     "dist:win": "npm run build && electron-builder --win nsis"
   },
   "devDependencies": {
+    "@milkdown/crepe": "^7.22.2",
+    "@milkdown/kit": "^7.22.2",
+    "@milkdown/prose": "^7.22.2",
+    "@milkdown/utils": "^7.22.2",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -31,5 +35,8 @@
     "typescript": "^5.9.0",
     "vazirmatn": "^33.0.3",
     "vite": "^7.0.0"
+  },
+  "overrides": {
+    "prosemirror-model": "1.25.11"
   }
 }

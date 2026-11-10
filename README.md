@@ -83,7 +83,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit
 - **Create zip archives** from a selection (streamed through fflate, compression level 0–9), extract to the opposite pane
 - **Inline editor** (`F4`): highlight.js colouring behind a transparent textarea, line numbers, wrapping, font size, atomic `Ctrl+S` save, unsaved marker
-- **Markdown editor** with a live side-by-side preview — every block gets its own `dir` from its first strong character, code always stays LTR — and a **one-button PDF export** (embedded Vazirmatn, A4, print CSS)
+- **Visual markdown editor** (Milkdown/Crepe, the same surface the vault's web UI uses): real WYSIWYG, slash menu, tables, task lists, CodeMirror code blocks, link tooltips, selection toolbar, per-block direction — with a «متن» switch back to the highlighted source
+- **Markdown source view** with a live side-by-side preview — every block gets its own `dir` from its first strong character, code always stays LTR — and a **one-button PDF export** (embedded Vazirmatn, A4, print CSS)
 - **Text preview with line numbers** and a configurable size cap; gallery slideshow interval, looping, and image save format/quality (PNG/JPEG/WebP)
 - **Preview** in the opposite pane (`F3`) or as a side panel: text, image, audio, video
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails

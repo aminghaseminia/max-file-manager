@@ -5,6 +5,7 @@ import { highlightCode, langFor } from './highlight'
 import { renderMarkdown } from './md'
 import { dirOfText } from './direction'
 import { ConfirmIcon, XIcon } from './Icons'
+import { createVisualEditor, type VisualEditor } from './visual'
 
 type Props = {
   path: string
@@ -25,6 +26,11 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
   const [wrap, setWrap] = useState(false)
   const [split, setSplit] = useState(true)
   const [fontSize, setFontSize] = useState(12.5)
+  /** markdown opens in the visual (WYSIWYG) surface; source stays one click away */
+  const [mode, setMode] = useState<'visual' | 'source'>('visual')
+  const [visualReady, setVisualReady] = useState(false)
+  const visualRoot = useRef<HTMLDivElement>(null)
+  const visual = useRef<VisualEditor | null>(null)
   const ta = useRef<HTMLTextAreaElement>(null)
   const hl = useRef<HTMLPreElement>(null)
   const gutter = useRef<HTMLDivElement>(null)
@@ -50,6 +56,39 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
   }, [path])
 
   const dirty = text !== null && text !== saved
+  const rich = isMd && mode === 'visual'
+
+  useEffect(() => {
+    if (!rich || text === null) return
+    const el = visualRoot.current
+    if (!el) return
+    let dead = false
+    void createVisualEditor(el, text, (md) => {
+      if (!dead) setText(md)
+    }).then((v) => {
+      if (dead) {
+        v.destroy()
+        return
+      }
+      visual.current = v
+      setVisualReady(true)
+      v.focus()
+    }).catch((e) => {
+      console.error('visual editor failed', e)
+      onNote('ویرایشگر بصری باز نشد؛ از حالت «متن» استفاده کن')
+      setMode('source')
+    })
+    return () => {
+      dead = true
+      setVisualReady(false)
+      visual.current = null
+      const node = el.querySelector('.milkdown')
+      node?.remove()
+    }
+    // mount once per file and per mode: `text === null` flips when the file loads, and typing
+    // later must not re-create the editor (that would reset the caret)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rich, path, text === null])
 
   const save = async () => {
     if (text === null || busy) return
@@ -123,17 +162,33 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
         </span>
         {dirty && <span className="ed-dot" title="تغییرات ذخیره‌نشده" />}
         <span className="ed-lang">{lang ?? (isMd ? 'markdown' : 'text')}</span>
+        {isMd && (
+          <div className="seg ed-mode">
+            <button className={rich ? 'on' : ''} onClick={() => setMode('visual')} title="ویرایشگر بصری">
+              بصری
+            </button>
+            <button
+              className={!rich ? 'on' : ''}
+              onClick={() => setMode('source')}
+              title="متن مارک‌داون"
+            >
+              متن
+            </button>
+          </div>
+        )}
         <span className="spacer" />
-        <button className="tb" title="شکستن خطوط" onClick={() => setWrap((w) => !w)}>
-          <span className={wrap ? 'on-txt' : ''}>¶</span>
-        </button>
+        {!rich && (
+          <button className="tb" title="شکستن خطوط" onClick={() => setWrap((w) => !w)}>
+            <span className={wrap ? 'on-txt' : ''}>¶</span>
+          </button>
+        )}
         <button className="tb" title="کوچک‌تر" onClick={() => setFontSize((f) => Math.max(9, f - 1))}>
           <span>ا−</span>
         </button>
         <button className="tb" title="بزرگ‌تر" onClick={() => setFontSize((f) => Math.min(22, f + 1))}>
           <span>ا+</span>
         </button>
-        {isMd && (
+        {isMd && !rich && (
           <button
             className={'tb' + (split ? ' on' : '')}
             title="پیش‌نمایش کنار"
@@ -159,7 +214,10 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
       {err ? (
         <div className="ed-err">{err}</div>
       ) : (
-        <div className={'ed-body' + (isMd && split ? ' split' : '')}>
+        <div className={'ed-body' + (isMd && !rich && split ? ' split' : '')}>
+          {rich ? (
+            <div className="ed-visual" ref={visualRoot} data-ready={visualReady} />
+          ) : (
           <div className="ed-code" style={{ fontSize }}>
             <div className="ed-gutter" ref={gutter} aria-hidden>
               {Array.from({ length: lineCount }, (_, i) => (
@@ -186,7 +244,8 @@ export function Editor({ path, theme, onClose, onNote, onSaved }: Props) {
               />
             </div>
           </div>
-          {isMd && split && (
+          )}
+          {isMd && !rich && split && (
             <div className="ed-md md-body" dir="auto" dangerouslySetInnerHTML={{ __html: rendered }} />
           )}
         </div>

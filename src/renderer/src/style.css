@@ -1984,3 +1984,57 @@ html[data-rounded='1'] .app {
 .md-body a {
   color: var(--accent);
 }
+
+/* ---------- visual markdown editor (Milkdown/Crepe), themed to the app ---------- */
+.ed-visual {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+.ed-visual .milkdown {
+  --crepe-color-background: var(--bg);
+  --crepe-color-on-background: var(--text);
+  --crepe-color-surface: var(--panel);
+  --crepe-color-surface-low: var(--panel-2);
+  --crepe-color-on-surface: var(--text);
+  --crepe-color-on-surface-variant: var(--dim);
+  --crepe-color-outline: var(--line);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: var(--panel-2);
+  --crepe-color-on-secondary: var(--text);
+  --crepe-color-inverse: var(--text);
+  --crepe-color-on-inverse: var(--bg);
+  --crepe-color-inline-code: var(--accent);
+  --crepe-color-error: #d1584f;
+  --crepe-color-hover: var(--panel-2);
+  --crepe-color-selected: rgba(91, 147, 255, 0.18);
+  --crepe-color-inline-area: var(--panel-2);
+  --crepe-font-default: inherit;
+  --crepe-font-title: inherit;
+  --crepe-font-code: ui-monospace, 'JetBrains Mono', monospace;
+  --crepe-base-font-size: 13px;
+  height: auto;
+  min-height: 100%;
+  background: var(--bg);
+}
+.ed-visual .milkdown .ProseMirror {
+  padding: 18px 22px 140px;
+  min-height: calc(100vh - 120px);
+  line-height: 1.9;
+}
+.ed-visual .milkdown .ProseMirror:focus {
+  outline: 0;
+}
+.ed-visual .milkdown pre,
+.ed-visual .milkdown .cm-editor {
+  direction: ltr;
+  text-align: left;
+}
+.ed-mode {
+  margin-inline-start: 8px;
+}
+.ed-mode button {
+  font-size: 11px;
+  padding: 2px 9px;
+}
