@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { baseName, crumbs, fmtDate, fmtSize, sortEntries } from './format.ts'
+import {
+  baseName,
+  crumbs,
+  fa,
+  fmtDate,
+  fmtSize,
+  kindOf,
+  mediaUrl,
+  orderEntries,
+  sortEntries,
+  typeLabel
+} from './format.ts'
 
 type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number; ext: string }
 
@@ -13,19 +24,24 @@ const e = (name: string, dir: boolean, size = 0, mtime = 0, ext = ''): Entry => 
   ext
 })
 
-test('fmtSize', () => {
-  assert.equal(fmtSize(0, false), '0 B')
-  assert.equal(fmtSize(999, false), '999 B')
-  assert.equal(fmtSize(1024, false), '1.0 KB')
-  assert.equal(fmtSize(1536, false), '1.5 KB')
-  assert.equal(fmtSize(1048576, false), '1.0 MB')
-  assert.equal(fmtSize(12345678, false), '12 MB')
-  assert.equal(fmtSize(5000, true), '')
+test('fa: Persian digits', () => {
+  assert.equal(fa(2026), '۲۰۲۶')
+  assert.equal(fa('a1b2'), 'a۱b۲')
 })
 
-test('fmtDate', () => {
+test('fmtSize in Persian', () => {
+  assert.equal(fmtSize(0, false), '۰ بایت')
+  assert.equal(fmtSize(999, false), '۹۹۹ بایت')
+  assert.equal(fmtSize(1024, false), '۱٫۰ کیلوبایت')
+  assert.equal(fmtSize(1536, false), '۱٫۵ کیلوبایت')
+  assert.equal(fmtSize(1048576, false), '۱٫۰ مگابایت')
+  assert.equal(fmtSize(12345678, false), '۱۲ مگابایت')
+  assert.equal(fmtSize(5000, true), '', 'folders report nothing unless computed')
+})
+
+test('fmtDate: padded and Persian', () => {
   assert.equal(fmtDate(0), '')
-  assert.match(fmtDate(Date.UTC(2026, 0, 2, 3, 4)), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  assert.match(fmtDate(Date.UTC(2026, 0, 2, 3, 4)), /^[۰-۹]{4}-[۰-۹]{2}-[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}$/)
 })
 
 test('crumbs: posix and windows', () => {
@@ -40,6 +56,22 @@ test('baseName', () => {
   assert.equal(baseName('C:\\x\\y.txt'), 'y.txt')
 })
 
+test('mediaUrl: encodable and windows-safe', () => {
+  assert.equal(mediaUrl('/home/a b/c.png'), 'mfm://local/home/a%20b/c.png')
+  assert.equal(mediaUrl('C:\\Users\\max\\x.png'), 'mfm://local/C:/Users/max/x.png')
+})
+
+test('kindOf and typeLabel', () => {
+  assert.equal(kindOf(e('d', true)), 'dir')
+  assert.equal(kindOf(e('p.png', false, 1, 0, 'png')), 'image')
+  assert.equal(kindOf(e('m.ts', false, 1, 0, 'ts')), 'code')
+  assert.equal(kindOf(e('x.qqq', false, 1, 0, 'qqq')), 'file')
+  assert.equal(typeLabel(e('d', true)), 'پوشه')
+  assert.equal(typeLabel(e('p.png', false, 1, 0, 'png')), 'تصویر')
+  assert.equal(typeLabel(e('x.qqq', false, 1, 0, 'qqq')), 'QQQ', 'unknown extensions show themselves')
+  assert.equal(typeLabel(e('noext', false, 1, 0, '')), 'فایل')
+})
+
 test('sortEntries: folders first, then column', () => {
   const list = [e('b.txt', false, 10), e('a.txt', false, 30), e('zdir', true), e('file10', false, 5), e('file2', false, 5)]
   assert.deepEqual(
@@ -51,4 +83,19 @@ test('sortEntries: folders first, then column', () => {
     ['zdir', 'file2', 'file10', 'b.txt', 'a.txt']
   )
   assert.equal(sortEntries(list, 'name', false)[0].name, 'zdir', 'folders stay first when descending')
+})
+
+test('orderEntries: live filter keeps the sort', () => {
+  const list = [e('zdir', true), e('file10', false, 5), e('file2', false, 5), e('other', false, 9)]
+  assert.deepEqual(
+    orderEntries(list, 'name', true, 'file').map((x) => x.name),
+    ['file2', 'file10']
+  )
+  assert.deepEqual(
+    orderEntries(list, 'name', true, '  FILE  ').map((x) => x.name),
+    ['file2', 'file10'],
+    'filter is trimmed and case-insensitive'
+  )
+  assert.equal(orderEntries(list, 'name', true, '').length, 4)
+  assert.equal(orderEntries(list, 'name', true, 'nothing').length, 0)
 })

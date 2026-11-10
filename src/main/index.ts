@@ -1,10 +1,16 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { runOp, type OpKind } from './ops'
 
 type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number; ext: string }
+
+// mfm:// serves local files to <img> so the renderer never gets a filesystem API.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'mfm', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+])
 
 /** Sizes/mtimes need one stat per file; chunked so a 10k-file folder can't exhaust fds. */
 async function fillStats(entries: Entry[]): Promise<void> {
@@ -38,6 +44,14 @@ async function list(dir: string, showHidden: boolean) {
   return { path: dir, parent: parent === dir ? null : parent, entries }
 }
 
+/** Subfolders only, no stat: what the sidebar tree needs. */
+async function dirs(dir: string) {
+  const kids = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+  return kids
+    .filter((k) => k.isDirectory() && !k.name.startsWith('.'))
+    .map((k) => ({ name: k.name, path: path.join(dir, k.name) }))
+}
+
 const isDir = (p: string) => fs.stat(p).then((s) => s.isDirectory(), () => false)
 
 /** Mount points + home, so removable media show up without a volume manager. */
@@ -59,12 +73,52 @@ async function roots(): Promise<{ name: string; path: string }[]> {
   return out
 }
 
+// shortcut: folder size stops at 200k entries / 4s and admits it; upgrade to a worker + cache table.
+async function dirSize(root: string): Promise<{ bytes: number; files: number; capped: boolean }> {
+  let bytes = 0
+  let files = 0
+  let capped = false
+  const deadline = Date.now() + 4000
+  const stack = [root]
+  while (stack.length) {
+    if (files > 200_000 || Date.now() > deadline) {
+      capped = true
+      break
+    }
+    const dir = stack.pop()!
+    const kids = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const k of kids) {
+      const p = path.join(dir, k.name)
+      if (k.isDirectory()) stack.push(p)
+      else {
+        const st = await fs.stat(p).catch(() => null)
+        if (st) {
+          bytes += st.size
+          files++
+        }
+      }
+    }
+  }
+  return { bytes, files, capped }
+}
+
+const stateFile = () => path.join(app.getPath('userData'), 'state.json')
+
+async function readState(): Promise<unknown> {
+  const raw = await fs.readFile(stateFile(), 'utf8').catch(() => '')
+  try {
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: 1320,
+    height: 840,
     minWidth: 760,
-    minHeight: 420,
+    minHeight: 460,
     backgroundColor: '#16181d',
     autoHideMenuBar: true,
     show: false,
@@ -82,16 +136,32 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
+  protocol.handle('mfm', (req) => {
+    const p = decodeURIComponent(new URL(req.url).pathname)
+    if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
+    return net.fetch(pathToFileURL(p).toString())
+  })
+
   ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean) => list(dir, showHidden))
+  ipcMain.handle('fs:dirs', (_e, dir: string) => dirs(dir))
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
+  ipcMain.handle('fs:size', (_e, p: string) =>
+    path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
+  )
   ipcMain.handle('fs:op', (_e, a: { kind: OpKind; paths: string[]; dest?: string; name?: string }) =>
     runOp(a.kind, a.paths ?? [], { dest: a.dest, name: a.name, trash: (p) => shell.trashItem(p) })
   )
   ipcMain.handle('shell:open', (_e, p: string) =>
     path.isAbsolute(p) ? shell.openPath(p) : Promise.resolve('bad path')
   )
+  ipcMain.handle('state:get', () => readState())
+  ipcMain.handle('state:set', async (_e, s: unknown) => {
+    await fs.mkdir(path.dirname(stateFile()), { recursive: true })
+    await fs.writeFile(stateFile(), JSON.stringify(s, null, 2))
+    return true
+  })
 
   const win = createWindow()
 
@@ -104,7 +174,7 @@ app.whenReady().then(async () => {
         await fs.writeFile(shot, img.toPNG())
         console.log('SMOKE_OK ' + shot)
         app.quit()
-      }, 1500)
+      }, 1800)
     })
   }
 

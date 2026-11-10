@@ -2,23 +2,29 @@ import type { Entry } from './api.ts'
 
 export type SortKey = 'name' | 'size' | 'mtime' | 'ext'
 
-const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹'
 
-/** Human size; folders report no size of their own. */
+/** Persian digits for anything the user reads; paths and file names stay untouched. */
+export const fa = (s: string | number): string => String(s).replace(/[0-9]/g, (d) => FA_DIGITS[+d])
+
+const UNITS = ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت', 'پتابایت']
+
+/** Human size; folders report nothing unless their size was computed. */
 export function fmtSize(bytes: number, dir: boolean): string {
   if (dir) return ''
-  if (!bytes) return '0 B'
+  if (!bytes) return `۰ ${UNITS[0]}`
   const i = Math.min(UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
   const v = bytes / 1024 ** i
-  return `${i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)} ${UNITS[i]}`
+  const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0).replace('.', '٫')
+  return `${fa(n)} ${UNITS[i]}`
 }
 
-/** Local time, zero-padded, no locale surprises: 2026-11-11 14:03 */
+/** ۲۰۲۶-۱۱-۱۱ ۰۱:۰۵ — zero-padded, no locale surprises. */
 export function fmtDate(ms: number): string {
   if (!ms) return ''
   const d = new Date(ms)
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return fa(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`)
 }
 
 export type Crumb = { name: string; path: string }
@@ -59,7 +65,56 @@ export function sortEntries(entries: Entry[], key: SortKey, asc: boolean): Entry
   })
 }
 
+/** What the pane shows: live name filter, then sort. */
+export function orderEntries(entries: Entry[], key: SortKey, asc: boolean, filter = ''): Entry[] {
+  const q = filter.trim().toLowerCase()
+  const kept = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+  return sortEntries(kept, key, asc)
+}
+
 export function baseName(p: string): string {
   const s = p.replace(/[\\/]+$/, '')
   return s.split(/[\\/]/).pop() || s
 }
+
+/** Local file → the mfm:// URL the renderer may load in <img>. */
+export function mediaUrl(p: string): string {
+  const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
+  const tail = segs.join('/')
+  return `mfm://local${tail.startsWith('/') ? '' : '/'}${tail}`
+}
+
+export type Kind = 'dir' | 'image' | 'video' | 'audio' | 'archive' | 'text' | 'doc' | 'pdf' | 'sheet' | 'slides' | 'code' | 'file'
+
+const KIND: Record<string, Kind> = {
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', svg: 'image',
+  bmp: 'image', avif: 'image', ico: 'image',
+  mp4: 'video', mkv: 'video', mov: 'video', webm: 'video', avi: 'video',
+  mp3: 'audio', flac: 'audio', wav: 'audio', ogg: 'audio', m4a: 'audio', opus: 'audio',
+  zip: 'archive', tar: 'archive', gz: 'archive', xz: 'archive', '7z': 'archive',
+  rar: 'archive', bz2: 'archive', zst: 'archive',
+  txt: 'text', md: 'text', log: 'text', rtf: 'text',
+  doc: 'doc', docx: 'doc', odt: 'doc', pdf: 'pdf',
+  xls: 'sheet', xlsx: 'sheet', csv: 'sheet', ods: 'sheet',
+  ppt: 'slides', pptx: 'slides', odp: 'slides',
+  ts: 'code', tsx: 'code', js: 'code', jsx: 'code', py: 'code', rs: 'code', c: 'code', h: 'code',
+  cpp: 'code', hpp: 'code', java: 'code', go: 'code', rb: 'code', sh: 'code', css: 'code',
+  html: 'code', json: 'code', yml: 'code', yaml: 'code', toml: 'code', sql: 'code'
+}
+
+export const kindOf = (e: Entry): Kind => (e.dir ? 'dir' : (KIND[e.ext] ?? 'file'))
+
+const LABEL: Record<Kind, string> = {
+  dir: 'پوشه', image: 'تصویر', video: 'ویدئو', audio: 'صدا', archive: 'بایگانی',
+  text: 'متن', doc: 'سند', pdf: 'PDF', sheet: 'صفحه گسترده', slides: 'ارائه',
+  code: 'کد', file: 'فایل'
+}
+
+/** Persian type name; unknown extensions show themselves instead of a useless «فایل». */
+export function typeLabel(e: Entry): string {
+  const k = kindOf(e)
+  return k === 'file' && e.ext ? e.ext.toUpperCase() : LABEL[k]
+}
+
+export const isImage = (ext: string): boolean => KIND[ext] === 'image'
+
