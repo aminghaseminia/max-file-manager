@@ -86,6 +86,9 @@ type Props = {
   onSearch(q: SearchQuery): void
   onExitVirtual(): void
   onFolderLook(): void
+  onContext(path: string | null, x: number, y: number): void
+  onDropInternal(paths: string[], dest: string, copy: boolean): void
+  onDropFiles(files: File[], dest: string): void
 }
 
 const ROW = 28
@@ -146,6 +149,44 @@ export function Pane(props: Props) {
   }
 
   const sortMark = (k: SortKey) => (sort.key === k ? (sort.asc ? ' ▲' : ' ▼') : '')
+
+  // rows carry their own paths (not text) so a drag between panes stays typed
+  const dragPaths = (path: string) => (pane.sel.includes(path) ? pane.sel : [path])
+
+  const startDrag = (ev: React.DragEvent, path: string) => {
+    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(dragPaths(path)))
+    ev.dataTransfer.effectAllowed = 'copyMove'
+  }
+
+  const allowDrop = (ev: React.DragEvent) => {
+    const t = ev.dataTransfer.types
+    if (t.includes('application/x-mfm') || t.includes('Files')) {
+      ev.preventDefault()
+      ev.dataTransfer.dropEffect = ev.ctrlKey ? 'copy' : 'move'
+    }
+  }
+
+  const dropOn = (ev: React.DragEvent, dest: string) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const raw = ev.dataTransfer.getData('application/x-mfm')
+    if (raw) {
+      try {
+        props.onDropInternal(JSON.parse(raw) as string[], dest, ev.ctrlKey)
+      } catch {
+        // a foreign payload is not ours to act on
+      }
+      return
+    }
+    const files = [...ev.dataTransfer.files]
+    if (files.length) props.onDropFiles(files, dest)
+  }
+
+  const menu = (ev: React.MouseEvent, path: string | null) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    props.onContext(path, ev.clientX, ev.clientY)
+  }
 
   const runSearch = () => {
     if (!query && !content) return
@@ -332,7 +373,14 @@ export function Pane(props: Props) {
         </div>
       )}
 
-      <div className="rows" ref={listRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
+      <div
+        className="rows"
+        ref={listRef}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onDragOver={allowDrop}
+        onDrop={(e) => dropOn(e, cur)}
+        onContextMenu={(e) => menu(e, null)}
+      >
         {pane.error ? (
           <div className="error">{pane.error}</div>
         ) : entries.length === 0 ? (
@@ -353,6 +401,11 @@ export function Pane(props: Props) {
                 className={'row' + (pane.sel.includes(e.path) ? ' on' : '')}
                 style={{ top: (start + k) * ROW }}
                 title={e.path}
+                draggable
+                onDragStart={(ev) => startDrag(ev, e.path)}
+                onDragOver={allowDrop}
+                onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
+                onContextMenu={(ev) => menu(ev, e.path)}
                 onClick={(ev) => click(start + k, ev)}
                 onDoubleClick={() => props.onOpen(e.path)}
               >
@@ -377,6 +430,11 @@ export function Pane(props: Props) {
                   key={e.path}
                   className={'tile' + (pane.sel.includes(e.path) ? ' on' : '')}
                   style={{ top: r * TILE_H, insetInlineStart: c * TILE_W, width: TILE_W - 6 }}
+                  draggable
+                  onDragStart={(ev) => startDrag(ev, e.path)}
+                  onDragOver={allowDrop}
+                  onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
+                  onContextMenu={(ev) => menu(ev, e.path)}
                   onClick={(ev) => click(idx, ev)}
                   onDoubleClick={() => props.onOpen(e.path)}
                   title={e.path}

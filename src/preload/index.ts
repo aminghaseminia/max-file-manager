@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('api', {
   mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
+  preview: (p: string) => ipcRenderer.invoke('fs:preview', p),
+  hash: (paths: string[], algo: string) => ipcRenderer.invoke('fs:hash', paths, algo),
+  // a dropped File only becomes a path here, in preload
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   jobs: {
     start: (kind: string, sources: string[], dest: string) =>
       ipcRenderer.invoke('job:start', { kind, sources, dest }),

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
+import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FolderDialog } from './FolderDialog'
 import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
+import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
 import { SettingsPanel, type UiPrefs } from './SettingsPanel'
 import { Sidebar } from './Sidebar'
@@ -18,6 +20,7 @@ import {
   type SortKey
 } from './format'
 import {
+  ArchiveOpenIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
@@ -25,10 +28,16 @@ import {
   FolderPlusIcon,
   GaugeIcon,
   GridIcon,
+  LayersIcon,
   ListIcon,
   MenuIcon,
   MoonIcon,
   MoveIcon,
+  PaletteIcon,
+  PlayIcon,
+  PlusIcon,
+  PreviewIcon,
+  RefreshIcon,
   RenameIcon,
   SettingsIcon,
   SunIcon,
@@ -82,6 +91,9 @@ export default function App() {
   const [chrome, setChrome] = useState<Chrome>({ customTitlebar: true, rounded: true })
   const [ui, setUi] = useState<UiPrefs>({ sidebar: 'docked', sidebarOpen: true })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [menu, setMenu] = useState<{ path: string | null; x: number; y: number } | null>(null)
+  const [previewOn, setPreviewOn] = useState(false)
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
     null
   )
@@ -137,6 +149,17 @@ export default function App() {
   }, [])
 
   // transfers report progress from the main process; a finished job refreshes both panes
+  // a stray file dropped outside a pane must not navigate the window away
+  useEffect(() => {
+    const stop = (e: DragEvent) => e.preventDefault()
+    window.addEventListener('dragover', stop)
+    window.addEventListener('drop', stop)
+    return () => {
+      window.removeEventListener('dragover', stop)
+      window.removeEventListener('drop', stop)
+    }
+  }, [])
+
   useEffect(() => {
     void api.jobs.list().then(setJobs)
     const off = api.jobs.onUpdate((job) => {
@@ -389,6 +412,182 @@ export default function App() {
     reloadAll()
   }
 
+  const entryOf = (i: number, path: string | null) => {
+    const me = panes?.[i]
+    if (!me || !path) return undefined
+    const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
+    return source.find((e) => e.path === path)
+  }
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setNote('در حافظه کپی شد')
+    } catch {
+      setNote(text)
+    }
+  }
+
+  const shaOf = async (paths: string[]) => {
+    if (!paths.length) return
+    setNote('محاسبهٔ SHA-256…')
+    const r = await api.hash(paths, 'sha256')
+    const ok = r.filter((x) => x.hash)
+    if (!ok.length) {
+      setNote('hash محاسبه نشد')
+      return
+    }
+    setNote(
+      paths.length === 1
+        ? `SHA-256: ${ok[0].hash!.slice(0, 24)}…`
+        : `${fa(ok.length)} فایل hash شد`
+    )
+    await copyText(
+      paths.length === 1 ? ok[0].hash! : ok.map((x) => `${x.hash}  ${baseName(x.path)}`).join('\n')
+    )
+  }
+
+  const dropInternal = async (paths: string[], dest: string, copy: boolean) => {
+    if (!paths.length) return
+    await api.jobs.start(copy ? 'copy' : 'move', paths, dest)
+    setNote(`${copy ? 'کپی' : 'انتقال'} ${fa(paths.length)} مورد به ${baseName(dest)}`)
+  }
+
+  const dropFiles = async (files: File[], dest: string) => {
+    const paths = files.map((f) => api.pathForFile(f)).filter((p) => typeof p === 'string' && p)
+    if (!paths.length) return
+    await api.jobs.start('copy', paths, dest)
+    setNote(`کپی ${fa(paths.length)} مورد از بیرون`)
+  }
+
+  const togglePreview = () => {
+    // opening the panel with something already selected must show it, not an empty pane
+    if (!previewOn) setPreviewPath((cur) => cur ?? panes?.[active]?.sel[0] ?? null)
+    setPreviewOn((o) => !o)
+  }
+
+  const addTab = (i: number, dir: string) =>
+    setPanes((p) => p && patch(p, i, { tabs: [...p[i].tabs, dir], ti: p[i].tabs.length }))
+
+  const pickMenu = (id: string) => {
+    if (!menu || !panes) return
+    const me = panes[active]
+    const path = menu.path
+    switch (id) {
+      case 'open':
+        if (path) openEntry(active, path)
+        break
+      case 'archive':
+        if (path) void openArchive(active, path)
+        break
+      case 'copy':
+        void runSel(active, 'copy')
+        break
+      case 'move':
+        void runSel(active, 'move')
+        break
+      case 'rename':
+        openRename(active)
+        break
+      case 'batch':
+        if (me.sel.length > 1) setRenameTargets(me.sel)
+        break
+      case 'trash':
+        void runSel(active, 'trash')
+        break
+      case 'delete':
+        void runSel(active, 'delete')
+        break
+      case 'copyPath':
+        if (path) void copyText(path)
+        break
+      case 'sha':
+        void shaOf(me.sel.length ? me.sel : path ? [path] : [])
+        break
+      case 'size':
+        void computeSizes(active)
+        break
+      case 'look':
+        void openFolderLook(active)
+        break
+      case 'tabHere':
+        if (path) addTab(active, path)
+        break
+      case 'tabNew':
+        addTab(active, tabOf(me))
+        break
+      case 'preview':
+        if (path) {
+          setPreviewPath(path)
+          setPreviewOn(true)
+        }
+        break
+      case 'mkdir':
+        setPrompt({ kind: 'mkdir', value: '' })
+        break
+      case 'refresh':
+        void load(active, tabOf(me))
+        break
+      case 'flat':
+        void runFlat(active)
+        break
+      case 'dupes':
+        void runDupes(active)
+        break
+    }
+  }
+
+  const menuItems = (path: string | null): MenuItem[] => {
+    const me = panes?.[active]
+    if (!me) return []
+    const entry = entryOf(active, path)
+    if (!path) {
+      return [
+        { id: 'mkdir', label: 'پوشهٔ نو', key: 'F7', icon: <FolderPlusIcon /> },
+        { id: 'refresh', label: 'نوسازی', key: 'F3', icon: <RefreshIcon /> },
+        { sep: true },
+        { id: 'flat', label: 'نمای تخت', icon: <LayersIcon /> },
+        { id: 'dupes', label: 'فایل‌های تکراری', icon: <GaugeIcon /> },
+        { id: 'size', label: 'اندازهٔ این پوشه', key: 'F9', icon: <GaugeIcon /> },
+        { id: 'look', label: 'رنگ و آیکون این پوشه', icon: <PaletteIcon /> },
+        { sep: true },
+        { id: 'tabNew', label: 'تب نو', icon: <PlusIcon /> }
+      ]
+    }
+    const items: MenuItem[] = [
+      { id: 'open', label: entry?.dir ? 'باز کردن' : 'اجرا کردن', icon: <PlayIcon /> }
+    ]
+    if (entry && !entry.dir && isArchiveName(entry.name)) {
+      items.push({ id: 'archive', label: 'مرور آرشیو', icon: <ArchiveOpenIcon /> })
+    }
+    items.push(
+      { id: 'preview', label: 'پیش‌نمایش', icon: <PreviewIcon /> },
+      { sep: true },
+      { id: 'copy', label: 'کپی به پنجرهٔ مقابل', key: 'F5', icon: <CopyIcon /> },
+      { id: 'move', label: 'انتقال به پنجرهٔ مقابل', key: 'F6', icon: <MoveIcon /> },
+      { sep: true },
+      { id: 'rename', label: 'تغییر نام', key: 'F2', icon: <RenameIcon /> }
+    )
+    if (me.sel.length > 1) {
+      items.push({ id: 'batch', label: 'تغییر نام گروهی…', icon: <RenameIcon /> })
+    }
+    items.push(
+      { id: 'trash', label: 'سطل بازیافت', key: 'F8', icon: <TrashIcon /> },
+      { id: 'delete', label: 'حذف قطعی', key: 'Shift+F8', icon: <TrashIcon />, danger: true },
+      { sep: true },
+      { id: 'copyPath', label: 'کپی مسیر', icon: <CopyIcon /> },
+      { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
+    )
+    if (entry?.dir) {
+      items.push(
+        { id: 'size', label: 'محاسبهٔ اندازه', key: 'F9', icon: <GaugeIcon /> },
+        { id: 'look', label: 'رنگ و آیکون پوشه', icon: <PaletteIcon /> },
+        { id: 'tabHere', label: 'تب نو در این پوشه', icon: <PlusIcon /> }
+      )
+    }
+    return items
+  }
+
   const exitVirtual = (i: number) =>
     setPanes((p) => p && patch(p, i, { virtual: null, results: null, archive: null, sel: [] }))
 
@@ -552,6 +751,13 @@ export default function App() {
         </button>
         <span className="spacer" />
         {!chrome.customTitlebar && <span className="note">{note}</span>}
+        <button
+          className={'tb' + (previewOn ? ' on' : '')}
+          title="پنل پیش‌نمایش"
+          onClick={togglePreview}
+        >
+          <PreviewIcon />
+        </button>
         <button className="tb" title="بازگردانی آخرین عملیات (Ctrl+Z)" onClick={() => void doUndo()}>
           <UndoIcon />
         </button>
@@ -628,7 +834,8 @@ export default function App() {
             onUp={() => up(i)}
             onRefresh={() => void load(i, tabOf(pane))}
             onOpen={(path) => openEntry(i, path)}
-            onSel={(paths, mode) =>
+            onSel={(paths, mode) => {
+              if (previewOn) setPreviewPath(paths[0] ?? null)
               setPanes((p) => {
                 if (!p) return p
                 if (mode === 'set') return patch(p, i, { sel: paths })
@@ -638,7 +845,7 @@ export default function App() {
                   sel: all ? cur.filter((x) => !paths.includes(x)) : [...new Set([...cur, ...paths])]
                 })
               })
-            }
+            }}
             onFilter={(q) => setPanes((p) => p && patch(p, i, { filter: q }))}
             onTabNew={() =>
               setPanes(
@@ -666,8 +873,19 @@ export default function App() {
             onSearch={(q) => void runSearch(i, q)}
             onExitVirtual={() => exitVirtual(i)}
             onFolderLook={() => openFolderLook(i)}
+            onContext={(path, x, y) => setMenu({ path, x, y })}
+            onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
+            onDropFiles={(files, dest) => void dropFiles(files, dest)}
           />
         ))}
+
+        {previewOn && (
+          <PreviewPanel
+            entry={entryOf(active, previewPath) ?? null}
+            onOpen={(p) => void api.open(p)}
+            onClose={() => setPreviewOn(false)}
+          />
+        )}
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
@@ -745,6 +963,16 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.path)}
+          onPick={pickMenu}
+          onClose={() => setMenu(null)}
+        />
+      )}
 
       {folderLook && (
         <FolderDialog

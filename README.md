@@ -13,6 +13,11 @@ Folders carry their own colour and icon inside the folder itself (`.mfm.json`), 
 ![folders](docs/screenshot-folders.png)
 ![folder look](docs/screenshot-folder-look.png)
 
+Right-click menu and the preview panel (text, image, audio, video):
+
+![context menu](docs/screenshot-menu.png)
+![preview](docs/screenshot-preview.png)
+
 A real copy job in the operations bar, a zip browsed as a folder, and the floating sidebar:
 
 ![jobs](docs/screenshot-jobs.png)
@@ -25,7 +30,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.4** — phases 1–2 done, most of phase 3, and phase 4 started (zip/tar browsing + extraction). See [docs/FEATURES.md](docs/FEATURES.md) for the honest gaps: folder sync, filters on copy, labels, checksums, 7z/rar, network protocols.
+**Status: v0.5** — phases 1–2 done, most of phase 3, phase 4 started (zip/tar browsing + extraction) and phase 5 started (context menu, drag and drop, preview panel). See [docs/FEATURES.md](docs/FEATURES.md) for the honest gaps: folder sync, filters on copy, 7z/rar, network protocols, dragging *out* to the desktop, tray/shell integration.
 
 ## What works today
 
@@ -40,7 +45,11 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Undo** (Ctrl+Z) for move, rename and new folder
 - **Search** in the current folder tree: name with `*`/`?` or a regular expression, optional text inside content — results arrive as a virtual listing
 - **Flat view** and a **duplicate finder** (size + sha256, grouped)
+- **Right-click menu** with icons and shortcut hints: run, preview, browse archive, copy/move, rename (single or batch), trash, permanent delete, copy path, SHA-256, folder size, folder look, new tab
+- **Drag and drop**: drag rows onto the other pane or onto a folder (move, `Ctrl` = copy) through the same transfer queue; drop files from any other app onto a pane to copy them in
+- **Preview panel**: text (up to 200 KB), image, audio and video, with size/date and an open button
 - **Archives**: zip, tar, tar.gz/tgz open as a listing; F5 extracts the selection into the other pane (no external tools)
+- **SHA-256** of the selection from the context menu, copied to the clipboard
 - Folder size on demand (F9), bookmarks (Ctrl+D), hidden files (Ctrl+H), dark/light theme
 - Status bar with icon actions, not just shortcuts
 - Session restore: panes, tabs, theme, view, sort, bookmarks, chrome and sidebar prefs survive a restart
@@ -59,7 +68,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ```sh
 npm install
 npm run dev        # dev window, hot reload
-npm test           # 39 unit tests: transfers, undo, search, archives, folder meta, icon packs, pure helpers
+npm test           # 42 unit tests: transfers, undo, search, archives, previews, hashes, folder meta, icon packs, pure helpers
 npm run typecheck
 npm run build && npm start
 ```
@@ -92,9 +101,11 @@ src/main/archives.ts  zip/tar reading and extraction (fflate + built-in tar pars
 src/main/meta.ts      per-folder colour/icon in the folder's own .mfm.json
 src/main/icons.ts     discovers KDE/system icon packs and lists their icons
 src/main/ops.ts       remove (trash / permanent) + name-collision helper
+src/main/preview.ts   text/image/audio/video preview with size caps
+src/main/hash.ts      streaming sha256 (checksums and the duplicate finder)
 src/preload/index.ts  the only bridge into the renderer
 src/renderer/src/     React UI: App, Pane, Sidebar, TitleBar, SettingsPanel, FolderDialog,
-                      JobsBar, RenameDialog, Icons, format.ts
+                      ContextMenu, PreviewPanel, JobsBar, RenameDialog, Icons, format.ts
 docs/FEATURES.md      Directory Opus feature matrix and phases
 AGENTS.md             rules for AI agents working in this repo
 ```

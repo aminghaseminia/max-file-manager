@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
-import { createReadStream, promises as fs } from 'node:fs'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { hashFile } from './hash.ts'
 import type { Entry } from './types.ts'
 
 export type WalkOpts = {
@@ -98,15 +98,6 @@ export async function walk(
   }
   return { entries, scanned, capped }
 }
-
-const hashFile = (p: string): Promise<string | null> =>
-  new Promise((resolve) => {
-    const h = createHash('sha256')
-    const rs = createReadStream(p)
-    rs.on('data', (c) => h.update(c))
-    rs.on('end', () => resolve(h.digest('hex')))
-    rs.on('error', () => resolve(null))
-  })
 
 /** Files with identical size and sha256, tagged with a 1-based group number. */
 export async function findDupes(

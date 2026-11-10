@@ -357,3 +357,9 @@ export function FolderGlyph({ entry, size = 15 }: { entry: Entry; size?: number 
   }
   return <TypeIcon entry={entry} size={size} color={entry.color} />
 }
+export const PreviewIcon = () => (
+  <S>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M14.5 4v16" />
+  </S>
+)

@@ -62,6 +62,15 @@ export type StoredState = {
 
 export type Chrome = { customTitlebar: boolean; rounded: boolean }
 export type FolderMeta = { color?: string; icon?: string }
+export type PreviewKind = 'dir' | 'text' | 'image' | 'audio' | 'video' | 'binary'
+export type Preview = {
+  kind: PreviewKind
+  size: number
+  mtime: number
+  text?: string
+  capped?: boolean
+}
+export type HashResult = { path: string; hash: string | null }
 export type IconRef = { name: string; path: string }
 export type IconTheme = { name: string; dir: string }
 
@@ -83,6 +92,9 @@ export type Api = {
   mkdir(dir: string, name: string): Promise<Result>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<string>
+  preview(p: string): Promise<Preview | null>
+  hash(paths: string[], algo: string): Promise<HashResult[]>
+  pathForFile(file: File): string
   jobs: {
     start(kind: JobKind, sources: string[], dest: string): Promise<Job>
     pause(id: string): Promise<void>

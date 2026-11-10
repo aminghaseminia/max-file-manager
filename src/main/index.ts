@@ -4,7 +4,9 @@ import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive } from './archives.ts'
+import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
+import { preview } from './preview.ts'
 import { readMeta, setMeta, type FolderMeta } from './meta.ts'
 import { createEngine, type JobKind } from './jobs.ts'
 import { remove } from './ops.ts'
@@ -215,6 +217,12 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
+  )
+  ipcMain.handle('fs:preview', (_e, p: string) =>
+    path.isAbsolute(p) ? preview(p).catch(() => null) : null
+  )
+  ipcMain.handle('fs:hash', (_e, paths: string[], algo: string) =>
+    hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
