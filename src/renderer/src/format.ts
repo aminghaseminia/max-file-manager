@@ -118,6 +118,10 @@ export function typeLabel(e: Entry): string {
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
 
+/** Formats the archive reader understands (zip + tar family). */
+export const isArchiveName = (name: string): boolean =>
+  /\.(zip|tar|tgz|tar\.gz|tar\.bz2|tbz2)$/i.test(name)
+
 /** POSIX or Windows: parent folder of a path, keeping its own separator. */
 export function dirOf(p: string): string {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))

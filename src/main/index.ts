@@ -3,6 +3,9 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
+import { extract, listArchive } from './archives.ts'
+import { iconsIn, themeDirs } from './icons.ts'
+import { readMeta, setMeta, type FolderMeta } from './meta.ts'
 import { createEngine, type JobKind } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
@@ -12,6 +15,12 @@ import type { DirRef, Entry } from './types.ts'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mfm', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ])
+
+type Chrome = { customTitlebar: boolean; rounded: boolean }
+
+// frame/transparent are window-construction options, so the chrome choice is read before the window exists
+let chrome: Chrome = { customTitlebar: true, rounded: true }
+let win: BrowserWindow | null = null
 
 /** Sizes/mtimes need one stat per file; chunked so a 10k-file folder can't exhaust fds. */
 async function fillStats(entries: Entry[]): Promise<void> {
@@ -41,6 +50,17 @@ async function list(dir: string, showHidden: boolean) {
       ext: path.extname(d.name).slice(1).toLowerCase()
     }))
   await fillStats(entries)
+  // folder look comes from the folder's own marker file; capped so a 5k-folder directory stays quick
+  const folders = entries.filter((e) => e.dir).slice(0, 1000)
+  for (let i = 0; i < folders.length; i += 64) {
+    await Promise.all(
+      folders.slice(i, i + 64).map(async (e) => {
+        const m = await readMeta(e.path)
+        if (m?.color) e.color = m.color
+        if (m?.icon) e.icon = m.icon
+      })
+    )
+  }
   const parent = path.dirname(dir)
   return { path: dir, parent: parent === dir ? null : parent, entries }
 }
@@ -105,7 +125,7 @@ async function dirSize(root: string): Promise<{ bytes: number; files: number; ca
 
 const stateFile = () => path.join(app.getPath('userData'), 'state.json')
 
-async function readState(): Promise<unknown> {
+async function readState(): Promise<any> {
   const raw = await fs.readFile(stateFile(), 'utf8').catch(() => '')
   try {
     return raw ? JSON.parse(raw) : null
@@ -114,13 +134,26 @@ async function readState(): Promise<unknown> {
   }
 }
 
+/** Writes only the chrome key, so the renderer's session state is never clobbered. */
+async function saveChrome(next: Chrome): Promise<void> {
+  const st = (await readState()) ?? {}
+  st.chrome = next
+  await fs.mkdir(path.dirname(stateFile()), { recursive: true })
+  await fs.writeFile(stateFile(), JSON.stringify(st, null, 2))
+}
+
 function createWindow(): BrowserWindow {
-  const win = new BrowserWindow({
+  const frameless = chrome.customTitlebar
+  const transparent = frameless && chrome.rounded
+  const w = new BrowserWindow({
     width: 1320,
-    height: 840,
-    minWidth: 760,
-    minHeight: 460,
-    backgroundColor: '#16181d',
+    height: 860,
+    minWidth: 780,
+    minHeight: 480,
+    frame: !frameless,
+    transparent,
+    backgroundColor: transparent ? '#00000000' : '#16181d',
+    hasShadow: true,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -130,23 +163,30 @@ function createWindow(): BrowserWindow {
       sandbox: false
     }
   })
-  win.on('ready-to-show', () => win.show())
+  w.on('ready-to-show', () => w.show())
+  w.on('maximize', () => w.webContents.send('window:maximized', true))
+  w.on('unmaximize', () => w.webContents.send('window:maximized', false))
   const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) win.loadURL(devUrl)
-  else win.loadFile(path.join(__dirname, '../renderer/index.html'))
-  return win
+  if (devUrl) w.loadURL(devUrl)
+  else w.loadFile(path.join(__dirname, '../renderer/index.html'))
+  return w
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   protocol.handle('mfm', (req) => {
     const p = decodeURIComponent(new URL(req.url).pathname)
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
     return net.fetch(pathToFileURL(p).toString())
   })
 
-  const win = createWindow()
+  const boot = await readState()
+  if (boot?.chrome) {
+    chrome = { customTitlebar: !!boot.chrome.customTitlebar, rounded: !!boot.chrome.rounded }
+  }
+
+  win = createWindow()
   const engine = createEngine((job) => {
-    if (!win.isDestroyed()) win.webContents.send('job:update', job)
+    if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   })
 
   ipcMain.handle('fs:list', (_e, dir: string, showHidden: boolean) => list(dir, showHidden))
@@ -165,6 +205,20 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:dupes', (_e, dir: string) =>
     path.isAbsolute(dir) ? findDupes(dir) : { entries: [], capped: false }
   )
+  ipcMain.handle('fs:archive', (_e, p: string) =>
+    path.isAbsolute(p) ? listArchive(p) : { entries: [], capped: false }
+  )
+  ipcMain.handle('fs:extract', (_e, a: { archive: string; names: string[]; dest: string }) =>
+    path.isAbsolute(a.archive) && path.isAbsolute(a.dest)
+      ? extract(a.archive, a.names ?? [], a.dest)
+      : { done: 0, errors: ['مسیر نامعتبر'] }
+  )
+  ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
+    path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
+  )
+  ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
+  ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
+  ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
@@ -182,6 +236,23 @@ app.whenReady().then(() => {
   ipcMain.handle('shell:open', (_e, p: string) =>
     path.isAbsolute(p) ? shell.openPath(p) : Promise.resolve('bad path')
   )
+  ipcMain.handle('window:control', (_e, action: 'minimize' | 'maximize' | 'close') => {
+    if (!win) return
+    if (action === 'minimize') win.minimize()
+    else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
+    else win.close()
+  })
+  ipcMain.handle('window:isMax', () => !!win?.isMaximized())
+  ipcMain.handle('window:getChrome', () => chrome)
+  ipcMain.handle('window:setChrome', async (_e, next: Chrome) => {
+    chrome = { customTitlebar: !!next.customTitlebar, rounded: !!next.rounded }
+    await saveChrome(chrome)
+    // frame/transparent cannot change on a live window: rebuild it, the UI comes back from state.json
+    const old = win
+    win = createWindow()
+    if (old && !old.isDestroyed()) old.destroy()
+    return chrome
+  })
   ipcMain.handle('state:get', () => readState())
   ipcMain.handle('state:set', async (_e, s: unknown) => {
     await fs.mkdir(path.dirname(stateFile()), { recursive: true })
@@ -195,9 +266,12 @@ app.whenReady().then(() => {
   if (shot) {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
-        if (js) await win.webContents.executeJavaScript(js).catch((e) => console.log('SMOKE_JS_ERR ' + e))
+        if (js && win) {
+          const out = await win.webContents.executeJavaScript(js).catch((e) => 'ERR ' + e)
+          if (out !== undefined) console.log('SMOKE_JS_OUT ' + JSON.stringify(out))
+        }
         await new Promise((r) => setTimeout(r, 900))
-        const img = await win.webContents.capturePage()
+        const img = await win!.webContents.capturePage()
         await fs.writeFile(shot, img.toPNG())
         console.log('SMOKE_OK ' + shot)
         app.quit()
@@ -206,7 +280,7 @@ app.whenReady().then(() => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) win = createWindow()
   })
 })
 

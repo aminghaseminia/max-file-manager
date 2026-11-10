@@ -114,11 +114,19 @@ const GLYPHS: Record<Kind, (p: { size?: number }) => ReactElement> = {
 }
 
 /** Type icon + colour class; one call site per list row and grid tile. */
-export function TypeIcon({ entry, size = 15 }: { entry: Entry; size?: number }) {
+export function TypeIcon({
+  entry,
+  size = 15,
+  color
+}: {
+  entry: Entry
+  size?: number
+  color?: string
+}) {
   const kind = kindOf(entry)
   const Glyph = GLYPHS[kind]
   return (
-    <span className={'ic ' + kind}>
+    <span className={'ic ' + kind} style={color ? { color } : undefined}>
       <Glyph size={size} />
     </span>
   )
@@ -287,3 +295,65 @@ export const UndoIcon = () => (
   </S>
 )
 
+export const MenuIcon = () => (
+  <S>
+    <path d="M4 6.5h16M4 12h16M4 17.5h10" />
+  </S>
+)
+export const SettingsIcon = () => (
+  <S>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 4v2M12 18v2M4.5 7.5l1.7 1.7M17.8 14.8l1.7 1.7M4.5 16.5l1.7-1.7M17.8 9.2l1.7-1.7" />
+  </S>
+)
+export const MinusIcon = () => (
+  <S size={13}>
+    <path d="M5 12h14" />
+  </S>
+)
+export const MaximizeIcon = () => (
+  <S size={13}>
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+  </S>
+)
+export const RestoreIcon = () => (
+  <S size={13}>
+    <rect x="4" y="8" width="12" height="12" rx="2" />
+    <path d="M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
+  </S>
+)
+export const ArchiveOpenIcon = () => (
+  <S>
+    <path d="M3 8a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.5 8H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <path d="M12 11v2M12 15v1" />
+  </S>
+)
+export const PaletteIcon = () => (
+  <S>
+    <path d="M12 3a9 9 0 1 0 0 18c1.7 0 2.5-1 2.5-2 0-1.6-1.5-1.7-1.5-3 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.6-4-6.4-9-6.4z" />
+    <path d="M7.5 9.5h.01M11 7h.01M15 8h.01" />
+  </S>
+)
+
+const BUILTIN: Record<string, (p: { size?: number }) => ReactElement> = {
+  folder: FolderIcon,
+  star: () => <StarIcon filled />,
+  home: HomeIcon,
+  archive: ArchiveIcon,
+  image: ImageIcon
+}
+
+/** A folder's own look: built-in glyph, a themed svg/png from disk, or the plain type icon. */
+export function FolderGlyph({ entry, size = 15 }: { entry: Entry; size?: number }) {
+  if (entry.icon?.startsWith('g:')) {
+    const Glyph = BUILTIN[entry.icon.slice(2)]
+    if (Glyph) {
+      return (
+        <span className="ic dir" style={entry.color ? { color: entry.color } : undefined}>
+          <Glyph size={size} />
+        </span>
+      )
+    }
+  }
+  return <TypeIcon entry={entry} size={size} color={entry.color} />
+}

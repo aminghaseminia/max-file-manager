@@ -156,6 +156,7 @@ input {
   flex: 1;
   display: flex;
   min-height: 0;
+  position: relative;
 }
 
 /* ---------- sidebar ---------- */
@@ -859,4 +860,229 @@ input {
 .dlg-actions button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ---------- app-owned title bar ---------- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding-inline: 10px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.titlebar button,
+.titlebar .winbtns {
+  -webkit-app-region: no-drag;
+}
+.tb-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.tb-note {
+  color: var(--dim);
+  font-size: 11.5px;
+  max-width: 44vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.winbtns {
+  display: flex;
+  gap: 2px;
+  margin-inline-start: 6px;
+}
+.winbtn {
+  width: 30px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--dim);
+}
+.winbtn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.winbtn.close:hover {
+  background: #c0392b;
+  color: #fff;
+}
+
+/* rounded window (frameless + transparent) */
+html[data-rounded='1'] body {
+  background: transparent;
+}
+html[data-rounded='1'] .app {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---------- settings panel ---------- */
+.app {
+  position: relative;
+}
+.settings {
+  position: absolute;
+  z-index: 30;
+  top: calc(var(--chrome-h, 0px) + 42px);
+  inset-inline-start: 10px;
+  width: 306px;
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.35);
+}
+.set-head {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.set-label {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* ---------- floating sidebar ---------- */
+.side-float {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  padding: 8px;
+  gap: 8px;
+}
+.side-float-panel {
+  position: relative;
+  z-index: 1;
+  width: 208px;
+  flex: none;
+  height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.side-float-panel .side {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+.side-float-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+/* ---------- status bar actions & folder look ---------- */
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.sbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+.sbtn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.ic-img {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  object-fit: contain;
+}
+.swatches {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 2px solid transparent;
+}
+.swatch.on {
+  border-color: var(--text);
+}
+.swatch.none {
+  background: var(--panel-2);
+  border: 1px dashed var(--line);
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1;
+}
+.iconbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 5px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.icell {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  color: var(--dim);
+}
+.icell:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.icell.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.icell img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.row-gap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.dialog select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
 }

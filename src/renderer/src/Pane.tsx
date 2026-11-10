@@ -11,6 +11,7 @@ import {
   typeLabel,
   type SortKey
 } from './format'
+import { FolderGlyph } from './Icons'
 import {
   ArrowUpIcon,
   ChevronLeftIcon,
@@ -21,6 +22,7 @@ import {
   GaugeIcon,
   LayersIcon,
   MoveIcon,
+  PaletteIcon,
   PlusIcon,
   RefreshIcon,
   RenameIcon,
@@ -33,7 +35,7 @@ import {
 
 export type View = 'list' | 'grid'
 
-export type Virtual = { kind: 'flat' | 'search' | 'dupes'; label: string }
+export type Virtual = { kind: 'flat' | 'search' | 'dupes' | 'archive'; label: string }
 
 export type PaneState = {
   tabs: string[]
@@ -43,9 +45,11 @@ export type PaneState = {
   sel: string[]
   filter: string
   listing: Listing | null
-  /** flat view / search / duplicates replace the folder listing with these */
+  /** flat view / search / duplicates / archive replace the folder listing with these */
   virtual: Virtual | null
   results: Entry[] | null
+  /** archive path while virtual.kind === 'archive' */
+  archive: string | null
   error: string
   loading: boolean
 }
@@ -81,6 +85,7 @@ type Props = {
   onDupes(): void
   onSearch(q: SearchQuery): void
   onExitVirtual(): void
+  onFolderLook(): void
 }
 
 const ROW = 28
@@ -245,6 +250,9 @@ export function Pane(props: Props) {
         <button className="tb" title="اندازهٔ پوشه (F9)" onClick={props.onSize}>
           <GaugeIcon />
         </button>
+        <button className="tb" title="رنگ و آیکون پوشه" onClick={props.onFolderLook}>
+          <PaletteIcon />
+        </button>
         <button
           className={'tb' + (pane.virtual?.kind === 'flat' ? ' on' : '')}
           title="نمای تخت (Ctrl+Shift+F)"
@@ -349,7 +357,7 @@ export function Pane(props: Props) {
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
-                  <TypeIcon entry={e} />
+                  {e.dir ? <FolderGlyph entry={e} /> : e.icon ? <img className="ic-img" src={mediaUrl(e.icon)} alt="" /> : <TypeIcon entry={e} />}
                   <span dir="auto" className="trunc">{e.name}</span>
                 </span>
                 <span className="kind">{e.group ? groupLabel(e) : typeLabel(e)}</span>
@@ -376,6 +384,10 @@ export function Pane(props: Props) {
                   <span className="thumb">
                     {!e.dir && isImage(e.ext) && e.size < 8_000_000 ? (
                       <img src={mediaUrl(e.path)} alt="" loading="lazy" draggable={false} />
+                    ) : e.dir ? (
+                      <FolderGlyph entry={e} size={34} />
+                    ) : e.icon ? (
+                      <img src={mediaUrl(e.icon)} alt="" />
                     ) : (
                       <TypeIcon entry={e} size={34} />
                     )}

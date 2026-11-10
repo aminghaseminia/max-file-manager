@@ -4,9 +4,20 @@ A dual-pane desktop file manager for KDE and Windows, aiming at Directory Opus l
 
 ![screenshot](docs/screenshot.png)
 
-A real copy job in the operations bar, with progress, speed, pause and cancel:
+App-owned title bar, rounded window, settings panel — no system decorations unless you ask for them:
+
+![chrome](docs/screenshot-chrome.png)
+
+Folders carry their own colour and icon inside the folder itself (`.mfm.json`), and any KDE icon pack on the machine can be used:
+
+![folders](docs/screenshot-folders.png)
+![folder look](docs/screenshot-folder-look.png)
+
+A real copy job in the operations bar, a zip browsed as a folder, and the floating sidebar:
 
 ![jobs](docs/screenshot-jobs.png)
+![archive](docs/screenshot-archive.png)
+![float sidebar](docs/screenshot-float-sidebar.png)
 
 Grid view with real image thumbnails (light theme), flat view, and batch rename with a live preview:
 
@@ -14,23 +25,25 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 ![flat view](docs/screenshot-flat.png)
 ![batch rename](docs/screenshot-rename.png)
 
-**Status: v0.3** — phases 1–2 are done and most of phase 3; see [docs/FEATURES.md](docs/FEATURES.md) for what is still missing (folder sync, filters on copy, labels, checksums).
+**Status: v0.4** — phases 1–2 done, most of phase 3, and phase 4 started (zip/tar browsing + extraction). See [docs/FEATURES.md](docs/FEATURES.md) for the honest gaps: folder sync, filters on copy, labels, checksums, 7z/rar, network protocols.
 
 ## What works today
 
 - Two independent panes (source / destination), tabs in each, per-pane back/forward history
 - List view (name / type / size / date, sortable, folders first) and grid view with thumbnails
 - Virtualized rendering in both views: a 100k-entry folder mounts only the visible slice
+- **Window chrome**: app-owned title bar (drag, minimize/maximize/close, double-click) or the system title bar — your choice, plus **rounded corners** on a transparent frameless window
+- **Floating or docked sidebar**, toggled from the toolbar; settings live in an in-app panel
+- **Folder look that travels with the folder**: colour and icon stored in a hidden `.mfm.json` inside the folder, with icons taken from any KDE icon pack (Breeze, Papirus, Oxygen, Adwaita…) or your own SVG/PNG folder
 - **Transfers go through a queue**: byte progress, speed, pause/resume, cancel, per-item error list
 - File operations: copy (F5), move (F6), new folder (F7), trash (F8), permanent delete (Shift+F8), rename (F2), batch rename (F2 on a multi-selection) with a live preview
 - **Undo** (Ctrl+Z) for move, rename and new folder
 - **Search** in the current folder tree: name with `*`/`?` or a regular expression, optional text inside content — results arrive as a virtual listing
-- **Flat view**: every file under the current folder in one list, with relative paths
-- **Duplicate finder**: identical files by size + sha256, grouped and numbered
+- **Flat view** and a **duplicate finder** (size + sha256, grouped)
+- **Archives**: zip, tar, tar.gz/tgz open as a listing; F5 extracts the selection into the other pane (no external tools)
 - Folder size on demand (F9), bookmarks (Ctrl+D), hidden files (Ctrl+H), dark/light theme
-- Sidebar folder tree (lazily loaded) plus bookmarked folders
-- Session restore: panes, tabs, theme, view, sort and bookmarks survive a restart
-- Roots: `/`, home and removable mounts on Linux; drive letters on Windows
+- Status bar with icon actions, not just shortcuts
+- Session restore: panes, tabs, theme, view, sort, bookmarks, chrome and sidebar prefs survive a restart
 - Safety: existing names are never overwritten (`name (2).ext`), relative paths are refused, trash goes through the OS trash, a cancelled transfer removes its partial file
 
 ## Keyboard
@@ -39,14 +52,14 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - `F8` trash · `Shift+F8` delete permanently · `F9` folder size · `F3` refresh · `Ctrl+Z` undo
 - `Alt+←` / `Alt+→` back / forward · `Backspace` up · `Tab` switch active pane
 - `Ctrl+A` select all · `Esc` clear selection and filter · `Ctrl+F` focus the filter
-- `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark this folder · `Enter` open selection
+- `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark this folder · `Enter` open selection / open archive
 
 ## Run it
 
 ```sh
 npm install
 npm run dev        # dev window, hot reload
-npm test           # unit tests: transfers, undo, search, rename planner, pure helpers
+npm test           # 39 unit tests: transfers, undo, search, archives, folder meta, icon packs, pure helpers
 npm run typecheck
 npm run build && npm start
 ```
@@ -67,17 +80,21 @@ SMOKE_JS="[...document.querySelectorAll('.tb')][0].click()" SMOKE_SHOT=/tmp/mfm.
 
 ## Why Electron
 
-Directory listing, stat, transfers and hashing are native `fs`/`crypto` calls in the main process — the renderer only paints. What web tech buys here: a UI that can be rebuilt cheaply as the feature set grows (dual panes, tabs, virtual lists, toolbars, dialogs) and one codebase for KDE and Windows. What it costs: a ~150 MB baseline of memory versus a native toolkit, and OS integration (context menus, thumbnails, tray) has to be written by hand instead of coming from the desktop environment.
+Directory listing, stat, transfers, hashing and archive reading are native `fs`/`crypto` work in the main process — the renderer only paints. What web tech buys here: a UI that can be rebuilt cheaply as the feature set grows (dual panes, tabs, virtual lists, toolbars, dialogs) and one codebase for KDE and Windows. What it costs: a ~150 MB baseline of memory versus a native toolkit, and OS integration (context menus, thumbnails, tray) has to be written by hand instead of coming from the desktop environment.
 
 ## Layout
 
 ```
-src/main/index.ts     window, filesystem IPC, folder sizes, session state, mfm:// protocol
+src/main/index.ts     window + chrome, filesystem IPC, folder sizes, session state, mfm:// protocol
 src/main/jobs.ts      transfer queue: progress, pause, cancel, undo, batch rename, mkdir
 src/main/search.ts    recursive walk, name matcher, content search, duplicate finder
+src/main/archives.ts  zip/tar reading and extraction (fflate + built-in tar parser)
+src/main/meta.ts      per-folder colour/icon in the folder's own .mfm.json
+src/main/icons.ts     discovers KDE/system icon packs and lists their icons
 src/main/ops.ts       remove (trash / permanent) + name-collision helper
 src/preload/index.ts  the only bridge into the renderer
-src/renderer/src/     React UI: App, Pane (list/grid), Sidebar, JobsBar, RenameDialog, Icons, format.ts
+src/renderer/src/     React UI: App, Pane, Sidebar, TitleBar, SettingsPanel, FolderDialog,
+                      JobsBar, RenameDialog, Icons, format.ts
 docs/FEATURES.md      Directory Opus feature matrix and phases
 AGENTS.md             rules for AI agents working in this repo
 ```

@@ -1,19 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type DirRef, type Entry, type Job } from './api'
+import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
+import { FolderDialog } from './FolderDialog'
 import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
 import { RenameDialog } from './RenameDialog'
+import { SettingsPanel, type UiPrefs } from './SettingsPanel'
 import { Sidebar } from './Sidebar'
-import { baseName, dirOf, fa, fmtSize, joinPath, orderEntries, type SortKey } from './format'
+import { TitleBar } from './TitleBar'
 import {
+  baseName,
+  dirOf,
+  fa,
+  fmtSize,
+  isArchiveName,
+  joinPath,
+  orderEntries,
+  type SortKey
+} from './format'
+import {
+  CopyIcon,
   EyeIcon,
   EyeOffIcon,
   FolderIcon,
+  FolderPlusIcon,
   GaugeIcon,
   GridIcon,
   ListIcon,
+  MenuIcon,
   MoonIcon,
+  MoveIcon,
+  RenameIcon,
+  SettingsIcon,
   SunIcon,
+  TrashIcon,
   UndoIcon
 } from './Icons'
 
@@ -27,6 +46,7 @@ const newPane = (dir: string): PaneState => ({
   listing: null,
   virtual: null,
   results: null,
+  archive: null,
   error: '',
   loading: true
 })
@@ -59,6 +79,12 @@ export default function App() {
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
+  const [chrome, setChrome] = useState<Chrome>({ customTitlebar: true, rounded: true })
+  const [ui, setUi] = useState<UiPrefs>({ sidebar: 'docked', sidebarOpen: true })
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
+    null
+  )
   const [booted, setBooted] = useState(false)
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
   const refreshRef = useRef<() => void>(() => {})
@@ -66,6 +92,17 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    void api.window.getChrome().then(setChrome)
+  }, [])
+
+  // rounded corners are CSS on a transparent frameless window; nothing else can round it
+  useEffect(() => {
+    const on = chrome.customTitlebar && chrome.rounded
+    document.documentElement.dataset.rounded = on ? '1' : '0'
+    document.documentElement.style.setProperty('--chrome-h', chrome.customTitlebar ? '36px' : '0px')
+  }, [chrome])
 
   // boot: restore the last session, fall back to home
   useEffect(() => {
@@ -79,6 +116,14 @@ export default function App() {
         setSort({ key: s.sort.key as SortKey, asc: !!s.sort.asc })
       }
       if (Array.isArray(s.marks)) setMarks(s.marks.filter((m) => typeof m === 'string' && m))
+      if (s.ui) {
+        setUi({
+          sidebar: s.ui.sidebar === 'float' ? 'float' : 'docked',
+          sidebarOpen: s.ui.sidebarOpen !== false,
+          iconDirs: Array.isArray(s.ui.iconDirs) ? s.ui.iconDirs.filter((d) => typeof d === 'string') : [],
+          iconTheme: typeof s.ui.iconTheme === 'string' ? s.ui.iconTheme : undefined
+        })
+      }
       if (s.active === 1) setActive(1)
       const mk = (p?: { tabs?: string[]; ti?: number }): PaneState => {
         const tabs = (p?.tabs ?? []).filter((t) => typeof t === 'string' && t)
@@ -118,11 +163,13 @@ export default function App() {
         theme,
         sort,
         view,
-        marks
+        marks,
+        chrome,
+        ui
       })
     }, 500)
     return () => clearTimeout(t)
-  }, [booted, panes, active, hidden, theme, sort, view, marks])
+  }, [booted, panes, active, hidden, theme, sort, view, marks, ui])
 
   const path0 = panes ? tabOf(panes[0]) : ''
   const path1 = panes ? tabOf(panes[1]) : ''
@@ -193,6 +240,20 @@ export default function App() {
       setNote('چیزی انتخاب نشده')
       return
     }
+    if (me.archive) {
+      const dest = tabOf(panes[1 - i])
+      const names = me.sel.map((p) => p.slice(me.archive!.length + 1))
+      setNote('در حال استخراج…')
+      const r = await api.extract(me.archive, names, dest)
+      setNote(
+        r.errors.length
+          ? `استخراج: ${fa(r.done)} فایل، ${fa(r.errors.length)} خطا — ${r.errors[0]}`
+          : `استخراج: ${fa(r.done)} فایل به ${baseName(dest)}`
+      )
+      setPanes((p) => p && patch(p, i, { sel: [] }))
+      await load(1 - i, dest)
+      return
+    }
     if (kind === 'copy' || kind === 'move') {
       const dest = tabOf(panes[1 - i])
       await api.jobs.start(kind, me.sel, dest)
@@ -247,12 +308,28 @@ export default function App() {
     await load(active, tabOf(me))
   }
 
+  const openArchive = async (i: number, archive: string) => {
+    setPanes((p) => p && patch(p, i, { loading: true }))
+    const r = await api.archive(archive)
+    setPanes((p) =>
+      p &&
+      patch(p, i, {
+        virtual: { kind: 'archive', label: `${baseName(archive)} · ${fa(r.entries.length)}` },
+        results: r.entries,
+        archive,
+        sel: [],
+        loading: false
+      })
+    )
+  }
+
   const openEntry = (i: number, p: string) => {
     const e =
       panes?.[i].listing?.entries.find((x) => x.path === p) ??
       panes?.[i].results?.find((x) => x.path === p)
     if (!e) return
     if (e.dir) go(i, e.path)
+    else if (isArchiveName(e.name)) void openArchive(i, e.path)
     else void api.open(e.path)
   }
 
@@ -295,8 +372,25 @@ export default function App() {
     setNote(r.entries.length ? `${fa(r.entries.length)} فایل تکراری در ${fa(groups)} گروه` : 'فایل تکراری پیدا نشد')
   }
 
+  const openFolderLook = async (i: number) => {
+    if (!panes) return
+    const me = panes[i]
+    const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
+    const picked = source.find((e) => e.path === me.sel[0])
+    const dir = picked?.dir ? picked.path : tabOf(me)
+    const meta = await api.getMeta(dir)
+    setFolderLook({ dir, name: baseName(dir), meta })
+  }
+
+  const saveFolderLook = async (patch: FolderMeta) => {
+    if (!folderLook) return
+    const meta = await api.setMeta(folderLook.dir, patch)
+    setFolderLook({ ...folderLook, meta })
+    reloadAll()
+  }
+
   const exitVirtual = (i: number) =>
-    setPanes((p) => p && patch(p, i, { virtual: null, results: null, sel: [] }))
+    setPanes((p) => p && patch(p, i, { virtual: null, results: null, archive: null, sel: [] }))
 
   const openRename = (i: number) => {
     if (!panes) return
@@ -432,15 +526,32 @@ export default function App() {
 
   return (
     <div className="app">
+      {chrome.customTitlebar && <TitleBar note={note} />}
       <header className="topbar">
-        <span className="brand">
-          <span className="logo">
-            <FolderIcon />
+        {!chrome.customTitlebar && (
+          <span className="brand">
+            <span className="logo">
+              <FolderIcon />
+            </span>
+            مدیر فایل مکس
           </span>
-          مدیر فایل مکس
-        </span>
+        )}
+        <button
+          className={'tb' + (ui.sidebarOpen ? ' on' : '')}
+          title="سایدبار"
+          onClick={() => setUi((u) => ({ ...u, sidebarOpen: !u.sidebarOpen }))}
+        >
+          <MenuIcon />
+        </button>
+        <button
+          className={'tb' + (settingsOpen ? ' on' : '')}
+          title="تنظیمات"
+          onClick={() => setSettingsOpen((o) => !o)}
+        >
+          <SettingsIcon />
+        </button>
         <span className="spacer" />
-        <span className="note">{note}</span>
+        {!chrome.customTitlebar && <span className="note">{note}</span>}
         <button className="tb" title="بازگردانی آخرین عملیات (Ctrl+Z)" onClick={() => void doUndo()}>
           <UndoIcon />
         </button>
@@ -470,14 +581,31 @@ export default function App() {
         </button>
       </header>
 
-      <div className="body">
-        <Sidebar
-          roots={roots}
-          marks={marks}
-          activePath={curPath}
-          onNav={(d) => go(active, d)}
-          onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+      {settingsOpen && (
+        <SettingsPanel
+          chrome={chrome}
+          ui={ui}
+          theme={theme}
+          onChrome={(c) => {
+            setChrome(c)
+            void api.window.setChrome(c)
+          }}
+          onUi={(p) => setUi((u) => ({ ...u, ...p }))}
+          onTheme={setTheme}
+          onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      <div className="body" onMouseDown={() => settingsOpen && setSettingsOpen(false)}>
+        {ui.sidebarOpen && ui.sidebar === 'docked' && (
+          <Sidebar
+            roots={roots}
+            marks={marks}
+            activePath={curPath}
+            onNav={(d) => go(active, d)}
+            onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+          />
+        )}
 
         {panes.map((pane, i) => (
           <Pane
@@ -537,8 +665,30 @@ export default function App() {
             onDupes={() => void runDupes(i)}
             onSearch={(q) => void runSearch(i, q)}
             onExitVirtual={() => exitVirtual(i)}
+            onFolderLook={() => openFolderLook(i)}
           />
         ))}
+
+        {ui.sidebarOpen && ui.sidebar === 'float' && (
+          <div className="side-float">
+            <div className="side-float-panel">
+              <Sidebar
+                roots={roots}
+                marks={marks}
+                activePath={curPath}
+                onNav={(d) => {
+                  go(active, d)
+                  setUi((u) => ({ ...u, sidebarOpen: false }))
+                }}
+                onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+              />
+            </div>
+            <div
+              className="side-float-backdrop"
+              onMouseDown={() => setUi((u) => ({ ...u, sidebarOpen: false }))}
+            />
+          </div>
+        )}
       </div>
 
       <JobsBar
@@ -564,10 +714,49 @@ export default function App() {
         <span>{panes[active].sel.length ? `${fa(panes[active].sel.length)} انتخاب‌شده` : ''}</span>
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         <span className="spacer" />
-        <span className="keys">
-          F5 کپی · F6 انتقال · F7 پوشه · F8 سطل · F2 نام · F9 اندازه · Ctrl+Z بازگردانی · Ctrl+Shift+F نمای تخت
-        </span>
+        <div className="status-actions">
+          <button className="sbtn" title="کپی (F5)" onClick={() => void runSel(active, 'copy')}>
+            <CopyIcon />
+            <span>کپی</span>
+          </button>
+          <button className="sbtn" title="انتقال (F6)" onClick={() => void runSel(active, 'move')}>
+            <MoveIcon />
+            <span>انتقال</span>
+          </button>
+          <button className="sbtn" title="تغییر نام (F2)" onClick={() => openRename(active)}>
+            <RenameIcon />
+            <span>نام</span>
+          </button>
+          <button className="sbtn" title="پوشهٔ نو (F7)" onClick={() => setPrompt({ kind: 'mkdir', value: '' })}>
+            <FolderPlusIcon />
+            <span>پوشه</span>
+          </button>
+          <button className="sbtn" title="سطل بازیافت (F8)" onClick={() => void runSel(active, 'trash')}>
+            <TrashIcon />
+            <span>سطل</span>
+          </button>
+          <button className="sbtn" title="اندازهٔ پوشه (F9)" onClick={() => void computeSizes(active)}>
+            <GaugeIcon />
+            <span>اندازه</span>
+          </button>
+          <button className="sbtn" title="بازگردانی (Ctrl+Z)" onClick={() => void doUndo()}>
+            <UndoIcon />
+            <span>بازگردانی</span>
+          </button>
+        </div>
       </footer>
+
+      {folderLook && (
+        <FolderDialog
+          dir={folderLook.dir}
+          name={folderLook.name}
+          meta={folderLook.meta}
+          iconDirs={ui.iconDirs ?? []}
+          onSave={(patch) => void saveFolderLook(patch)}
+          onAddIconDir={(dir) => setUi((u) => ({ ...u, iconDirs: [...(u.iconDirs ?? []), dir] }))}
+          onClose={() => setFolderLook(null)}
+        />
+      )}
 
       {renameTargets && (
         <RenameDialog

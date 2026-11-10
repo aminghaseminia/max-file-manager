@@ -7,6 +7,9 @@ export type Entry = {
   ext: string
   /** duplicate group number, only set by api.dupes */
   group?: number
+  /** per-folder look, from the folder's own .mfm.json */
+  color?: string
+  icon?: string
 }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }
 export type DirRef = { name: string; path: string }
@@ -48,7 +51,19 @@ export type StoredState = {
   sort?: { key: string; asc: boolean }
   view?: 'list' | 'grid'
   marks?: string[]
+  chrome?: { customTitlebar: boolean; rounded: boolean }
+  ui?: {
+    sidebar: 'docked' | 'float'
+    sidebarOpen: boolean
+    iconDirs?: string[]
+    iconTheme?: string
+  }
 }
+
+export type Chrome = { customTitlebar: boolean; rounded: boolean }
+export type FolderMeta = { color?: string; icon?: string }
+export type IconRef = { name: string; path: string }
+export type IconTheme = { name: string; dir: string }
 
 export type Api = {
   list(dir: string, showHidden: boolean): Promise<Listing>
@@ -59,6 +74,12 @@ export type Api = {
   remove(paths: string[], permanent: boolean): Promise<Result>
   walk(dir: string, opts: WalkOpts): Promise<WalkResult>
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
+  archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
+  extract(archive: string, names: string[], dest: string): Promise<Result>
+  getMeta(dir: string): Promise<FolderMeta | null>
+  setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
+  iconThemes(extra: string[]): Promise<IconTheme[]>
+  iconsIn(themeDir: string): Promise<IconRef[]>
   mkdir(dir: string, name: string): Promise<Result>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<string>
@@ -72,6 +93,15 @@ export type Api = {
     onUpdate(cb: (job: Job) => void): () => void
   }
   undo: { run(): Promise<{ done: number; label: string }>; depth(): Promise<number> }
+  window: {
+    minimize(): Promise<void>
+    maximize(): Promise<void>
+    close(): Promise<void>
+    isMaximized(): Promise<boolean>
+    getChrome(): Promise<Chrome>
+    setChrome(c: Chrome): Promise<Chrome>
+    onMaximized(cb: (max: boolean) => void): () => void
+  }
   state: { get(): Promise<StoredState | null>; set(s: StoredState): Promise<boolean> }
 }
 
