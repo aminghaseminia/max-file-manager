@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FolderDialog } from './FolderDialog'
+import { DiffDialog } from './DiffDialog'
 import { Editor } from './Editor'
 import { Gallery } from './Gallery'
 import { JobsBar } from './JobsBar'
@@ -11,6 +12,7 @@ import { RenameDialog } from './RenameDialog'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { Sidebar } from './Sidebar'
+import { SyncDialog } from './SyncDialog'
 import { WindowButtons } from './WindowButtons'
 import { CMD_ICON } from './commandIcons'
 import { COMMAND_BY_ID, COMMANDS, type CommandId } from './commands'
@@ -30,6 +32,7 @@ import {
   ArchiveOpenIcon,
   ChevronLeftIcon,
   DriveIcon,
+  DupeIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
@@ -118,6 +121,15 @@ export default function App() {
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
   const [labelFor, setLabelFor] = useState<{ dir: string; name: string } | null>(null)
+  const [sync, setSync] = useState<{
+    left: string
+    right: string
+    rows: any[]
+    capped: boolean
+    result: string
+    busy: boolean
+  } | null>(null)
+  const [diff, setDiff] = useState<{ a: string; b: string; result: any } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
@@ -749,6 +761,12 @@ export default function App() {
       case 'openTab':
         if (path) addTab(active, path)
         break
+      case 'sync':
+        void openSync()
+        break
+      case 'diff':
+        void openDiff()
+        break
       case 'reveal':
         if (path) void api.reveal(path)
         break
@@ -871,6 +889,10 @@ export default function App() {
       { id: 'delete', label: 'حذف قطعی', key: 'Shift+F8', icon: <TrashIcon />, danger: true },
       { sep: true },
       { id: 'copyPath', label: 'کپی مسیر', icon: <CopyIcon /> },
+      { id: 'sync', label: 'همگام‌سازی با پنجرهٔ مقابل', key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
+      ...(me.sel.length === 2
+        ? [{ id: 'diff', label: 'مقایسهٔ دو فایل انتخاب‌شده', key: 'Ctrl+Shift+Z', icon: <DupeIcon /> }]
+        : []),
       { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', icon: <DriveIcon /> },
       { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
@@ -977,7 +999,33 @@ export default function App() {
     return orderEntries(source, sort.key, sort.asc, pane.filter)
   }
 
+  const openSync = async () => {
+    const left = tabOf(panes![active])
+    const right = tabOf(panes![1 - active])
+    if (!right || right === left) {
+      setNote('پنجرهٔ مقابل پوشهٔ دیگری باشد')
+      return
+    }
+    setNote('در حال مقایسه…')
+    const r = await api.syncCompare(left, right, false)
+    setNote(`${fa(r.rows.filter((x) => x.state !== 'same').length)} تفاوت`)
+    setSync({ left, right, rows: r.rows, capped: r.capped, result: '', busy: false })
+  }
+
+  const openDiff = async () => {
+    const me = panes![active]
+    if (me.sel.length !== 2) {
+      setNote('برای مقایسه دو فایل را انتخاب کن')
+      return
+    }
+    const [a, b] = me.sel
+    const r = await api.diffFiles(a, b)
+    setDiff({ a, b, result: r })
+  }
+
   const RUN: Record<CommandId, () => void> = {
+    sync: () => void openSync(),
+    diff: () => void openDiff(),
     copy: () => void runSel(active, 'copy'),
     move: () => void runSel(active, 'move'),
     edit: () => {
@@ -1459,6 +1507,35 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {sync && (
+        <SyncDialog
+          left={sync.left}
+          right={sync.right}
+          rows={sync.rows}
+          capped={sync.capped}
+          busy={sync.busy}
+          result={sync.result}
+          onClose={() => setSync(null)}
+          onApply={(mode, deleteExtra) => {
+            setSync({ ...sync, busy: true })
+            void api.syncApply(sync.left, sync.right, sync.rows, mode, deleteExtra).then(async (r) => {
+              setSync({
+                ...sync,
+                busy: false,
+                result: r.errors.length
+                  ? `کپی ${fa(r.copied)} · حذف ${fa(r.deleted)} · ${fa(r.errors.length)} خطا — ${r.errors[0]}`
+                  : `کپی ${fa(r.copied)} · حذف ${fa(r.deleted)} · بدون خطا`
+              })
+              await Promise.all([load(0, tabOf(panes![0])), load(1, tabOf(panes![1]))])
+            })
+          }}
+        />
+      )}
+
+      {diff && (
+        <DiffDialog a={diff.a} b={diff.b} result={diff.result} onClose={() => setDiff(null)} />
+      )}
 
       {labelFor && (
         <div className="modal" onMouseDown={() => setLabelFor(null)}>

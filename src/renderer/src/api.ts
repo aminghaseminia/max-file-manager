@@ -17,6 +17,19 @@ export type Entry = {
   w?: number
   h?: number
 }
+export type SyncRow = {
+  rel: string
+  state: string
+  left?: { size: number; mtime: number; dir: boolean }
+  right?: { size: number; mtime: number; dir: boolean }
+}
+export type DiffResult = {
+  lines: { kind: 'same' | 'add' | 'del' | 'change'; a?: number; b?: number; text: string }[]
+  added: number
+  removed: number
+  binary: boolean
+  coarse: boolean
+}
 export type Listing = {
   path: string
   parent: string | null
@@ -105,6 +118,19 @@ export type Api = {
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
+  syncCompare(
+    left: string,
+    right: string,
+    deep?: boolean
+  ): Promise<{ rows: SyncRow[]; leftCount: number; rightCount: number; capped: boolean }>
+  syncApply(
+    left: string,
+    right: string,
+    rows: SyncRow[],
+    mode: 'ltr' | 'rtl',
+    deleteExtra?: boolean
+  ): Promise<{ copied: number; deleted: number; skipped: number; errors: string[] }>
+  diffFiles(a: string, b: string): Promise<DiffResult>
   readText(p: string): Promise<{ text: string; size: number } | { error: string }>
   writeText(path: string, text: string): Promise<{ ok: true } | { error: string }>
   htmlToPdf(html: string, out: string, theme?: string): Promise<{ path: string } | { error: string }>

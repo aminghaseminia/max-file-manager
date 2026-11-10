@@ -2141,3 +2141,136 @@ html[data-rounded='1'] .app {
   font-size: 10.5px;
   padding: 1px 7px;
 }
+
+/* ---------- sync + diff dialogs ---------- */
+.sync-dialog,
+.diff-dialog {
+  width: min(860px, 92vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+}
+.sync-paths {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--dim);
+  margin: 6px 0 10px;
+  word-break: break-all;
+}
+.sync-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.sync-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.chip.add {
+  color: #79c98f;
+  border-color: rgba(121, 201, 143, 0.4);
+  background: rgba(121, 201, 143, 0.12);
+}
+.chip.del {
+  color: #e88b83;
+  border-color: rgba(232, 139, 131, 0.4);
+  background: rgba(232, 139, 131, 0.12);
+}
+.chip.warn {
+  color: #e5c07b;
+  border-color: rgba(229, 192, 123, 0.4);
+  background: rgba(229, 192, 123, 0.12);
+}
+.sync-list {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 120px;
+  background: var(--panel-2);
+}
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--line);
+}
+.sync-rel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sync-size {
+  font-size: 10.5px;
+}
+.sync-result {
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+.diff-body {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  min-height: 160px;
+}
+.diff-line {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-line.add {
+  background: rgba(121, 201, 143, 0.12);
+}
+.diff-line.del {
+  background: rgba(232, 139, 131, 0.12);
+}
+.diff-line.change {
+  background: rgba(229, 192, 123, 0.12);
+}
+.diff-n {
+  width: 34px;
+  flex: none;
+  text-align: end;
+  color: var(--dim);
+  opacity: 0.6;
+  user-select: none;
+}
+.diff-mark {
+  width: 10px;
+  flex: none;
+  color: var(--dim);
+}
+.diff-text {
+  flex: 1;
+}

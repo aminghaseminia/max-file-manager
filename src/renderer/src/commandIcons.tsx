@@ -38,6 +38,8 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   trash: <TrashIcon />,
   hardDelete: <XIcon size={12} />,
   size: <GaugeIcon />,
+  sync: <SplitIcon />,
+  diff: <DupeIcon />,
   undo: <UndoIcon />,
   selectAll: <FileIcon />,
   refresh: <RefreshIcon />,

@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('api', {
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
+  syncCompare: (left: string, right: string, deep?: boolean) =>
+    ipcRenderer.invoke('sync:compare', { left, right, deep }),
+  syncApply: (left: string, right: string, rows: unknown, mode: string, deleteExtra?: boolean) =>
+    ipcRenderer.invoke('sync:apply', { left, right, rows, mode, deleteExtra }),
+  diffFiles: (a: string, b: string) => ipcRenderer.invoke('fs:diff', { a, b }),
   readText: (p: string) => ipcRenderer.invoke('fs:readText', p),
   writeText: (path: string, text: string) => ipcRenderer.invoke('fs:writeText', { path, text }),
   htmlToPdf: (html: string, out: string, theme?: string) =>

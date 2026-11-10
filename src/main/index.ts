@@ -11,6 +11,7 @@ import { preview } from './preview.ts'
 import { LABELS, readMeta, setLabel, setMeta, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
+import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
@@ -309,6 +310,15 @@ app.whenReady().then(async () => {
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
   })
+  ipcMain.handle('sync:compare', (_e, a: { left: string; right: string; deep?: boolean }) =>
+    compareTrees(a?.left ?? '', a?.right ?? '', !!a?.deep)
+  )
+  ipcMain.handle(
+    'sync:apply',
+    (_e, a: { left: string; right: string; rows: SyncRow[]; mode: 'ltr' | 'rtl'; deleteExtra?: boolean }) =>
+      applySync(a.left, a.right, a.rows ?? [], a.mode, !!a.deleteExtra, (p) => shell.trashItem(p))
+  )
+  ipcMain.handle('fs:diff', (_e, a: { a: string; b: string }) => diffFiles(a?.a ?? '', a?.b ?? ''))
   ipcMain.handle('fs:readText', (_e, p: string) => readTextFile(p ?? ''))
   ipcMain.handle('fs:writeText', (_e, a: { path: string; text: string }) =>
     writeTextFile(a?.path ?? '', String(a?.text ?? ''))

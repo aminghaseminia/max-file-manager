@@ -17,6 +17,11 @@ The editor takes exactly the preview's place (and can go full-window):
 
 ![editor docked](docs/screenshot-editor-docked.png)
 
+Two-folder synchronisation with a direction and a trash-safe delete, and a line diff for two files:
+
+![sync](docs/screenshot-sync.png)
+![diff](docs/screenshot-diff.png)
+
 Coloured labels per file, stored in the folder's own `.mfm.json`, with counts in the sidebar and a `#label` filter:
 
 ![labels](docs/screenshot-labels.png)
@@ -87,6 +92,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - `Ctrl+L` address bar, selection size and free space in the status bar
 - **Every command lives in one registry** (`commands.ts`) and every key is rebindable in preferences → «کلید میان‌بر», with conflict detection and per-command reset; the accelerators are plain text in `state.json`
 - **Configurable command toolbar** (add/remove/order) under the title row
+- **Folder sync** (`Ctrl+Shift+Y`): recursive compare, newest-wins direction, «فقط تفاوت‌ها», extras go to the trash
+- **File compare** (`Ctrl+Shift+Z` on two selected files): line diff with both line numbers, binary detection, coarse mode for huge files
 - **Gap analysis** against Directory Opus 13 and Krusader: [`docs/GAPS.md`](docs/GAPS.md)
 - **Desktop integration**: «ترمینال اینجا» (`Ctrl+Alt+T`, konsole/gnome-terminal/xfce4/x-terminal or `cmd`), «نمایش در فایل‌منیجر سیستم», and dragging files **out** of the app into any other program
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch

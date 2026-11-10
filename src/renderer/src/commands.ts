@@ -18,6 +18,8 @@ export type CommandId =
   | 'gallery'
   | 'flat'
   | 'dupes'
+  | 'sync'
+  | 'diff'
   | 'undo'
   | 'selectAll'
   | 'filter'
@@ -48,6 +50,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'trash', label: 'به سطل بازیافت', key: 'F8', group: 'file' },
   { id: 'hardDelete', label: 'حذف قطعی', key: 'Shift+Delete', group: 'file' },
   { id: 'size', label: 'محاسبهٔ اندازه', key: 'F9', group: 'file' },
+  { id: 'sync', label: 'همگام‌سازی با پنجرهٔ مقابل', key: 'Ctrl+Shift+Y', group: 'transfer' },
+  { id: 'diff', label: 'مقایسهٔ دو فایل', key: 'Ctrl+Shift+Z', group: 'file' },
   { id: 'undo', label: 'واگرد', key: 'Ctrl+Z', group: 'file' },
   { id: 'selectAll', label: 'انتخاب همه', key: 'Ctrl+A', group: 'file' },
   { id: 'refresh', label: 'تازه‌سازی', key: 'Ctrl+R', group: 'view' },
