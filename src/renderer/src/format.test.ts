@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { setLang } from './i18n.ts'
 import test from 'node:test'
 import {
   baseName,
@@ -31,11 +32,13 @@ const e = (name: string, dir: boolean, size = 0, mtime = 0, ext = ''): Entry => 
 })
 
 test('fa: Persian digits', () => {
+  setLang('fa')
   assert.equal(fa(2026), '۲۰۲۶')
   assert.equal(fa('a1b2'), 'a۱b۲')
 })
 
 test('fmtSize in Persian', () => {
+  setLang('fa')
   assert.equal(fmtSize(0, false), '۰ بایت')
   assert.equal(fmtSize(999, false), '۹۹۹ بایت')
   assert.equal(fmtSize(1024, false), '۱٫۰ کیلوبایت')
@@ -46,8 +49,17 @@ test('fmtSize in Persian', () => {
 })
 
 test('fmtDate: padded and Persian', () => {
+  setLang('fa')
   assert.equal(fmtDate(0), '')
   assert.match(fmtDate(Date.UTC(2026, 0, 2, 3, 4)), /^[۰-۹]{4}-[۰-۹]{2}-[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}$/)
+})
+
+test('the same helpers read as English when the language is English', () => {
+  setLang('en')
+  assert.equal(fa(2026), '2026')
+  assert.equal(fmtSize(0, false), '0 B')
+  assert.match(fmtDate(Date.UTC(2024, 2, 20, 9, 5), 'iso'), /^2024-03-20 \d{2}:\d{2}$/)
+  setLang('fa')
 })
 
 test('crumbs: posix and windows', () => {
@@ -68,6 +80,7 @@ test('mediaUrl: encodable and windows-safe', () => {
 })
 
 test('kindOf and typeLabel', () => {
+  setLang('fa')
   assert.equal(kindOf(e('d', true)), 'dir')
   assert.equal(kindOf(e('p.png', false, 1, 0, 'png')), 'image')
   assert.equal(kindOf(e('m.ts', false, 1, 0, 'ts')), 'code')
@@ -160,6 +173,7 @@ test('dirOf / joinPath keep the platform separator', () => {
 })
 
 test('groupLabel prefers the duplicate group number', () => {
+  setLang('fa')
   assert.equal(groupLabel({ ...e('x.txt', false, 1, 0, 'txt'), group: 2 }), 'گروه ۲')
   assert.equal(groupLabel(e('d', true)), 'پوشه')
 })

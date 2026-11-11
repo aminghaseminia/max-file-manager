@@ -335,7 +335,7 @@ export function Gallery({
           {cur?.name ?? ''}
         </span>
         <span className="pill">
-          {fa(Math.min(at + 1, total))} از {fa(total)}
+          {t('{a} از {b}', { a: fa(Math.min(at + 1, total)), b: fa(total) })}
         </span>
         {edit && (
           <span className="pill edit">

@@ -21,7 +21,7 @@ import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
 import { WindowButtons } from './WindowButtons'
 import { CMD_ICON } from './commandIcons'
-import { COMMAND_BY_ID, COMMANDS, type CommandId } from './commands'
+import { COMMAND_BY_ID, COMMANDS, labelOf, type CommandId } from './commands'
 import { formatAccel, matchAccel } from './keys'
 import {
   baseName,
@@ -438,7 +438,7 @@ export default function App() {
     if (kind === 'copy' || kind === 'move') {
       const dest = tabOf(panes[1 - i])
       await api.jobs.start(kind, me.sel, dest, transferOpts())
-      setNote(`${OP_LABEL[kind]} ${fa(me.sel.length)} مورد آغاز شد`)
+      setNote(t('{op} برای {n} مورد آغاز شد', { op: OP_LABEL[kind], n: fa(me.sel.length) }))
       setPanes((p) => p && patch(p, i, { sel: [] }))
       return
     }
@@ -482,7 +482,7 @@ export default function App() {
       const r = await api.size(t)
       setSizes((s) => ({ ...s, [t]: fmtSize(r.bytes, false) + (r.capped ? '…' : '') }))
     }
-    setNote(`اندازهٔ ${fa(targets.length)} مورد محاسبه شد`)
+    setNote(t('اندازهٔ {n} مورد محاسبه شد', { n: fa(targets.length) }))
   }
 
   const submitPrompt = async () => {
@@ -633,7 +633,7 @@ export default function App() {
     const paths = files.map((f) => api.pathForFile(f)).filter((p) => typeof p === 'string' && p)
     if (!paths.length) return
     await api.jobs.start('copy', paths, dest, transferOpts())
-    setNote(`کپی ${fa(paths.length)} مورد از بیرون`)
+    setNote(t('کپی {n} مورد از بیرون', { n: fa(paths.length) }))
   }
 
   const togglePreview = () => {
@@ -1177,7 +1177,7 @@ export default function App() {
         .map((x) => x.trim())
         .filter(Boolean)
     })
-    setNote(`${fa(r.rows.filter((x) => x.state !== 'same').length)} تفاوت`)
+    setNote(t('{n} تفاوت', { n: fa(r.rows.filter((x) => x.state !== 'same').length) }))
     setSync({ left, right, rows: r.rows, capped: r.capped, result: '', busy: false, compareBy, ignore })
   }
 
@@ -1484,11 +1484,11 @@ export default function App() {
               <button
                 key={id}
                 className="cmdb"
-                title={`${c.label} (${formatAccel(prefs.shortcuts[id] ?? c.key)})`}
+                title={`${labelOf(c)} (${formatAccel(prefs.shortcuts[id] ?? c.key)})`}
                 onClick={() => RUN[id]?.()}
               >
                 {CMD_ICON[id]}
-                <span>{c.label}</span>
+                <span>{labelOf(c)}</span>
               </button>
             )
           })}
@@ -1688,17 +1688,17 @@ export default function App() {
           {panes[active].virtual
             ? `${fa(visible.length)} نتیجه`
             : panes[active].listing
-              ? `${fa(visible.length)} مورد`
+              ? t('{n} مورد', { n: fa(visible.length) })
               : panes[active].loading
                 ? t('در حال خواندن…')
                 : t('فهرستی نیست')}
         </span>
         <span>
           {panes[active].sel.length
-            ? `${fa(panes[active].sel.length)} انتخاب‌شده · ${fmtSize(selSize, false, prefs.sizeFormat)}`
+            ? t('{n} انتخاب‌شده · {size}', { n: fa(panes[active].sel.length), size: fmtSize(selSize, false, prefs.sizeFormat) })
             : ''}
         </span>
-        {free != null && <span>آزاد: {fmtSize(free, false, prefs.sizeFormat)}</span>}
+        {free != null && <span>{t('آزاد:')} {fmtSize(free, false, prefs.sizeFormat)}</span>}
         {update?.newer && (
           <button
             className="update-chip"
@@ -1967,9 +1967,7 @@ export default function App() {
                   setLabelFor(null)
                   setNote(t('برچسب برداشته شد'))
                 }}
-              >
-                بدون برچسب
-              </button>
+              >{t('بدون برچسب')}</button>
             </div>
           </div>
         </div>
@@ -1992,9 +1990,7 @@ export default function App() {
                   setConfirmAsk(null)
                   void runRemove(ask.kind, ask.paths)
                 }}
-              >
-                بله
-              </button>
+              >{t('بله')}</button>
               <button onClick={() => setConfirmAsk(null)}>{t(t('انصراف'))}</button>
             </div>
           </div>

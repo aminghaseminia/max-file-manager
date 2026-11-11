@@ -1,14 +1,15 @@
-import { t } from './i18n.ts'
+import { getLang, t } from './i18n.ts'
 import type { Entry } from './api.ts'
 
 export type SortKey = 'name' | 'size' | 'mtime' | 'ext'
 
-const FA_DIGITS = t('۰۱۲۳۴۵۶۷۸۹')
+const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹'
 
 /** Persian digits for anything the user reads; paths and file names stay untouched. */
-export const fa = (s: string | number): string => String(s).replace(/[0-9]/g, (d) => FA_DIGITS[+d])
+export const fa = (s: string | number): string =>
+  getLang() === 'fa' ? String(s).replace(/[0-9]/g, (d) => FA_DIGITS[+d]) : String(s)
 
-const UNITS = [t('بایت'), t('کیلوبایت'), t('مگابایت'), t('گیگابایت'), t('ترابایت'), t('پتابایت')]
+const UNITS = ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت', 'پتابایت']
 
 /** Persian civil (Jalali) date from a unix ms timestamp — the conversion users actually read. */
 export function toJalali(ms: number): [number, number, number] {
@@ -47,12 +48,12 @@ export type DateFormat = 'iso' | 'jalali' | 'short'
 /** Human size; folders report nothing unless their size was computed. */
 export function fmtSize(bytes: number, dir: boolean, format: SizeFormat = 'human'): string {
   if (dir) return ''
-  if (format === 'bytes') return `${fa(bytes)} بایت`
-  if (!bytes) return `۰ ${UNITS[0]}`
+  if (format === 'bytes') return `${fa(bytes)} ${t('بایت')}`
+  if (!bytes) return `${fa(0)} ${t(UNITS[0])}`
   const i = Math.min(UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
   const v = bytes / 1024 ** i
-  const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0).replace('.', t('٫'))
-  return `${fa(n)} ${UNITS[i]}`
+  const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0).replace('.', getLang() === 'fa' ? t('٫') : '.')
+  return `${fa(n)} ${t(UNITS[i])}`
 }
 
 /** ۲۰۲۶-۱۱-۱۱ ۰۱:۰۵ (میلادی) · ۱۴۰۵-۰۸-۲۰ (شمسی) · ۰۱:۰۵ امروز (کوتاه) */
@@ -184,16 +185,17 @@ const KIND: Record<string, Kind> = {
 
 export const kindOf = (e: Entry): Kind => (e.dir ? 'dir' : (KIND[e.ext] ?? 'file'))
 
+/** Persian source names; translated at call time so the language can change at runtime. */
 const LABEL: Record<Kind, string> = {
-  dir: t('پوشه'), image: t('تصویر'), video: t('ویدئو'), audio: t('صدا'), archive: t('بایگانی'),
-  text: t('متن'), doc: t('سند'), pdf: 'PDF', sheet: t('صفحه گسترده'), slides: t('ارائه'),
-  code: t('کد'), file: t('فایل')
+  dir: 'پوشه', image: 'تصویر', video: 'ویدئو', audio: 'صدا', archive: 'بایگانی',
+  text: 'متن', doc: 'سند', pdf: 'PDF', sheet: 'صفحه گسترده', slides: 'ارائه',
+  code: 'کد', file: 'فایل'
 }
 
 /** Persian type name; unknown extensions show themselves instead of a useless «فایل». */
 export function typeLabel(e: Entry): string {
   const k = kindOf(e)
-  return k === 'file' && e.ext ? e.ext.toUpperCase() : LABEL[k]
+  return k === 'file' && e.ext ? e.ext.toUpperCase() : t(LABEL[k])
 }
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
@@ -217,7 +219,8 @@ export function joinPath(dir: string, name: string): string {
 
 
 /** Group number for duplicate results; anything else shows its type. */
-export const groupLabel = (e: Entry): string => (e.group ? `گروه ${fa(e.group)}` : typeLabel(e))
+export const groupLabel = (e: Entry): string =>
+  e.group ? t('گروه {n}', { n: fa(e.group) }) : typeLabel(e)
 
 export type RenameMode = 'template' | 'regex'
 export type RenameOpts = {

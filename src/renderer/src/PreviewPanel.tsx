@@ -100,7 +100,7 @@ export function PreviewPanel({
         </span>
         {imageIndex && (
           <span className="pill">
-            {fa(imageIndex.at)} از {fa(imageIndex.total)}
+            {t('{a} از {b}', { a: fa(imageIndex.at), b: fa(imageIndex.total) })}
           </span>
         )}
         <span className="spacer" />
@@ -220,7 +220,7 @@ export function PreviewPanel({
             </div>
             {!entry.dir && (
               <button className="btn" onClick={() => onOpen(entry.path)}>
-                باز کردن
+                {t('باز کردن')}
               </button>
             )}
           </div>

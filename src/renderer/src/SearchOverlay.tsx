@@ -99,7 +99,7 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
             onChange={(e) => setQ(e.target.value)}
           />
           <span className="dim search-stats">
-            {stats ? `${stats.files} فایل · ${stats.dirs} پوشه · ${age}` : '…'}
+            {stats ? t('{files} فایل · {dirs} پوشه · {age}', { files: stats.files, dirs: stats.dirs, age }) : '…'}
           </span>
           <button className="tb" title={t(t('به‌روزرسانی ایندکس'))} onClick={() => void reindex()}>
             <RefreshIcon />
@@ -140,7 +140,7 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
         </div>
 
         <div className="search-foot dim">
-          ↑↓ جابه‌جایی · Enter رفتن به پوشه · Ctrl+Enter باز کردن فایل · Esc بستن
+          {t('↑↓ جابه‌جایی · Enter رفتن به پوشه · Ctrl+Enter باز کردن فایل · Esc بستن')}
         </div>
       </div>
     </div>

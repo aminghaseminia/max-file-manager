@@ -492,9 +492,7 @@ export function Pane(props: Props) {
             <input type="checkbox" checked={regex} onChange={(e) => setRegex(e.target.checked)} />
             regex
           </label>
-          <button className="btn" onClick={runSearch}>
-            جست‌وجو
-          </button>
+          <button className="btn" onClick={runSearch}>{t('جست‌وجو')}</button>
         </div>
       )}
 
@@ -502,7 +500,7 @@ export function Pane(props: Props) {
         <div className="headwrap" ref={headRef}>
         <div className="head" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
           <button className="col" onClick={() => props.onSort('name')}>
-            نام{sortMark('name')}
+            {t('نام')}{sortMark('name')}
           </button>
           {props.columns.map((c) => {
             const meta = COL_META[c]

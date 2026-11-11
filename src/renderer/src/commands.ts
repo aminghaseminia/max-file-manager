@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 /**
  * One list of commands. The toolbar, the function-key bar and the shortcut editor all read
  * from here, so adding a command means one line and it shows up everywhere.
@@ -84,6 +85,12 @@ export const COMMANDS: CommandDef[] = [
   { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' }
 ]
+
+export const GROUP_ORDER: CommandGroup[] = ['transfer', 'file', 'view', 'tab', 'window']
+
+export const groupLabelOf = (g: CommandGroup): string => t(GROUP_LABEL[g])
+
+export const labelOf = (c: { label: string } | undefined): string => (c ? t(c.label) : '')
 
 export const COMMAND_BY_ID: Record<string, CommandDef> = Object.fromEntries(
   COMMANDS.map((c) => [c.id, c])

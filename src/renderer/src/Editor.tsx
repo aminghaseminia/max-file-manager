@@ -170,14 +170,14 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
         {isMd && (
           <div className="seg ed-mode">
             <button className={rich ? 'on' : ''} onClick={() => setMode('visual')} title={t(t('ویرایشگر بصری'))}>
-              بصری
+              {t('بصری')}
             </button>
             <button
               className={!rich ? 'on' : ''}
               onClick={() => setMode('source')}
               title={t(t('متن مارک‌داون'))}
             >
-              متن
+              {t('متن')}
             </button>
           </div>
         )}
@@ -266,8 +266,8 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
       )}
 
       <footer className="ed-foot">
-        <span>{lineCount} خط</span>
-        <span>{value.length} کاراکتر</span>
+        <span>{t('{n} خط', { n: lineCount })}</span>
+        <span>{t('{n} کاراکتر', { n: value.length })}</span>
         <span className="spacer" />
         <span>{dirty ? t('ذخیره‌نشده') : t('ذخیره‌شده')}</span>
         <span className="dim">{t(t('Ctrl+S ذخیره · Esc بستن'))}</span>

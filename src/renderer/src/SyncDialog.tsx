@@ -11,15 +11,18 @@ export type SyncRow = {
 }
 
 const LABEL: Record<string, string> = {
-  same: t('یکسان'),
-  leftOnly: t('فقط مبدأ'),
-  rightOnly: t('فقط مقصد'),
-  leftNewer: t('مبدأ جدیدتر'),
-  rightNewer: t('مقصد جدیدتر'),
-  sizeDiff: t('اندازه متفاوت'),
-  contentDiff: t('محتوا متفاوت'),
-  typeDiff: t('نوع متفاوت')
+  same: 'یکسان',
+  leftOnly: 'فقط مبدأ',
+  rightOnly: 'فقط مقصد',
+  leftNewer: 'مبدأ جدیدتر',
+  rightNewer: 'مقصد جدیدتر',
+  sizeDiff: 'اندازه متفاوت',
+  contentDiff: 'محتوا متفاوت',
+  typeDiff: 'نوع متفاوت'
 }
+
+/** translated at render time, so switching the language does not need a restart */
+const labelOfState = (state: string): string => t(labelOfState(state) ?? state)
 
 const TONE: Record<string, string> = {
   same: '',
@@ -130,17 +133,17 @@ export function SyncDialog({
         </div>
 
         <div className="sync-summary">
-          <span className="chip add">{fa(count('leftOnly') + count('leftNewer'))} از مبدأ</span>
-          <span className="chip del">{fa(count('rightOnly') + count('rightNewer'))} از مقصد</span>
-          <span className="chip warn">{fa(count('sizeDiff') + count('contentDiff') + count('typeDiff'))} مشکوک</span>
-          <span className="chip">{fa(count('same'))} یکسان</span>
+          <span className="chip add">{t('{n} از مبدأ', { n: fa(count('leftOnly') + count('leftNewer')) })}</span>
+          <span className="chip del">{t('{n} از مقصد', { n: fa(count('rightOnly') + count('rightNewer')) })}</span>
+          <span className="chip warn">{t('{n} مشکوک', { n: fa(count('sizeDiff') + count('contentDiff') + count('typeDiff')) })}</span>
+          <span className="chip">{t('{n} یکسان', { n: fa(count('same')) })}</span>
           {capped && <span className="chip warn">{t(t('فهرست بریده شد'))}</span>}
         </div>
 
         <div className="sync-list">
           {shown.slice(0, 500).map((r) => (
             <div className="sync-row" key={r.rel}>
-              <span className={'chip ' + (TONE[r.state] ?? '')}>{LABEL[r.state] ?? r.state}</span>
+              <span className={'chip ' + (TONE[r.state] ?? '')}>{labelOfState(r.state) ?? r.state}</span>
               <span className="sync-rel" dir="auto">
                 {r.rel}
               </span>

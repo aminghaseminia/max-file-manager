@@ -24,6 +24,11 @@ export type DoubleClick = 'open' | 'gallery' | 'preview'
 export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dims' | 'rating'
 
 /** Optional columns, in the order the user arranged them (name is always first). */
+export const colLabel = (id: string): string => {
+  const c = COLUMNS.find((x) => x.id === id)
+  return c ? t(c.label) : id
+}
+
 export const COLUMNS: { id: ColId; label: string }[] = [
   { id: 'type', label: t('نوع') },
   { id: 'size', label: t('اندازه') },
@@ -107,7 +112,7 @@ export type Prefs = {
 }
 
 export const DEFAULTS: Prefs = {
-  lang: 'fa',
+  lang: 'en',
   theme: 'dark',
   view: 'list',
   foldersFirst: true,

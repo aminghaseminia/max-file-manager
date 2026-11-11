@@ -24,8 +24,7 @@ export function AgentsPage() {
   return (
     <>
       <div className="hint">
-        با فعال‌کردن این بخش، ایجنت‌های دیگر (Claude Code، Codex، opencode، هر کلاینت MCP) می‌توانند
-        از طریق پل stdio همین امکانات را صدا بزنند. پیش‌فرض «خاموش» و حالت «فقط خواندن» است.
+        {t('با فعال‌کردن این بخش، ایجنت‌های دیگر (Claude Code، Codex، opencode، هر کلاینت MCP) می‌توانند از طریق پل stdio همین امکانات را صدا بزنند. پیش‌فرض «خاموش» و حالت «فقط خواندن» است.')}
       </div>
 
       <div className="pref-row">
@@ -51,7 +50,7 @@ export function AgentsPage() {
       <div className="pref-row">
         <div className="pref-label">
           <span>{t(t('توکن'))}</span>
-          <span className="hint">فایل {st ? 'mcp.json' : '…'} با دسترسی 600</span>
+          <span className="hint">{t('فایل')} {st ? 'mcp.json' : '…'} {t('با دسترسی 600')}</span>
         </div>
         <div className="pref-control">
           <code className="token-box" dir="ltr">
@@ -67,7 +66,7 @@ export function AgentsPage() {
               })
             }
           >
-            توکن تازه
+            {t('توکن تازه')}
           </button>
         </div>
       </div>
@@ -75,7 +74,7 @@ export function AgentsPage() {
       {busy && <div className="hint">{busy}</div>}
 
       <div className="hint">
-        اتصال کلاینت: <code dir="ltr">{'{"mcpServers":{"max-file-manager":{"command":"node","args":["'}</code>
+        {t('اتصال کلاینت:')} <code dir="ltr">{'{"mcpServers":{"max-file-manager":{"command":"node","args":["'}</code>
         <code dir="ltr">{'/path/to/bin/mfm-mcp.mjs'}</code>
         <code dir="ltr">{'"]}}}'}</code>
       </div>

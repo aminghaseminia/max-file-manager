@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
-import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_LABEL, type CommandGroup } from './commands'
+import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
 
 type Page =
@@ -122,9 +122,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
             </button>
           ))}
           <span className="spacer" />
-          <button className="prefs-tab" onClick={onClose}>
-            بستن
-          </button>
+          <button className="prefs-tab" onClick={onClose}>{t('بستن')}</button>
         </nav>
 
         <section className="prefs-body">
@@ -197,7 +195,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 return (
                   <div className="pref-row" key={c.id}>
                     <div className="pref-label">
-                      <span>{c.label}</span>
+                      <span>{labelOf(c)}</span>
                     </div>
                     <div className="pref-control">
                       <label className="check">
@@ -233,17 +231,13 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                   </div>
                 )
               })}
-              <div className="hint">
-                ستون «نام» همیشه اول است. ترتیب انتخاب‌شده در فهرست اعمال می‌شود.
-              </div>
+              <div className="hint">{t('ستون «نام» همیشه اول است. ترتیب انتخاب‌شده در فهرست اعمال می‌شود.')}</div>
             </>
           )}
 
           {page === 'toolbar' && (
             <>
-              <div className="hint">
-                دکمه‌های نوار فرمان را انتخاب و مرتب کن. نوار خالی یعنی نوار پنهان.
-              </div>
+              <div className="hint">{t('دکمه‌های نوار فرمان را انتخاب و مرتب کن. نوار خالی یعنی نوار پنهان.')}</div>
               {COMMANDS.map((c) => {
                 const on = prefs.toolbar.includes(c.id)
                 const move = (delta: number) => {
@@ -257,8 +251,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 return (
                   <div className="pref-row" key={c.id}>
                     <div className="pref-label">
-                      <span>{c.label}</span>
-                      <span className="hint">{GROUP_LABEL[c.group]}</span>
+                      <span>{labelOf(c)}</span>
+                      <span className="hint">{groupLabelOf(c.group)}</span>
                     </div>
                     <div className="pref-control">
                       <label className="check">
@@ -289,9 +283,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                   <span>{t(t('بازنشانی نوار ابزار'))}</span>
                 </div>
                 <div className="pref-control">
-                  <button className="btn ghost" onClick={() => onChange({ toolbar: DEFAULT_TOOLBAR })}>
-                    پیش‌فرض
-                  </button>
+                  <button className="btn ghost" onClick={() => onChange({ toolbar: DEFAULT_TOOLBAR })}>{t('پیش‌فرض')}</button>
                 </div>
               </div>
             </>
@@ -301,20 +293,20 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
             <>
               {conflicts.length > 0 && (
                 <div className="warn">
-                  تعارض: {conflicts.map((id) => COMMAND_BY_ID[id]?.label ?? id).join(t(' ، '))} — یک کلید
-                  به چند فرمان داده شده؛ اولی در فهرست اجرا می‌شود.
+                  تعارض: {conflicts.map((id) => labelOf(COMMAND_BY_ID[id]) || id).join(t(' ، '))} — یک کلید
+                  به چند فرمان داده شده؛ اولی در فهرست اجرا می‌شود.|is bound to several commands; the first one in the list wins.
                 </div>
               )}
-              {(Object.keys(GROUP_LABEL) as CommandGroup[]).map((g) => (
+              {(Object.keys(GROUP_ORDER) as CommandGroup[]).map((g) => (
                 <div key={g}>
-                  <div className="pref-group">{GROUP_LABEL[g]}</div>
+                  <div className="pref-group">{groupLabelOf(g)}</div>
                   {COMMANDS.filter((c) => c.group === g).map((c) => {
                     const accel = prefs.shortcuts[c.id] ?? ''
                     const bad = conflicts.includes(c.id)
                     return (
                       <div className="pref-row" key={c.id}>
                         <div className="pref-label">
-                          <span className={bad ? 'bad' : ''}>{c.label}</span>
+                          <span className={bad ? 'bad' : ''}>{labelOf(c)}</span>
                         </div>
                         <div className="pref-control">
                           <button
@@ -354,9 +346,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                   <span>{t(t('بازنشانی همهٔ کلیدها'))}</span>
                 </div>
                 <div className="pref-control">
-                  <button className="btn ghost" onClick={() => onChange({ shortcuts: DEFAULT_SHORTCUTS })}>
-                    همه پیش‌فرض
-                  </button>
+                  <button className="btn ghost" onClick={() => onChange({ shortcuts: DEFAULT_SHORTCUTS })}>{t('همه پیش‌فرض')}</button>
                 </div>
               </div>
             </>
@@ -385,8 +375,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'search' && (
             <>
               <div className="hint">
-                ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents،
-                Downloads، Desktop، Pictures، Music، Videos). جست‌وجو با Ctrl+Shift+K.
+                {t('ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents, Downloads, Desktop, Pictures, Music, Videos). جست‌وجو با Ctrl+Shift+K.')}
               </div>
               <div className="preset-list">
                 {prefs.searchRoots.length === 0 && (
@@ -424,9 +413,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                     onChange({ searchRoots: [...prefs.searchRoots, newRoot.trim()] })
                     setNewRoot('')
                   }}
-                >
-                  افزودن پوشه
-                </button>
+                >{t('افزودن پوشه')}</button>
               </div>
               {row(
                 t('استثناها'),
@@ -450,9 +437,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
 
           {page === 'filetypes' && (
             <>
-              <div className="hint">
-                برای هر پسوند یک رنگ بگذار؛ نقطهٔ رنگی کنار نام فایل در فهرست دیده می‌شود.
-              </div>
+              <div className="hint">{t('برای هر پسوند یک رنگ بگذار؛ نقطهٔ رنگی کنار نام فایل در فهرست دیده می‌شود.')}</div>
               <div className="preset-save">
                 <input
                   className="pref-input"
@@ -465,7 +450,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                   <button
                     key={c.id}
                     className="swatch"
-                    title={c.name}
+                    title={t(c.name)}
                     style={{ background: c.color }}
                     disabled={!extInput.trim()}
                     onClick={() =>
@@ -616,8 +601,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 </div>
               )}
               <div className="hint">
-                فیلترها روی هر سه مسیر کپی/انتقال (دکمه‌ها، کلیدها و کشیدن‌و‌رهاکردن) اعمال می‌شوند و
-                تعداد فایل‌های رد‌شده در نوار عملیات‌ها نوشته می‌شود.
+                {t('فیلترها روی هر سه مسیر کپی/انتقال (دکمه‌ها، کلیدها و کشیدن‌و‌رهاکردن) اعمال می‌شوند و تعداد فایل‌های رد‌شده در نوار عملیات‌ها نوشته می‌شود.')}
               </div>
             </>
           )}
@@ -686,15 +670,11 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'advanced' && (
             <>
               <div className="hint">
-                پک‌های آیکون افزوده‌شده: {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : t('هیچ')}
+                {t('پک‌های آیکون افزوده‌شده:')} {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : t('هیچ')}
               </div>
+              <div className="hint">{t('تنظیمات در')} <code>state.json</code> {t('کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در فایل')} <code>.mfm.json</code> {t('داخل خود پوشه.')}</div>
               <div className="hint">
-                تنظیمات در <code>state.json</code> کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در
-                فایل <code>.mfm.json</code> داخل خود پوشه.
-              </div>
-              <div className="hint">
-                دسته‌های بعدی طبق نقشهٔ راه (docs/PREFERENCES.md): ستون‌های سفارشی، نوار ابزار و کلیدها،
-                فیلتر و مرتب‌سازی، تب‌ها، درخت پوشه، بایگانی، شبکه.
+                {t('دسته‌های بعدی طبق نقشهٔ راه (docs/PREFERENCES.md): ستون‌های سفارشی، نوار ابزار و کلیدها، فیلتر و مرتب‌سازی، تب‌ها، درخت پوشه، بایگانی، شبکه.')}
               </div>
             </>
           )}
