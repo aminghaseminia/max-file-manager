@@ -136,6 +136,17 @@ export type Api = {
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>
+  mcp: {
+    status(): Promise<{ mode: 'off' | 'read' | 'write'; port: number; hasToken: boolean; log: string[] }>
+    configure(patch: { mode?: 'off' | 'read' | 'write'; port?: number }): Promise<{
+      running: boolean
+      port: number
+      mode: string
+      token: string
+      log: string[]
+    }>
+    token(): Promise<string>
+  }
   update: {
     check(force?: boolean): Promise<{
       current: string

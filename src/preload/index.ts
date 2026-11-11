@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
+  mcp: {
+    status: () => ipcRenderer.invoke('mcp:status'),
+    configure: (patch: unknown) => ipcRenderer.invoke('mcp:configure', patch),
+    token: () => ipcRenderer.invoke('mcp:token')
+  },
   update: {
     check: (force?: boolean) => ipcRenderer.invoke('update:check', force),
     open: (url: string) => ipcRenderer.invoke('update:open', url)

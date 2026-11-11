@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
 import { XIcon } from './Icons'
+import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_LABEL, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
 
@@ -11,6 +12,7 @@ type Page =
   | 'toolbar'
   | 'keys'
   | 'layout'
+  | 'agents'
   | 'search'
   | 'filetypes'
   | 'archive'
@@ -26,6 +28,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'toolbar', label: 'نوار ابزار' },
   { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'agents', label: 'ایجنت‌ها (MCP)' },
   { id: 'search', label: 'جست‌وجو' },
   { id: 'filetypes', label: 'انواع فایل' },
   { id: 'archive', label: 'بایگانی و گالری' },
@@ -372,6 +375,10 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
               )}
               {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
             </>
+          )}
+
+          {page === 'agents' && (
+            <AgentsPage />
           )}
 
           {page === 'search' && (

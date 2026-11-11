@@ -34,6 +34,17 @@ import {
   type IndexConfig
 } from './searchdb.ts'
 import { checkUpdate, openRelease } from './updates.ts'
+import {
+  mcpFile,
+  mcpLogTail,
+  mcpTools,
+  readMcpConfig,
+  startMcp,
+  stopMcp,
+  writeMcpConfig,
+  type McpMode
+} from './mcp.ts'
+import { randomBytes } from 'node:crypto'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -256,7 +267,10 @@ function createWindow(): BrowserWindow {
   return w
 }
 
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  void stopMcp()
+})
 
 app.whenReady().then(async () => {
   protocol.handle('mfm', async (req) => {
@@ -393,6 +407,141 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
+  })
+  const mcpHandler = async (tool: string, args: Record<string, any>): Promise<unknown> => {
+    const abs = (v: unknown) => (typeof v === 'string' && path.isAbsolute(v) ? v : null)
+    switch (tool) {
+      case 'roots':
+        return { home: os.homedir(), roots: await roots() }
+      case 'list': {
+        const dir = abs(args.path)
+        if (!dir) throw new Error('absolute path required')
+        const l = await list(dir, !!args.hidden, false)
+        const meta = await readMeta(dir)
+        return { ...l, pins: meta?.pins ?? [], labels: meta?.labels ?? {}, ratings: meta?.ratings ?? {}, notes: meta?.notes ?? {} }
+      }
+      case 'dirs': {
+        const dir = abs(args.path)
+        if (!dir) throw new Error('absolute path required')
+        return dirs(dir)
+      }
+      case 'search':
+        return searchIndex(searchDbFile(), String(args.query ?? ''), Number(args.limit ?? 100))
+      case 'preview': {
+        const p = abs(args.path)
+        if (!p) throw new Error('absolute path required')
+        return preview(p, Number(args.maxKB ?? 200))
+      }
+      case 'read_text': {
+        const p = abs(args.path)
+        if (!p) throw new Error('absolute path required')
+        return readTextFile(p)
+      }
+      case 'archive_list': {
+        const p = abs(args.path)
+        if (!p) throw new Error('absolute path required')
+        return listArchive(p)
+      }
+      case 'meta_get': {
+        const dir = abs(args.dir)
+        if (!dir) throw new Error('absolute path required')
+        return (await readMeta(dir)) ?? {}
+      }
+      case 'hash':
+        return hashMany((args.paths ?? []).filter((p: string) => abs(p)), String(args.algo ?? 'sha256'))
+      case 'jobs_list':
+        return engine.list()
+      case 'state': {
+        const raw = readFileSync(statePath(), 'utf8')
+        return JSON.parse(raw)
+      }
+      case 'write_text': {
+        const p = abs(args.path)
+        if (!p) throw new Error('absolute path required')
+        return writeTextFile(p, String(args.text ?? ''))
+      }
+      case 'mkdir': {
+        const dir = abs(args.dir)
+        if (!dir) throw new Error('absolute path required')
+        return engine.makeDir(dir, String(args.name ?? ''))
+      }
+      case 'rename': {
+        const p = abs(args.path)
+        if (!p) throw new Error('absolute path required')
+        const target = path.join(path.dirname(p), String(args.name ?? ''))
+        return engine.renameMany([{ from: p, to: target }])
+      }
+      case 'copy':
+      case 'move': {
+        const dest = abs(args.dest)
+        const files = (args.paths ?? []).filter((p: string) => abs(p))
+        if (!dest || !files.length) throw new Error('paths and dest are required')
+        return engine.start(tool === 'copy' ? 'copy' : 'move', files, dest)
+      }
+      case 'trash': {
+        const files = (args.paths ?? []).filter((p: string) => abs(p))
+        return remove(files, { trash: (p) => shell.trashItem(p) })
+      }
+      case 'delete': {
+        if (args.confirm !== true) throw new Error('permanent delete needs confirm:true')
+        const files = (args.paths ?? []).filter((p: string) => abs(p))
+        return remove(files, {})
+      }
+      case 'extract': {
+        const archive = abs(args.archive)
+        const dest = abs(args.dest)
+        if (!archive || !dest) throw new Error('archive and dest are required')
+        return extract(archive, Array.isArray(args.names) ? args.names : [], dest)
+      }
+      case 'create_zip': {
+        const dir = abs(args.dir)
+        if (!dir) throw new Error('absolute path required')
+        const level = Math.min(9, Math.max(0, Number(args.level ?? 6))) as ZipLevel
+        return createZip(dir, String(args.name ?? 'archive'), (args.sources ?? []).filter((p: string) => abs(p)), level)
+      }
+      case 'label_set': {
+        const dir = abs(args.dir)
+        if (!dir) throw new Error('absolute path required')
+        return setLabel(dir, String(args.name ?? ''), args.label ? String(args.label) : null)
+      }
+      case 'pin_set': {
+        const dir = abs(args.dir)
+        if (!dir) throw new Error('absolute path required')
+        return togglePin(dir, String(args.name ?? ''), Boolean(args.on))
+      }
+      case 'note':
+      case 'goto': {
+        win?.webContents.send('mcp:ui', { tool, args })
+        return { ok: true }
+      }
+      default:
+        throw new Error(`unknown tool ${tool}`)
+    }
+  }
+
+  void readMcpConfig().then((cfg) => {
+    if (cfg.mode !== 'off') void startMcp(mcpHandler)
+  })
+
+  ipcMain.handle('mcp:status', async () => {
+    const cfg = await readMcpConfig()
+    return { mode: cfg.mode, port: cfg.port, hasToken: !!cfg.token, log: await mcpLogTail(50) }
+  })
+  ipcMain.handle('mcp:configure', async (_e, patch: { mode?: McpMode; port?: number }) => {
+    const cur = await readMcpConfig()
+    const cfg = await writeMcpConfig({
+      mode: patch?.mode ?? cur.mode,
+      port: Number(patch?.port) > 1024 && Number(patch?.port) < 65535 ? Number(patch.port) : cur.port,
+      token: cur.token
+    })
+    const st = await startMcp(mcpHandler)
+    return { ...st, token: cfg.token, log: await mcpLogTail(20) }
+  })
+  ipcMain.handle('mcp:token', async () => {
+    const cur = await readMcpConfig()
+    const cfg = await writeMcpConfig({ ...cur, token: randomBytes(24).toString('hex') })
+    if (cfg.mode !== 'off') await startMcp(mcpHandler)
+    return cfg.token
   })
   ipcMain.handle('update:check', (_e, force?: boolean) => checkUpdate(!!force))
   ipcMain.handle('update:open', (_e, url: string) => openRelease(String(url ?? '')))

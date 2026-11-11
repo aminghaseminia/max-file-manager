@@ -2604,3 +2604,29 @@ html[data-rounded='1'] .app {
   font-size: 10.5px;
   cursor: pointer;
 }
+
+/* agent access page */
+.token-box {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.mcp-log {
+  max-height: 200px;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: pre;
+}
