@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useState } from 'react'
 import { baseName, fa } from './format'
 import { XIcon } from './Icons'
@@ -10,14 +11,14 @@ export type SyncRow = {
 }
 
 const LABEL: Record<string, string> = {
-  same: 'یکسان',
-  leftOnly: 'فقط مبدأ',
-  rightOnly: 'فقط مقصد',
-  leftNewer: 'مبدأ جدیدتر',
-  rightNewer: 'مقصد جدیدتر',
-  sizeDiff: 'اندازه متفاوت',
-  contentDiff: 'محتوا متفاوت',
-  typeDiff: 'نوع متفاوت'
+  same: t('یکسان'),
+  leftOnly: t('فقط مبدأ'),
+  rightOnly: t('فقط مقصد'),
+  leftNewer: t('مبدأ جدیدتر'),
+  rightNewer: t('مقصد جدیدتر'),
+  sizeDiff: t('اندازه متفاوت'),
+  contentDiff: t('محتوا متفاوت'),
+  typeDiff: t('نوع متفاوت')
 }
 
 const TONE: Record<string, string> = {
@@ -71,7 +72,7 @@ export function SyncDialog({
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog sync-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">همگام‌سازی دو پوشه</div>
+        <div className="dialog-title">{t(t('همگام‌سازی دو پوشه'))}</div>
 
         <div className="sync-paths">
           <span dir="auto">{left}</span>
@@ -87,19 +88,19 @@ export function SyncDialog({
                 className={compareBy === k ? 'on' : ''}
                 title={
                   k === 'mtime'
-                    ? 'تاریخ آخرین تغییر'
+                    ? t('تاریخ آخرین تغییر')
                     : k === 'ctime'
-                      ? 'تاریخ ساخت فایل'
-                      : 'هش محتوا (کندتر و دقیق‌تر)'
+                      ? t('تاریخ ساخت فایل')
+                      : t('هش محتوا (کندتر و دقیق‌تر)')
                 }
                 onClick={() => onRecompare(k, ignoreText)}
               >
-                {k === 'mtime' ? 'تاریخ تغییر' : k === 'ctime' ? 'تاریخ ساخت' : 'هش محتوا'}
+                {k === 'mtime' ? t('تاریخ تغییر') : k === 'ctime' ? t('تاریخ ساخت') : t('هش محتوا')}
               </button>
             ))}
           </div>
           <label className="check-label">
-            <span>نادیده گرفتن:</span>
+            <span>{t(t('نادیده گرفتن:'))}</span>
             <input
               className="ignore-input"
               dir="ltr"
@@ -120,11 +121,11 @@ export function SyncDialog({
           </div>
           <label className="check-label">
             <input type="checkbox" checked={deleteExtra} onChange={(e) => setDeleteExtra(e.target.checked)} />
-            <span>فایل‌های اضافی مقصد به سطل بازیافت</span>
+            <span>{t(t('فایل‌های اضافی مقصد به سطل بازیافت'))}</span>
           </label>
           <label className="check-label">
             <input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />
-            <span>فقط تفاوت‌ها</span>
+            <span>{t(t('فقط تفاوت‌ها'))}</span>
           </label>
         </div>
 
@@ -133,7 +134,7 @@ export function SyncDialog({
           <span className="chip del">{fa(count('rightOnly') + count('rightNewer'))} از مقصد</span>
           <span className="chip warn">{fa(count('sizeDiff') + count('contentDiff') + count('typeDiff'))} مشکوک</span>
           <span className="chip">{fa(count('same'))} یکسان</span>
-          {capped && <span className="chip warn">فهرست بریده شد</span>}
+          {capped && <span className="chip warn">{t(t('فهرست بریده شد'))}</span>}
         </div>
 
         <div className="sync-list">

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Entry, Listing } from './api'
 import type { ColId } from './prefs'
@@ -234,14 +235,14 @@ export function Pane(props: Props) {
   }
 
   const COL_META: Record<ColId, { label: string; width: number; sort?: SortKey; end?: boolean }> = {
-    type: { label: 'نوع', width: 88, sort: 'ext' },
-    size: { label: 'اندازه', width: 94, sort: 'size', end: true },
-    date: { label: 'تاریخ', width: 120, sort: 'mtime' },
-    mode: { label: 'مجوز', width: 92 },
-    owner: { label: 'مالک', width: 72, end: true },
-    links: { label: 'لینک', width: 52, end: true },
-    dims: { label: 'ابعاد', width: 90, end: true },
-    rating: { label: 'امتیاز', width: 74, end: true }
+    type: { label: t('نوع'), width: 88, sort: 'ext' },
+    size: { label: t('اندازه'), width: 94, sort: 'size', end: true },
+    date: { label: t('تاریخ'), width: 120, sort: 'mtime' },
+    mode: { label: t('مجوز'), width: 92 },
+    owner: { label: t('مالک'), width: 72, end: true },
+    links: { label: t('لینک'), width: 52, end: true },
+    dims: { label: t('ابعاد'), width: 90, end: true },
+    rating: { label: t('امتیاز'), width: 74, end: true }
   }
 
   const gridTemplate =
@@ -262,8 +263,8 @@ export function Pane(props: Props) {
   }
 
   const allowDrop = (ev: React.DragEvent) => {
-    const t = ev.dataTransfer.types
-    if (t.includes('application/x-mfm') || t.includes('Files')) {
+    const dtTypes = ev.dataTransfer.types
+    if (dtTypes.includes('application/x-mfm') || dtTypes.includes('Files')) {
       ev.preventDefault()
       ev.dataTransfer.dropEffect = ev.ctrlKey ? 'copy' : 'move'
     }
@@ -302,12 +303,12 @@ export function Pane(props: Props) {
       onMouseDown={props.onActivate}
     >
       <div className="tabs">
-        <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? 'مبدأ' : 'مقصد'}</span>
-        {pane.tabs.map((t, i) => {
+        <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? t('مبدأ') : t('مقصد')}</span>
+        {pane.tabs.map((tabPath, i) => {
           const pinned = i < pane.pinCount
           return (
             <div
-              key={t + i}
+              key={tabPath + i}
               className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
               draggable
               onDragStart={(ev) => {
@@ -336,14 +337,14 @@ export function Pane(props: Props) {
                 ev.stopPropagation()
                 props.onTabMenu(i, ev.clientX, ev.clientY)
               }}
-              title={t}
+              title={tabPath}
             >
               {pinned && <PinIcon filled />}
-              <span dir="auto">{t.split(/[\\/]/).filter(Boolean).pop() || t}</span>
+              <span dir="auto">{tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath}</span>
               {!pinned && pane.tabs.length > 1 && (
                 <button
                   className="x"
-                  title="بستن تب"
+                  title={t(t('بستن تب'))}
                   onClick={(e) => {
                     e.stopPropagation()
                     props.onTabClose(i)
@@ -355,7 +356,7 @@ export function Pane(props: Props) {
             </div>
           )
         })}
-        <button className="tb" title="تب نو (Ctrl+T)" onClick={props.onTabNew}>
+        <button className="tb" title={t(t('تب نو (Ctrl+T)'))} onClick={props.onTabNew}>
           <PlusIcon size={13} />
         </button>
       </div>
@@ -374,7 +375,7 @@ export function Pane(props: Props) {
         {pane.virtual && (
           <span className="vchip">
             {pane.virtual.label}
-            <button className="x" title="بازگشت به پوشه" onClick={props.onExitVirtual}>
+            <button className="x" title={t(t('بازگشت به پوشه'))} onClick={props.onExitVirtual}>
               <XIcon size={11} />
             </button>
           </span>
@@ -385,7 +386,7 @@ export function Pane(props: Props) {
           <input
             ref={props.filterRef}
             dir="auto"
-            placeholder="فیلتر نام"
+            placeholder={t(t('فیلتر نام'))}
             value={pane.filter}
             onChange={(e) => props.onFilter(e.target.value)}
             onKeyDown={(e) => {
@@ -400,58 +401,58 @@ export function Pane(props: Props) {
       </div>
 
       <div className="actions">
-        <button className="tb" title="بازگشت (Alt+←)" onClick={props.onBack}>
+        <button className="tb" title={t(t('بازگشت (Alt+←)'))} onClick={props.onBack}>
           <ChevronRightIcon />
         </button>
-        <button className="tb" title="جلو (Alt+→)" onClick={props.onForward}>
+        <button className="tb" title={t(t('جلو (Alt+→)'))} onClick={props.onForward}>
           <ChevronLeftIcon />
         </button>
-        <button className="tb" title="بالا (Backspace)" onClick={props.onUp}>
+        <button className="tb" title={t(t('بالا (Backspace)'))} onClick={props.onUp}>
           <ArrowUpIcon />
         </button>
-        <button className="tb" title="نوسازی (Ctrl+R)" onClick={props.onRefresh}>
+        <button className="tb" title={t(t('نوسازی (Ctrl+R)'))} onClick={props.onRefresh}>
           <RefreshIcon />
         </button>
         <span className="divider" />
-        <button className="tb" title="کپی (F5)" onClick={() => props.onOp('copy')}>
+        <button className="tb" title={t(t('کپی (F5)'))} onClick={() => props.onOp('copy')}>
           <CopyIcon />
         </button>
-        <button className="tb" title="انتقال (F6)" onClick={() => props.onOp('move')}>
+        <button className="tb" title={t(t('انتقال (F6)'))} onClick={() => props.onOp('move')}>
           <MoveIcon />
         </button>
-        <button className="tb" title="تغییر نام (F2)" onClick={() => props.onOp('rename')}>
+        <button className="tb" title={t(t('تغییر نام (F2)'))} onClick={() => props.onOp('rename')}>
           <RenameIcon />
         </button>
-        <button className="tb" title="پوشهٔ نو (F7)" onClick={() => props.onOp('mkdir')}>
+        <button className="tb" title={t(t('پوشهٔ نو (F7)'))} onClick={() => props.onOp('mkdir')}>
           <FolderPlusIcon />
         </button>
-        <button className="tb" title="سطل بازیافت (F8)" onClick={() => props.onOp('trash')}>
+        <button className="tb" title={t(t('سطل بازیافت (F8)'))} onClick={() => props.onOp('trash')}>
           <TrashIcon />
         </button>
         <span className="divider" />
-        <button className="tb" title="اندازهٔ پوشه (F9)" onClick={props.onSize}>
+        <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={props.onSize}>
           <GaugeIcon />
         </button>
-        <button className="tb" title="رنگ و آیکون پوشه" onClick={props.onFolderLook}>
+        <button className="tb" title={t(t('رنگ و آیکون پوشه'))} onClick={props.onFolderLook}>
           <PaletteIcon />
         </button>
         <button
           className={'tb' + (pane.virtual?.kind === 'flat' ? ' on' : '')}
-          title="نمای تخت (Ctrl+Shift+F)"
+          title={t(t('نمای تخت (Ctrl+Shift+F)'))}
           onClick={props.onFlat}
         >
           <LayersIcon />
         </button>
         <button
           className={'tb' + (pane.virtual?.kind === 'dupes' ? ' on' : '')}
-          title="یافتن فایل‌های تکراری"
+          title={t(t('یافتن فایل‌های تکراری'))}
           onClick={props.onDupes}
         >
           <DupeIcon />
         </button>
         <button
           className={'tb' + (searchOpen ? ' on' : '')}
-          title="جست‌وجو (Ctrl+Shift+S)"
+          title={t(t('جست‌وجو (Ctrl+Shift+S)'))}
           onClick={() => setSearchOpen((o) => !o)}
         >
           <SearchIcon />
@@ -459,7 +460,7 @@ export function Pane(props: Props) {
         <span className="spacer" />
         <button
           className={'tb' + (props.marked ? ' on' : '')}
-          title="نشان‌کردن این پوشه (Ctrl+D)"
+          title={t(t('نشان‌کردن این پوشه (Ctrl+D)'))}
           onClick={props.onBookmark}
         >
           <StarIcon filled={props.marked} />
@@ -472,7 +473,7 @@ export function Pane(props: Props) {
             <SearchIcon />
             <input
               dir="auto"
-              placeholder="نام (* و ? مجاز)"
+              placeholder={t(t('نام (* و ? مجاز)'))}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && runSearch()}
@@ -481,13 +482,13 @@ export function Pane(props: Props) {
           <label className="filter grow">
             <input
               dir="auto"
-              placeholder="داخل محتوا (متن)"
+              placeholder={t(t('داخل محتوا (متن)'))}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             />
           </label>
-          <label className="check" title="الگوی نام را عبارت باقاعده بگیر">
+          <label className="check" title={t(t('الگوی نام را عبارت باقاعده بگیر'))}>
             <input type="checkbox" checked={regex} onChange={(e) => setRegex(e.target.checked)} />
             regex
           </label>
@@ -536,12 +537,12 @@ export function Pane(props: Props) {
         ) : entries.length === 0 ? (
           <div className="empty">
             {pane.loading
-              ? 'در حال خواندن…'
+              ? t('در حال خواندن…')
               : pane.virtual
-                ? 'چیزی پیدا نشد'
+                ? t('چیزی پیدا نشد')
                 : pane.filter
-                  ? 'چیزی با این نام نیست'
-                  : 'پوشه خالی است'}
+                  ? t('چیزی با این نام نیست')
+                  : t('پوشه خالی است')}
           </div>
         ) : view === 'list' ? (
           <div style={{ height: entries.length * ROW, position: 'relative', minWidth }}>
@@ -570,10 +571,10 @@ export function Pane(props: Props) {
                     />
                   )}
                   {labelColor(e.name) && (
-                    <span className="lbl" style={{ background: labelColor(e.name) }} title="برچسب" />
+                    <span className="lbl" style={{ background: labelColor(e.name) }} title={t(t('برچسب'))} />
                   )}
                   {pinSet.has(e.name) && (
-                    <span className="pinmark" title="سنجاق‌شده">
+                    <span className="pinmark" title={t(t('سنجاق‌شده'))}>
                       <PinIcon filled />
                     </span>
                   )}

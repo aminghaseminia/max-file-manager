@@ -1,3 +1,4 @@
+import { setLang, t } from './i18n.ts'
 import { useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -95,10 +96,10 @@ const patch = (panes: PaneState[], i: number, p: Partial<PaneState>): PaneState[
 const tabOf = (s: PaneState) => s.tabs[s.ti]
 
 const OP_LABEL: Record<string, string> = {
-  copy: 'کپی',
-  move: 'انتقال',
-  trash: 'سطل بازیافت',
-  delete: 'حذف'
+  copy: t('کپی'),
+  move: t('انتقال'),
+  trash: t('سطل بازیافت'),
+  delete: t('حذف')
 }
 
 const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext']
@@ -361,6 +362,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panes?.[active]?.listing])
 
+  useEffect(() => {
+    setLang(prefs.lang)
+  }, [prefs.lang])
+
   const transferOpts = () => ({
     skipExisting: prefs.transferSkipExisting,
     newerOnly: prefs.transferNewerOnly,
@@ -413,13 +418,13 @@ export default function App() {
     if (!panes) return
     const me = panes[i]
     if (!me.sel.length) {
-      setNote('چیزی انتخاب نشده')
+      setNote(t('چیزی انتخاب نشده'))
       return
     }
     if (me.archive) {
       const dest = tabOf(panes[1 - i])
       const names = me.sel.map((p) => p.slice(me.archive!.length + 1))
-      setNote('در حال استخراج…')
+      setNote(t('در حال استخراج…'))
       const r = await api.extract(me.archive, names, dest)
       setNote(
         r.errors.length
@@ -464,7 +469,7 @@ export default function App() {
 
   const doUndo = async () => {
     const r = await api.undo.run()
-    setNote(r.done ? `بازگردانی شد: ${r.label} (${fa(r.done)})` : 'چیزی برای بازگردانی نیست')
+    setNote(r.done ? `بازگردانی شد: ${r.label} (${fa(r.done)})` : t('چیزی برای بازگردانی نیست'))
     if (r.done) reloadAll()
   }
 
@@ -472,7 +477,7 @@ export default function App() {
     if (!panes) return
     const me = panes[i]
     const targets = me.sel.length ? me.sel : [tabOf(me)]
-    setNote('در حال محاسبهٔ اندازه…')
+    setNote(t('در حال محاسبهٔ اندازه…'))
     for (const t of targets) {
       const r = await api.size(t)
       setSizes((s) => ({ ...s, [t]: fmtSize(r.bytes, false) + (r.capped ? '…' : '') }))
@@ -488,14 +493,14 @@ export default function App() {
     if (!value) return
     const me = panes[active]
     if (kind === 'rename' && !me.sel[0]) {
-      setNote('چیزی انتخاب نشده')
+      setNote(t('چیزی انتخاب نشده'))
       return
     }
     const res =
       kind === 'mkdir'
         ? await api.mkdir(tabOf(me), value)
         : await api.renameMany([{ from: me.sel[0], to: joinPath(dirOf(me.sel[0]), value) }])
-    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${kind === 'mkdir' ? 'پوشهٔ نو' : 'تغییر نام'}: ${value}`)
+    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${kind === 'mkdir' ? t('پوشهٔ نو') : t('تغییر نام')}: ${value}`)
     await load(active, tabOf(me))
   }
 
@@ -553,17 +558,17 @@ export default function App() {
       limit: 5000
     })
     setVirtual(i, 'search', `جست‌وجو · ${fa(r.entries.length)}${r.capped ? '+' : ''}`, r.entries)
-    if (r.capped) setNote('نتیجه به ۵۰۰۰ مورد بریده شد')
+    if (r.capped) setNote(t('نتیجه به ۵۰۰۰ مورد بریده شد'))
   }
 
   const runDupes = async (i: number) => {
     if (!panes) return
     setPanes((p) => p && patch(p, i, { loading: true }))
-    setNote('در حال محاسبهٔ hash…')
+    setNote(t('در حال محاسبهٔ hash…'))
     const r = await api.dupes(tabOf(panes[i]))
     const groups = new Set(r.entries.map((e) => e.group)).size
     setVirtual(i, 'dupes', `تکراری‌ها · ${fa(groups)} گروه`, r.entries)
-    setNote(r.entries.length ? `${fa(r.entries.length)} فایل تکراری در ${fa(groups)} گروه` : 'فایل تکراری پیدا نشد')
+    setNote(r.entries.length ? `${fa(r.entries.length)} فایل تکراری در ${fa(groups)} گروه` : t('فایل تکراری پیدا نشد'))
   }
 
   const openFolderLook = async (i: number) => {
@@ -593,7 +598,7 @@ export default function App() {
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      setNote('در حافظه کپی شد')
+      setNote(t('در حافظه کپی شد'))
     } catch {
       setNote(text)
     }
@@ -601,11 +606,11 @@ export default function App() {
 
   const shaOf = async (paths: string[]) => {
     if (!paths.length) return
-    setNote('محاسبهٔ SHA-256…')
+    setNote(t('محاسبهٔ SHA-256…'))
     const r = await api.hash(paths, 'sha256')
     const ok = r.filter((x) => x.hash)
     if (!ok.length) {
-      setNote('hash محاسبه نشد')
+      setNote(t('hash محاسبه نشد'))
       return
     }
     setNote(
@@ -621,7 +626,7 @@ export default function App() {
   const dropInternal = async (paths: string[], dest: string, copy: boolean) => {
     if (!paths.length) return
     await api.jobs.start(copy ? 'copy' : 'move', paths, dest, transferOpts())
-    setNote(`${copy ? 'کپی' : 'انتقال'} ${fa(paths.length)} مورد به ${baseName(dest)}`)
+    setNote(`${copy ? t('کپی') : t('انتقال')} ${fa(paths.length)} مورد به ${baseName(dest)}`)
   }
 
   const dropFiles = async (files: File[], dest: string) => {
@@ -664,7 +669,7 @@ export default function App() {
     const s = panes?.[i]
     if (!s) return
     if (idx < s.pinCount) {
-      setNote('تب سنجاق‌شده بسته نمی‌شود')
+      setNote(t('تب سنجاق‌شده بسته نمی‌شود'))
       return
     }
     if (s.tabs.length <= 1) return
@@ -725,7 +730,7 @@ export default function App() {
   const reopenTab = () => {
     const last = reopenStack.current.pop()
     if (!last) {
-      setNote('تب بسته‌شده‌ای نیست')
+      setNote(t('تب بسته‌شده‌ای نیست'))
       return
     }
     addTab(last.pane, last.path)
@@ -751,7 +756,7 @@ export default function App() {
           setNote(
             'error' in r
               ? `${name}: ${r.error.slice(0, 120)}`
-              : `${name}: ${(r.output || 'انجام شد').slice(0, 120)}`
+              : `${name}: ${(r.output || t('انجام شد')).slice(0, 120)}`
           )
         })
       }
@@ -804,7 +809,7 @@ export default function App() {
         void (async () => {
         const dest = tabOf(panes![1 - active])
         const name = baseName(me.sel[0]).replace(/\.[^.]+$/, '')
-        setNote('در حال ساخت آرشیو…')
+        setNote(t('در حال ساخت آرشیو…'))
         const r = await api.createArchive(dest, name, me.sel, prefs.zipLevel)
         setNote(
           'error' in r
@@ -877,7 +882,7 @@ export default function App() {
       case 'saveFormat': {
         void api
           .setFormat(tabOf(me), { view, columns: prefs.columns, sortKey: sort.key, sortAsc: sort.asc })
-          .then(() => setNote('قالب این پوشه ذخیره شد'))
+          .then(() => setNote(t('قالب این پوشه ذخیره شد')))
         break
       }
       case 'rate': {
@@ -889,7 +894,7 @@ export default function App() {
           /\.(png|jpe?g|webp|bmp|gif|avif)$/i.test(p)
         )
         if (!imgs.length) {
-          setNote('تصویری انتخاب نشده')
+          setNote(t('تصویری انتخاب نشده'))
           break
         }
         setConvertAsk({ files: imgs, busy: false, result: '' })
@@ -935,7 +940,7 @@ export default function App() {
         const name = baseName(path)
         const wasPinned = (me.listing?.pins ?? []).includes(name)
         void api.togglePin(dir, name).then(() => load(active, tabOf(panes![active])))
-        setNote(wasPinned ? 'سنجاق برداشته شد' : 'به بالای پوشه سنجاق شد')
+        setNote(wasPinned ? t('سنجاق برداشته شد') : t('به بالای پوشه سنجاق شد'))
         break
       }
       case 'tabNew':
@@ -975,77 +980,77 @@ export default function App() {
       const idx = menu.tab
       const pinned = idx < me.pinCount
       return [
-        { id: 'tabPin', label: pinned ? 'برداشتن سنجاق' : 'سنجاق‌کردن تب', icon: <PinIcon filled={pinned} /> },
-        { id: 'tabDup', label: 'تب تکراری', icon: <PlusIcon /> },
+        { id: 'tabPin', label: pinned ? t('برداشتن سنجاق') : t('سنجاق‌کردن تب'), icon: <PinIcon filled={pinned} /> },
+        { id: 'tabDup', label: t('تب تکراری'), icon: <PlusIcon /> },
         { sep: true },
         {
           id: 'tabClose',
-          label: 'بستن تب',
+          label: t('بستن تب'),
           key: 'Ctrl+W',
           icon: <XIcon size={12} />,
           disabled: pinned || me.tabs.length <= 1
         },
-        { id: 'tabCloseOthers', label: 'بستن بقیه', icon: <XIcon size={12} /> },
-        { id: 'tabCloseRight', label: 'بستن تب‌های بعدی', icon: <XIcon size={12} /> },
+        { id: 'tabCloseOthers', label: t('بستن بقیه'), icon: <XIcon size={12} /> },
+        { id: 'tabCloseRight', label: t('بستن تب‌های بعدی'), icon: <XIcon size={12} /> },
         { sep: true },
-        { id: 'tabCopyPath', label: 'کپی مسیر', icon: <CopyIcon /> }
+        { id: 'tabCopyPath', label: t('کپی مسیر'), icon: <CopyIcon /> }
       ]
     }
     const entry = entryOf(active, path)
     if (!path) {
       return [
-        { id: 'mkdir', label: 'پوشهٔ نو', key: 'F7', icon: <FolderPlusIcon /> },
-        { id: 'refresh', label: 'نوسازی', key: 'F3', icon: <RefreshIcon /> },
+        { id: 'mkdir', label: t('پوشهٔ نو'), key: 'F7', icon: <FolderPlusIcon /> },
+        { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
         { sep: true },
-        { id: 'flat', label: 'نمای تخت', icon: <LayersIcon /> },
-        { id: 'dupes', label: 'فایل‌های تکراری', icon: <GaugeIcon /> },
-        { id: 'size', label: 'اندازهٔ این پوشه', key: 'F9', icon: <GaugeIcon /> },
-        { id: 'look', label: 'رنگ و آیکون این پوشه', icon: <PaletteIcon /> },
+        { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
+        { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
+        { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
+        { id: 'look', label: t('رنگ و آیکون این پوشه'), icon: <PaletteIcon /> },
         { sep: true },
-        { id: 'tabNew', label: 'تب نو', icon: <PlusIcon /> }
+        { id: 'tabNew', label: t('تب نو'), icon: <PlusIcon /> }
       ]
     }
     const items: MenuItem[] = [
-      { id: 'open', label: entry?.dir ? 'باز کردن' : 'اجرا کردن', icon: <PlayIcon /> }
+      { id: 'open', label: entry?.dir ? t('باز کردن') : t('اجرا کردن'), icon: <PlayIcon /> }
     ]
     if (entry && !entry.dir && isArchiveName(entry.name)) {
-      items.push({ id: 'archive', label: 'مرور آرشیو', icon: <ArchiveOpenIcon /> })
+      items.push({ id: 'archive', label: t('مرور آرشیو'), icon: <ArchiveOpenIcon /> })
     items.push({
       id: 'extractOther',
-      label: 'استخراج به پنجرهٔ مقابل',
+      label: t('استخراج به پنجرهٔ مقابل'),
       key: 'F5',
       icon: <ArchiveOpenIcon />
     })
     }
     items.push(
-      { id: 'preview', label: 'پیش‌نمایش', icon: <PreviewIcon /> },
-      { id: 'previewOther', label: 'پیش‌نمایش در پنجرهٔ مقابل', key: 'F3', icon: <PreviewIcon /> },
-      ...(entry && isImage(entry.ext) ? [{ id: 'gallery', label: 'گالری تصاویر', key: 'Space', icon: <GridIcon /> } as MenuItem] : []),
+      { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
+      { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
+      ...(entry && isImage(entry.ext) ? [{ id: 'gallery', label: t('گالری تصاویر'), key: 'Space', icon: <GridIcon /> } as MenuItem] : []),
       { sep: true },
-      { id: 'copy', label: 'کپی به پنجرهٔ مقابل', key: 'F5', icon: <CopyIcon /> },
-      { id: 'move', label: 'انتقال به پنجرهٔ مقابل', key: 'F6', icon: <MoveIcon /> },
+      { id: 'copy', label: t('کپی به پنجرهٔ مقابل'), key: 'F5', icon: <CopyIcon /> },
+      { id: 'move', label: t('انتقال به پنجرهٔ مقابل'), key: 'F6', icon: <MoveIcon /> },
       { sep: true },
-      { id: 'rename', label: 'تغییر نام', key: 'F2', icon: <RenameIcon /> }
+      { id: 'rename', label: t('تغییر نام'), key: 'F2', icon: <RenameIcon /> }
     )
     if (me.sel.length > 1) {
-      items.push({ id: 'batch', label: 'تغییر نام گروهی…', icon: <RenameIcon /> })
+      items.push({ id: 'batch', label: t('تغییر نام گروهی…'), icon: <RenameIcon /> })
     }
     items.push(
-      { id: 'trash', label: 'سطل بازیافت', key: 'F8', icon: <TrashIcon /> },
-      { id: 'delete', label: 'حذف قطعی', key: 'Shift+F8', icon: <TrashIcon />, danger: true },
+      { id: 'trash', label: t('سطل بازیافت'), key: 'F8', icon: <TrashIcon /> },
+      { id: 'delete', label: t('حذف قطعی'), key: 'Shift+F8', icon: <TrashIcon />, danger: true },
       { sep: true },
-      { id: 'copyPath', label: 'کپی مسیر', icon: <CopyIcon /> },
-      { id: 'sync', label: 'همگام‌سازی با پنجرهٔ مقابل', key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
+      { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
+      { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
       ...(me.sel.length === 2
-        ? [{ id: 'diff', label: 'مقایسهٔ دو فایل انتخاب‌شده', key: 'Ctrl+Shift+Z', icon: <DupeIcon /> }]
+        ? [{ id: 'diff', label: t('مقایسهٔ دو فایل انتخاب‌شده'), key: 'Ctrl+Shift+Z', icon: <DupeIcon /> }]
         : []),
       ...Object.keys(prefs.scripts).map((name) => ({
         id: 'script:' + name,
         label: `اجرای «${name}»`,
         icon: <PlayIcon />
       })),
-      { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', icon: <DriveIcon /> },
-      { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
+      { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
+      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
     )
     const pinDir = path ? dirOf(path) : ''
@@ -1053,30 +1058,30 @@ export default function App() {
     const isPinned = !!pinName && (panes[active].listing?.pins ?? []).includes(pinName)
     if (path) {
       items.push(
-        { id: 'edit', label: 'ویرایش متن', key: 'F4', icon: <RenameIcon /> },
-        { id: 'label', label: 'برچسب رنگی…', icon: <PaletteIcon /> },
-        { id: 'rate', label: 'امتیاز و توضیح…', icon: <StarIcon /> },
+        { id: 'edit', label: t('ویرایش متن'), key: 'F4', icon: <RenameIcon /> },
+        { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> },
+        { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> },
         ...(path && /\.(mp3|m4a)$/i.test(path)
-          ? [{ id: 'tags', label: 'برچسب‌های صوتی…', icon: <AudioIcon /> }]
+          ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> }]
           : []),
-        { id: 'convert', label: 'تبدیل تصاویر…', icon: <ImageIcon /> },
-        { id: 'saveFormat', label: 'ذخیرهٔ قالب نمایش این پوشه', icon: <LayersIcon /> },
-      { id: 'exportCsv', label: 'صدور فهرست (CSV)', icon: <DocIcon /> },
-        { id: 'exportPdf', label: 'صدور فهرست (PDF)', icon: <PdfIcon /> },
-        { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
+        { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> },
+        { id: 'saveFormat', label: t('ذخیرهٔ قالب نمایش این پوشه'), icon: <LayersIcon /> },
+      { id: 'exportCsv', label: t('صدور فهرست (CSV)'), icon: <DocIcon /> },
+        { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> },
+        { id: 'zipCreate', label: t('ساخت آرشیو در پنجرهٔ مقابل'), icon: <ArchiveOpenIcon /> },
         {
         id: 'pinFile',
-        label: isPinned ? 'برداشتن سنجاق' : 'سنجاق به بالای پوشه',
+        label: isPinned ? t('برداشتن سنجاق') : t('سنجاق به بالای پوشه'),
         icon: <PinIcon filled={isPinned} />
         }
       )
     }
     if (entry?.dir) {
       items.push(
-        { id: 'openTab', label: 'باز کردن در تب نو', icon: <PlusIcon /> },
-        { id: 'size', label: 'محاسبهٔ اندازه', key: 'F9', icon: <GaugeIcon /> },
-        { id: 'look', label: 'رنگ و آیکون پوشه', icon: <PaletteIcon /> },
-        { id: 'tabHere', label: 'تب نو در این پوشه', icon: <PlusIcon /> }
+        { id: 'openTab', label: t('باز کردن در تب نو'), icon: <PlusIcon /> },
+        { id: 'size', label: t('محاسبهٔ اندازه'), key: 'F9', icon: <GaugeIcon /> },
+        { id: 'look', label: t('رنگ و آیکون پوشه'), icon: <PaletteIcon /> },
+        { id: 'tabHere', label: t('تب نو در این پوشه'), icon: <PlusIcon /> }
       )
     }
     return items
@@ -1099,7 +1104,7 @@ export default function App() {
   const openGallery = (i: number, path?: string) => {
     const images = imagesOf(i)
     if (!images.length) {
-      setNote('تصویری در این پوشه نیست')
+      setNote(t('تصویری در این پوشه نیست'))
       return
     }
     const start = path ?? panes?.[i].sel[0] ?? images[0].path
@@ -1111,7 +1116,7 @@ export default function App() {
     if (!panes) return
     const path = panes[i].sel[0] ?? panes[i].preview?.entry.path
     if (!path) {
-      setNote('یک فایل انتخاب کن')
+      setNote(t('یک فایل انتخاب کن'))
       return
     }
     const entry = entryOf(i, path) ?? panes[i].preview?.entry
@@ -1148,7 +1153,7 @@ export default function App() {
     const sel = panes[i].sel
     if (sel.length > 1) setRenameTargets(sel)
     else if (sel.length === 1) setPrompt({ kind: 'rename', value: baseName(sel[0]) })
-    else setNote('چیزی انتخاب نشده')
+    else setNote(t('چیزی انتخاب نشده'))
   }
 
   const visibleOf = (i: number) => {
@@ -1164,7 +1169,7 @@ export default function App() {
     compareBy: 'mtime' | 'ctime' | 'hash',
     ignore: string
   ) => {
-    setNote('در حال مقایسه…')
+    setNote(t('در حال مقایسه…'))
     const r = await api.syncCompare(left, right, {
       compareBy,
       ignore: ignore
@@ -1180,7 +1185,7 @@ export default function App() {
     const left = tabOf(panes![active])
     const right = tabOf(panes![1 - active])
     if (!right || right === left) {
-      setNote('پنجرهٔ مقابل پوشهٔ دیگری باشد')
+      setNote(t('پنجرهٔ مقابل پوشهٔ دیگری باشد'))
       return
     }
     await runCompare(left, right, 'mtime', '')
@@ -1189,7 +1194,7 @@ export default function App() {
   const openDiff = async () => {
     const me = panes![active]
     if (me.sel.length !== 2) {
-      setNote('برای مقایسه دو فایل را انتخاب کن')
+      setNote(t('برای مقایسه دو فایل را انتخاب کن'))
       return
     }
     const [a, b] = me.sel
@@ -1205,7 +1210,7 @@ export default function App() {
     edit: () => {
       const p = panes![active].sel[0]
       if (p) setEditor(p)
-      else setNote('چیزی انتخاب نشده')
+      else setNote(t('چیزی انتخاب نشده'))
     },
     rename: () => openRename(active),
     batchRename: () => openRename(active),
@@ -1247,7 +1252,7 @@ export default function App() {
     },
     searchIndex: () => setSearchOpen(true),
     checkUpdate: () => {
-      setNote('بررسی به‌روزرسانی…')
+      setNote(t('بررسی به‌روزرسانی…'))
       void api.update.check(true).then((u) => {
         setUpdate(u)
         setNote(
@@ -1262,10 +1267,10 @@ export default function App() {
     indexSizes: () => {
       const dirs = visibleOf(active).filter((e) => e.dir).map((e) => e.path)
       if (!dirs.length) {
-        setNote('پوشه‌ای در فهرست نیست')
+        setNote(t('پوشه‌ای در فهرست نیست'))
         return
       }
-      setNote('اندازه از ایندکس…')
+      setNote(t('اندازه از ایندکس…'))
       void api.search.sizes(dirs).then((sizes) => {
         const found = Object.keys(sizes).length
         setSizes((prev) => {
@@ -1273,7 +1278,7 @@ export default function App() {
           for (const [dir, v] of Object.entries(sizes)) next[dir] = fmtSize(v.bytes, false, prefs.sizeFormat)
           return next
         })
-        setNote(found ? `${found} پوشه از ایندکس پر شد` : 'این پوشه‌ها در ایندکس نیستند')
+        setNote(found ? `${found} پوشه از ایندکس پر شد` : t('این پوشه‌ها در ایندکس نیستند'))
       })
     },
     presets: () => setPresetsOpen(true),
@@ -1286,15 +1291,15 @@ export default function App() {
           sortKey: sort.key,
           sortAsc: sort.asc
         })
-        .then(() => setNote('قالب این پوشه ذخیره شد'))
+        .then(() => setNote(t('قالب این پوشه ذخیره شد')))
     },
     prefs: () => setSettingsOpen(true)
   }
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      const t = ev.target as HTMLElement | null
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
+      const el = ev.target as HTMLElement | null
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
       if (!panes) return
       if (editor) return
       const me = panes[active]
@@ -1342,7 +1347,7 @@ export default function App() {
   })
 
   if (!panes) {
-    return <div className="boot">در حال آماده‌سازی…</div>
+    return <div className="boot">{t(t('در حال آماده‌سازی…'))}</div>
   }
 
   const visible = visibleOf(active)
@@ -1407,19 +1412,19 @@ export default function App() {
           void api.window.maximize()
         }}
       >
-        <span className="logo-mark" title="مدیر فایل مکس">
+        <span className="logo-mark" title={t(t('مدیر فایل مکس'))}>
           <FolderIcon />
         </span>
         <button
           className={'tb' + (ui.sidebarOpen ? ' on' : '')}
-          title="سایدبار"
+          title={t(t('سایدبار'))}
           onClick={() => setUi((u) => ({ ...u, sidebarOpen: !u.sidebarOpen }))}
         >
           <MenuIcon />
         </button>
         <button
           className={'tb' + (settingsOpen ? ' on' : '')}
-          title="تنظیمات"
+          title={t(t('تنظیمات'))}
           onClick={() => setSettingsOpen((o) => !o)}
         >
           <SettingsIcon />
@@ -1428,41 +1433,41 @@ export default function App() {
         <span className="note">{note}</span>
         <button
           className={'tb' + (prefs.layout === 'single' ? ' on' : '')}
-          title={prefs.layout === 'dual' ? 'تک‌پنجره' : 'دوپنجره'}
+          title={prefs.layout === 'dual' ? t('تک‌پنجره') : t('دوپنجره')}
           onClick={() => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' })}
         >
           <SplitIcon />
         </button>
         <button
           className={'tb' + (previewOn ? ' on' : '')}
-          title="پنل پیش‌نمایش"
+          title={t(t('پنل پیش‌نمایش'))}
           onClick={togglePreview}
         >
           <PreviewIcon />
         </button>
-        <button className="tb" title="بازگردانی آخرین عملیات (Ctrl+Z)" onClick={() => void doUndo()}>
+        <button className="tb" title={t(t('بازگردانی آخرین عملیات (Ctrl+Z)'))} onClick={() => void doUndo()}>
           <UndoIcon />
         </button>
         <button
           className="tb"
-          title={view === 'list' ? 'نمای شبکه' : 'نمای فهرست'}
+          title={view === 'list' ? t('نمای شبکه') : t('نمای فهرست')}
           onClick={() => setView((v) => (v === 'list' ? 'grid' : 'list'))}
         >
           {view === 'list' ? <GridIcon /> : <ListIcon />}
         </button>
-        <button className="tb" title="اندازهٔ پوشه (F9)" onClick={() => void computeSizes(active)}>
+        <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
           <GaugeIcon />
         </button>
         <button
           className={'tb' + (hidden ? ' on' : '')}
-          title="فایل‌های مخفی (Ctrl+H)"
+          title={t(t('فایل‌های مخفی (Ctrl+H)'))}
           onClick={() => setHidden((h) => !h)}
         >
           {hidden ? <EyeIcon /> : <EyeOffIcon />}
         </button>
         <button
           className="tb"
-          title={theme === 'dark' ? 'تم روشن' : 'تم تیره'}
+          title={theme === 'dark' ? t('تم روشن') : t('تم تیره')}
           onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         >
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
@@ -1518,7 +1523,7 @@ export default function App() {
               }
             }}
           />
-          <span className="hint">مسیر را بنویس و Enter بزن · Esc انصراف</span>
+          <span className="hint">{t(t('مسیر را بنویس و Enter بزن · Esc انصراف'))}</span>
         </div>
       )}
 
@@ -1685,8 +1690,8 @@ export default function App() {
             : panes[active].listing
               ? `${fa(visible.length)} مورد`
               : panes[active].loading
-                ? 'در حال خواندن…'
-                : 'فهرستی نیست'}
+                ? t('در حال خواندن…')
+                : t('فهرستی نیست')}
         </span>
         <span>
           {panes[active].sel.length
@@ -1697,7 +1702,7 @@ export default function App() {
         {update?.newer && (
           <button
             className="update-chip"
-            title="یادداشت‌های نسخه"
+            title={t(t('یادداشت‌های نسخه'))}
             onClick={() => update.url && void api.update.open(update.url)}
           >
             نسخهٔ تازه {update.latest}
@@ -1705,43 +1710,43 @@ export default function App() {
         )}
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         {prefs.layout === 'single' && (
-          <span title="مقصد کپی/انتقال در حالت تک‌پنجره">
+          <span title={t(t('مقصد کپی/انتقال در حالت تک‌پنجره'))}>
             مقصد: {baseName(tabOf(panes[1 - active]))}
           </span>
         )}
         <span className="spacer" />
         <div className="status-actions">
-          <button className="sbtn" title="کپی (F5)" onClick={() => void runSel(active, 'copy')}>
+          <button className="sbtn" title={t(t('کپی (F5)'))} onClick={() => void runSel(active, 'copy')}>
             <CopyIcon />
-            <span>کپی</span>
+            <span>{t(t('کپی'))}</span>
           </button>
-          <button className="sbtn" title="انتقال (F6)" onClick={() => void runSel(active, 'move')}>
+          <button className="sbtn" title={t(t('انتقال (F6)'))} onClick={() => void runSel(active, 'move')}>
             <MoveIcon />
-            <span>انتقال</span>
+            <span>{t(t('انتقال'))}</span>
           </button>
-          <button className="sbtn" title="تغییر نام (F2)" onClick={() => openRename(active)}>
+          <button className="sbtn" title={t(t('تغییر نام (F2)'))} onClick={() => openRename(active)}>
             <RenameIcon />
-            <span>نام</span>
+            <span>{t(t('نام'))}</span>
           </button>
-          <button className="sbtn" title="پوشهٔ نو (F7)" onClick={() => setPrompt({ kind: 'mkdir', value: '' })}>
+          <button className="sbtn" title={t(t('پوشهٔ نو (F7)'))} onClick={() => setPrompt({ kind: 'mkdir', value: '' })}>
             <FolderPlusIcon />
-            <span>پوشه</span>
+            <span>{t(t('پوشه'))}</span>
           </button>
-          <button className="sbtn" title="سطل بازیافت (F8)" onClick={() => void runSel(active, 'trash')}>
+          <button className="sbtn" title={t(t('سطل بازیافت (F8)'))} onClick={() => void runSel(active, 'trash')}>
             <TrashIcon />
-            <span>سطل</span>
+            <span>{t(t('سطل'))}</span>
           </button>
-          <button className="sbtn" title="اندازهٔ پوشه (F9)" onClick={() => void computeSizes(active)}>
+          <button className="sbtn" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
             <GaugeIcon />
-            <span>اندازه</span>
+            <span>{t(t('اندازه'))}</span>
           </button>
-          <button className="sbtn" title="پیش‌نمایش در پنجرهٔ مقابل (F3)" onClick={() => previewInOther(active)}>
+          <button className="sbtn" title={t(t('پیش‌نمایش در پنجرهٔ مقابل (F3)'))} onClick={() => previewInOther(active)}>
             <PreviewIcon />
-            <span>پیش‌نمایش</span>
+            <span>{t(t('پیش‌نمایش'))}</span>
           </button>
-          <button className="sbtn" title="بازگردانی (Ctrl+Z)" onClick={() => void doUndo()}>
+          <button className="sbtn" title={t(t('بازگردانی (Ctrl+Z)'))} onClick={() => void doUndo()}>
             <UndoIcon />
-            <span>بازگردانی</span>
+            <span>{t(t('بازگردانی'))}</span>
           </button>
         </div>
       </footer>
@@ -1892,7 +1897,7 @@ export default function App() {
               api.setRating(target.dir, target.name, stars),
               api.setNote(target.dir, target.name, note)
             ]).then(() => load(active, tabOf(panes![active])))
-            setNote(stars ? `${stars} ستاره ثبت شد` : 'امتیاز برداشته شد')
+            setNote(stars ? `${stars} ستاره ثبت شد` : t('امتیاز برداشته شد'))
           }}
         />
       )}
@@ -1960,7 +1965,7 @@ export default function App() {
                     .setLabel(labelFor.dir, labelFor.name, null)
                     .then(() => load(active, tabOf(panes![active])))
                   setLabelFor(null)
-                  setNote('برچسب برداشته شد')
+                  setNote(t('برچسب برداشته شد'))
                 }}
               >
                 بدون برچسب
@@ -1974,10 +1979,10 @@ export default function App() {
         <div className="modal" onMouseDown={() => setConfirmAsk(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
             <div className="dlg-title">
-              {confirmAsk.kind === 'trash' ? 'به سطل بازیافت برود؟' : 'برای همیشه حذف شود؟'}
+              {confirmAsk.kind === 'trash' ? t('به سطل بازیافت برود؟') : t('برای همیشه حذف شود؟')}
             </div>
             <div className="hint" dir="auto">
-              {fa(confirmAsk.paths.length)} مورد · {confirmAsk.paths.slice(0, 3).map(baseName).join('، ')}
+              {fa(confirmAsk.paths.length)} مورد · {confirmAsk.paths.slice(0, 3).map(baseName).join(t('، '))}
               {confirmAsk.paths.length > 3 ? ' …' : ''}
             </div>
             <div className="dlg-actions">
@@ -1990,7 +1995,7 @@ export default function App() {
               >
                 بله
               </button>
-              <button onClick={() => setConfirmAsk(null)}>انصراف</button>
+              <button onClick={() => setConfirmAsk(null)}>{t(t('انصراف'))}</button>
             </div>
           </div>
         </div>
@@ -2058,7 +2063,7 @@ export default function App() {
       {prompt && (
         <div className="modal" onMouseDown={() => setPrompt(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="dlg-title">{prompt.kind === 'mkdir' ? 'نام پوشهٔ نو' : 'نام تازه'}</div>
+            <div className="dlg-title">{prompt.kind === 'mkdir' ? t('نام پوشهٔ نو') : t('نام تازه')}</div>
             <input
               autoFocus
               dir="auto"
@@ -2070,8 +2075,8 @@ export default function App() {
               }}
             />
             <div className="dlg-actions">
-              <button onClick={() => void submitPrompt()}>تأیید</button>
-              <button onClick={() => setPrompt(null)}>انصراف</button>
+              <button onClick={() => void submitPrompt()}>{t(t('تأیید'))}</button>
+              <button onClick={() => setPrompt(null)}>{t(t('انصراف'))}</button>
             </div>
           </div>
         </div>

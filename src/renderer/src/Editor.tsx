@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import { baseName } from './format'
@@ -78,7 +79,7 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
       v.focus()
     }).catch((e) => {
       console.error('visual editor failed', e)
-      onNote('ویرایشگر بصری باز نشد؛ از حالت «متن» استفاده کن')
+      onNote(t('ویرایشگر بصری باز نشد؛ از حالت «متن» استفاده کن'))
       setMode('source')
     })
     return () => {
@@ -110,7 +111,7 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
   const toPdf = async () => {
     if (text === null || busy) return
     setBusy(true)
-    onNote('در حال ساخت PDF…')
+    onNote(t('در حال ساخت PDF…'))
     const body = isMd
       ? renderMarkdown(text)
       : `<pre dir="ltr">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`
@@ -164,17 +165,17 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
         <span className="ed-name" dir="auto" title={path}>
           {baseName(path)}
         </span>
-        {dirty && <span className="ed-dot" title="تغییرات ذخیره‌نشده" />}
+        {dirty && <span className="ed-dot" title={t(t('تغییرات ذخیره‌نشده'))} />}
         <span className="ed-lang">{lang ?? (isMd ? 'markdown' : 'text')}</span>
         {isMd && (
           <div className="seg ed-mode">
-            <button className={rich ? 'on' : ''} onClick={() => setMode('visual')} title="ویرایشگر بصری">
+            <button className={rich ? 'on' : ''} onClick={() => setMode('visual')} title={t(t('ویرایشگر بصری'))}>
               بصری
             </button>
             <button
               className={!rich ? 'on' : ''}
               onClick={() => setMode('source')}
-              title="متن مارک‌داون"
+              title={t(t('متن مارک‌داون'))}
             >
               متن
             </button>
@@ -182,44 +183,44 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
         )}
         <span className="spacer" />
         {!rich && (
-          <button className="tb" title="شکستن خطوط" onClick={() => setWrap((w) => !w)}>
+          <button className="tb" title={t(t('شکستن خطوط'))} onClick={() => setWrap((w) => !w)}>
             <span className={wrap ? 'on-txt' : ''}>¶</span>
           </button>
         )}
-        <button className="tb" title="کوچک‌تر" onClick={() => setFontSize((f) => Math.max(9, f - 1))}>
-          <span>ا−</span>
+        <button className="tb" title={t(t('کوچک‌تر'))} onClick={() => setFontSize((f) => Math.max(9, f - 1))}>
+          <span>{t(t('ا−'))}</span>
         </button>
-        <button className="tb" title="بزرگ‌تر" onClick={() => setFontSize((f) => Math.min(22, f + 1))}>
-          <span>ا+</span>
+        <button className="tb" title={t(t('بزرگ‌تر'))} onClick={() => setFontSize((f) => Math.min(22, f + 1))}>
+          <span>{t(t('ا+'))}</span>
         </button>
         {isMd && !rich && (
           <button
             className={'tb' + (split ? ' on' : '')}
-            title="پیش‌نمایش کنار"
+            title={t(t('پیش‌نمایش کنار'))}
             onClick={() => setSplit((s) => !s)}
           >
             ◫
           </button>
         )}
         {isMd && (
-          <button className="btn" title="ساخت PDF از این فایل" onClick={() => void toPdf()} disabled={busy}>
+          <button className="btn" title={t(t('ساخت PDF از این فایل'))} onClick={() => void toPdf()} disabled={busy}>
             PDF
           </button>
         )}
-        <button className="btn" title="ذخیره (Ctrl+S)" onClick={() => void save()} disabled={busy || !dirty}>
+        <button className="btn" title={t(t('ذخیره (Ctrl+S)'))} onClick={() => void save()} disabled={busy || !dirty}>
           <ConfirmIcon />
-          <span>ذخیره</span>
+          <span>{t(t('ذخیره'))}</span>
         </button>
         {onToggleMax && (
           <button
             className="tb"
-            title={docked ? 'تمام صفحه' : 'برگرداندن به کنار پیش‌نمایش'}
+            title={docked ? t('تمام صفحه') : t('برگرداندن به کنار پیش‌نمایش')}
             onClick={onToggleMax}
           >
             {docked ? '⛶' : '❐'}
           </button>
         )}
-        <button className="tb" title="بستن (Esc)" onClick={onClose}>
+        <button className="tb" title={t(t('بستن (Esc)'))} onClick={onClose}>
           <XIcon size={12} />
         </button>
       </header>
@@ -268,8 +269,8 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
         <span>{lineCount} خط</span>
         <span>{value.length} کاراکتر</span>
         <span className="spacer" />
-        <span>{dirty ? 'ذخیره‌نشده' : 'ذخیره‌شده'}</span>
-        <span className="dim">Ctrl+S ذخیره · Esc بستن</span>
+        <span>{dirty ? t('ذخیره‌نشده') : t('ذخیره‌شده')}</span>
+        <span className="dim">{t(t('Ctrl+S ذخیره · Esc بستن'))}</span>
       </footer>
     </div>
   )

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api, type DirRef } from './api'
 import { ChevronDownIcon, ChevronLeftIcon, FolderIcon } from './Icons'
@@ -43,7 +44,7 @@ export function PaneTree({ path, onNav }: Props) {
       <button
         className="ptree-twisty"
         onClick={() => hasKids && toggle(dir)}
-        title={open[dir] ? 'بستن' : 'باز کردن'}
+        title={open[dir] ? t('بستن') : t('باز کردن')}
       >
         {hasKids ? open[dir] ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} /> : null}
       </button>
@@ -71,7 +72,7 @@ export function PaneTree({ path, onNav }: Props) {
 
   return (
     <div className="ptree">
-      {row('/', 'ریشه', 0, true)}
+      {row('/', t('ریشه'), 0, true)}
       {parts.map((_, i) => branch(join(parts.slice(0, i + 1)), i + 1))}
     </div>
   )

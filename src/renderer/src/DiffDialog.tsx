@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { fa } from './format'
 import { XIcon } from './Icons'
 
@@ -17,7 +18,7 @@ export function DiffDialog({ a, b, result, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog diff-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">مقایسهٔ دو فایل</div>
+        <div className="dialog-title">{t(t('مقایسهٔ دو فایل'))}</div>
         <div className="sync-paths">
           <span dir="auto">{a}</span>
           <span className="dim">↔</span>
@@ -26,8 +27,8 @@ export function DiffDialog({ a, b, result, onClose }: Props) {
         <div className="sync-summary">
           <span className="chip add">{fa(result.added)} افزوده</span>
           <span className="chip del">{fa(result.removed)} حذف‌شده</span>
-          {result.binary && <span className="chip warn">باینری</span>}
-          {result.coarse && <span className="chip warn">مقایسهٔ خطی تقریبی (فایل بزرگ)</span>}
+          {result.binary && <span className="chip warn">{t(t('باینری'))}</span>}
+          {result.coarse && <span className="chip warn">{t(t('مقایسهٔ خطی تقریبی (فایل بزرگ)'))}</span>}
         </div>
         <div className="diff-body" dir="ltr">
           {rows.slice(0, 6000).map((l, i) => (

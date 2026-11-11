@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
 import { XIcon } from './Icons'
@@ -22,20 +23,20 @@ type Page =
   | 'advanced'
 
 const PAGES: { id: Page; label: string }[] = [
-  { id: 'appearance', label: 'ظاهر و رنگ' },
-  { id: 'display', label: 'نمایش فایل‌ها' },
-  { id: 'columns', label: 'ستون‌ها' },
-  { id: 'toolbar', label: 'نوار ابزار' },
-  { id: 'keys', label: 'کلید میان‌بر' },
-  { id: 'layout', label: 'پنجره و چیدمان' },
-  { id: 'agents', label: 'ایجنت‌ها (MCP)' },
-  { id: 'search', label: 'جست‌وجو' },
-  { id: 'filetypes', label: 'انواع فایل' },
-  { id: 'archive', label: 'بایگانی و گالری' },
-  { id: 'transfer', label: 'انتقال' },
-  { id: 'operations', label: 'عملیات فایل' },
-  { id: 'launch', label: 'راه‌اندازی' },
-  { id: 'advanced', label: 'پیشرفته' }
+  { id: 'appearance', label: t('ظاهر و رنگ') },
+  { id: 'display', label: t('نمایش فایل‌ها') },
+  { id: 'columns', label: t('ستون‌ها') },
+  { id: 'toolbar', label: t('نوار ابزار') },
+  { id: 'keys', label: t('کلید میان‌بر') },
+  { id: 'layout', label: t('پنجره و چیدمان') },
+  { id: 'agents', label: t('ایجنت‌ها (MCP)') },
+  { id: 'search', label: t('جست‌وجو') },
+  { id: 'filetypes', label: t('انواع فایل') },
+  { id: 'archive', label: t('بایگانی و گالری') },
+  { id: 'transfer', label: t('انتقال') },
+  { id: 'operations', label: t('عملیات فایل') },
+  { id: 'launch', label: t('راه‌اندازی') },
+  { id: 'advanced', label: t('پیشرفته') }
 ]
 
 type Props = {
@@ -110,7 +111,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
     <div className="modal" onMouseDown={onClose}>
       <div className="prefs" onMouseDown={(e) => e.stopPropagation()}>
         <nav className="prefs-nav">
-          <div className="prefs-title">تنظیمات</div>
+          <div className="prefs-title">{t(t('تنظیمات'))}</div>
           {PAGES.map((p) => (
             <button
               key={p.id}
@@ -129,15 +130,15 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
         <section className="prefs-body">
           {page === 'appearance' && (
             <>
-              {row('تم', null, seg(prefs.theme, [{ v: 'dark', label: 'تیره' }, { v: 'light', label: 'روشن' }], 'theme'))}
+              {row(t('تم'), null, seg(prefs.theme, [{ v: 'dark', label: t('تیره') }, { v: 'light', label: t('روشن') }], 'theme'))}
               {row(
-                'تایتل‌بار',
-                'سیستم = قاب سیستم‌عامل، برنامه = نوار خود اپ',
-                seg(prefs.titlebar, [{ v: 'system', label: 'سیستم' }, { v: 'app', label: 'برنامه' }], 'titlebar')
+                t('تایتل‌بار'),
+                t('سیستم = قاب سیستم‌عامل، برنامه = نوار خود اپ'),
+                seg(prefs.titlebar, [{ v: 'system', label: t('سیستم') }, { v: 'app', label: t('برنامه') }], 'titlebar')
               )}
               {row(
-                'گوشه‌های گرد پنجره',
-                prefs.titlebar === 'system' ? 'فقط با تایتل‌بار برنامه ممکن است' : null,
+                t('گوشه‌های گرد پنجره'),
+                prefs.titlebar === 'system' ? t('فقط با تایتل‌بار برنامه ممکن است') : null,
                 <label className="check">
                   <input
                     type="checkbox"
@@ -152,32 +153,32 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
 
           {page === 'display' && (
             <>
-              {row('نمای پیش‌فرض', null, seg(prefs.view, [{ v: 'list', label: 'فهرست' }, { v: 'grid', label: 'شبکه' }], 'view'))}
-              {row('پوشه‌ها اول فهرست', 'مانند Directory Opus و FreeCommander', check(prefs.foldersFirst, 'foldersFirst'))}
-              {row('نمایش فایل‌های مخفی', 'پیش‌فرضِ آغاز به کار', check(prefs.showHidden, 'showHidden'))}
+              {row(t('نمای پیش‌فرض'), null, seg(prefs.view, [{ v: 'list', label: t('فهرست') }, { v: 'grid', label: t('شبکه') }], 'view'))}
+              {row(t('پوشه‌ها اول فهرست'), t('مانند Directory Opus و FreeCommander'), check(prefs.foldersFirst, 'foldersFirst'))}
+              {row(t('نمایش فایل‌های مخفی'), t('پیش‌فرضِ آغاز به کار'), check(prefs.showHidden, 'showHidden'))}
               {row(
-                'قالب اندازه',
+                t('قالب اندازه'),
                 null,
                 seg(
                   prefs.sizeFormat,
-                  [{ v: 'human', label: 'خوانا' }, { v: 'bytes', label: 'بایت دقیق' }],
+                  [{ v: 'human', label: t('خوانا') }, { v: 'bytes', label: t('بایت دقیق') }],
                   'sizeFormat'
                 )
               )}
               {row(
-                'قالب تاریخ',
+                t('قالب تاریخ'),
                 null,
                 seg(
                   prefs.dateFormat,
                   [
-                    { v: 'jalali', label: 'شمسی' },
-                    { v: 'iso', label: 'میلادی' },
-                    { v: 'short', label: 'فقط ساعت' }
+                    { v: 'jalali', label: t('شمسی') },
+                    { v: 'iso', label: t('میلادی') },
+                    { v: 'short', label: t('فقط ساعت') }
                   ],
                   'dateFormat'
                 )
               )}
-              {row('ثانیه در تاریخ', null, check(prefs.showSeconds, 'showSeconds'))}
+              {row(t('ثانیه در تاریخ'), null, check(prefs.showSeconds, 'showSeconds'))}
             </>
           )}
 
@@ -214,7 +215,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                       </label>
                       <button
                         className="tb"
-                        title="بالا"
+                        title={t(t('بالا'))}
                         disabled={!on || idx === 0}
                         onClick={() => move(-1)}
                       >
@@ -222,7 +223,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                       </button>
                       <button
                         className="tb"
-                        title="پایین"
+                        title={t(t('پایین'))}
                         disabled={!on || idx === 0}
                         onClick={() => move(1)}
                       >
@@ -273,10 +274,10 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                           }
                         />
                       </label>
-                      <button className="tb" title="بالا" disabled={!on} onClick={() => move(-1)}>
+                      <button className="tb" title={t(t('بالا'))} disabled={!on} onClick={() => move(-1)}>
                         ▲
                       </button>
-                      <button className="tb" title="پایین" disabled={!on} onClick={() => move(1)}>
+                      <button className="tb" title={t(t('پایین'))} disabled={!on} onClick={() => move(1)}>
                         ▼
                       </button>
                     </div>
@@ -285,7 +286,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
               })}
               <div className="pref-row">
                 <div className="pref-label">
-                  <span>بازنشانی نوار ابزار</span>
+                  <span>{t(t('بازنشانی نوار ابزار'))}</span>
                 </div>
                 <div className="pref-control">
                   <button className="btn ghost" onClick={() => onChange({ toolbar: DEFAULT_TOOLBAR })}>
@@ -300,7 +301,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
             <>
               {conflicts.length > 0 && (
                 <div className="warn">
-                  تعارض: {conflicts.map((id) => COMMAND_BY_ID[id]?.label ?? id).join(' ، ')} — یک کلید
+                  تعارض: {conflicts.map((id) => COMMAND_BY_ID[id]?.label ?? id).join(t(' ، '))} — یک کلید
                   به چند فرمان داده شده؛ اولی در فهرست اجرا می‌شود.
                 </div>
               )}
@@ -320,11 +321,11 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                             className={'keycap' + (capturing === c.id ? ' live' : '') + (bad ? ' bad' : '')}
                             onClick={() => setCapturing(capturing === c.id ? null : c.id)}
                           >
-                            {capturing === c.id ? 'کلید را بزن…' : accel ? formatAccel(accel) : 'بدون کلید'}
+                            {capturing === c.id ? t('کلید را بزن…') : accel ? formatAccel(accel) : t('بدون کلید')}
                           </button>
                           <button
                             className="tb"
-                            title="حذف کلید"
+                            title={t(t('حذف کلید'))}
                             onClick={() =>
                               onChange({ shortcuts: { ...prefs.shortcuts, [c.id]: '' } })
                             }
@@ -333,7 +334,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                           </button>
                           <button
                             className="tb"
-                            title="پیش‌فرض"
+                            title={t(t('پیش‌فرض'))}
                             onClick={() =>
                               onChange({
                                 shortcuts: { ...prefs.shortcuts, [c.id]: DEFAULT_SHORTCUTS[c.id] }
@@ -350,7 +351,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
               ))}
               <div className="pref-row">
                 <div className="pref-label">
-                  <span>بازنشانی همهٔ کلیدها</span>
+                  <span>{t(t('بازنشانی همهٔ کلیدها'))}</span>
                 </div>
                 <div className="pref-control">
                   <button className="btn ghost" onClick={() => onChange({ shortcuts: DEFAULT_SHORTCUTS })}>
@@ -364,16 +365,16 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'layout' && (
             <>
               {row(
-                'چیدمان پنجره',
-                'تک‌پنجره = مثل Explorer، دوپنجره = مثل Total Commander',
-                seg(prefs.layout, [{ v: 'single', label: 'تک‌پنجره' }, { v: 'dual', label: 'دوپنجره' }], 'layout')
+                t('چیدمان پنجره'),
+                t('تک‌پنجره = مثل Explorer، دوپنجره = مثل Total Commander'),
+                seg(prefs.layout, [{ v: 'single', label: t('تک‌پنجره') }, { v: 'dual', label: t('دوپنجره') }], 'layout')
               )}
               {row(
-                'سایدبار',
+                t('سایدبار'),
                 null,
-                seg(prefs.sidebar, [{ v: 'docked', label: 'چسبیده' }, { v: 'float', label: 'شناور' }], 'sidebar')
+                seg(prefs.sidebar, [{ v: 'docked', label: t('چسبیده') }, { v: 'float', label: t('شناور') }], 'sidebar')
               )}
-              {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+              {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
             </>
           )}
 
@@ -389,7 +390,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
               </div>
               <div className="preset-list">
                 {prefs.searchRoots.length === 0 && (
-                  <div className="dim">پوشهٔ پیش‌فرض سیستم استفاده می‌شود</div>
+                  <div className="dim">{t(t('پوشهٔ پیش‌فرض سیستم استفاده می‌شود'))}</div>
                 )}
                 {prefs.searchRoots.map((r) => (
                   <div className="preset-row" key={r}>
@@ -398,7 +399,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                     </span>
                     <button
                       className="tb"
-                      title="حذف از ایندکس"
+                      title={t(t('حذف از ایندکس'))}
                       onClick={() =>
                         onChange({ searchRoots: prefs.searchRoots.filter((x) => x !== r) })
                       }
@@ -428,8 +429,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 </button>
               </div>
               {row(
-                'استثناها',
-                'با کاما جدا کن؛ * هم مجاز است (مثلاً node_modules, *.tmp)',
+                t('استثناها'),
+                t('با کاما جدا کن؛ * هم مجاز است (مثلاً node_modules, *.tmp)'),
                 <input
                   className="pref-input wide"
                   dir="ltr"
@@ -456,7 +457,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 <input
                   className="pref-input"
                   dir="ltr"
-                  placeholder="پسوند، مثلاً pdf"
+                  placeholder={t(t('پسوند، مثلاً pdf'))}
                   value={extInput}
                   onChange={(e) => setExtInput(e.target.value.replace(/^\./, '').toLowerCase())}
                 />
@@ -477,7 +478,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
               </div>
               <div className="preset-list">
                 {Object.keys(prefs.fileTypes).length === 0 && (
-                  <div className="dim">هنوز پسوندی رنگ نگرفته</div>
+                  <div className="dim">{t(t('هنوز پسوندی رنگ نگرفته'))}</div>
                 )}
                 {Object.entries(prefs.fileTypes).map(([ext, color]) => (
                   <div className="preset-row" key={ext}>
@@ -487,7 +488,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                     </span>
                     <button
                       className="tb"
-                      title="حذف"
+                      title={t(t('حذف'))}
                       onClick={() => {
                         const next = { ...prefs.fileTypes }
                         delete next[ext]
@@ -505,8 +506,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'archive' && (
             <>
               {row(
-                'سطح فشرده‌سازی zip',
-                '۰ = بدون فشرده‌سازی (سریع‌ترین)، ۹ = بیشترین فشرده‌سازی',
+                t('سطح فشرده‌سازی zip'),
+                t('۰ = بدون فشرده‌سازی (سریع‌ترین)، ۹ = بیشترین فشرده‌سازی'),
                 <div className="inline-field">
                   <input
                     type="number"
@@ -520,8 +521,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 </div>
               )}
               {row(
-                'قالب ذخیرهٔ تصویر',
-                'فقط روی «ذخیره به‌عنوان کپی» اثر دارد؛ جایگزینی همیشه قالب خود فایل را نگه می‌دارد',
+                t('قالب ذخیرهٔ تصویر'),
+                t('فقط روی «ذخیره به‌عنوان کپی» اثر دارد؛ جایگزینی همیشه قالب خود فایل را نگه می‌دارد'),
                 seg(
                   prefs.imageFormat,
                   [
@@ -533,8 +534,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 )
               )}
               {row(
-                'کیفیت تصویر',
-                '۵۰ تا ۱۰۰؛ برای PNG بی‌اثر است',
+                t('کیفیت تصویر'),
+                t('۵۰ تا ۱۰۰؛ برای PNG بی‌اثر است'),
                 <div className="inline-field">
                   <input
                     type="number"
@@ -550,8 +551,8 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 </div>
               )}
               {row(
-                'فاصلهٔ پخش خودکار گالری',
-                'ثانیه بین دو عکس در حالت اسلاید',
+                t('فاصلهٔ پخش خودکار گالری'),
+                t('ثانیه بین دو عکس در حالت اسلاید'),
                 <div className="inline-field">
                   <input
                     type="number"
@@ -562,13 +563,13 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                       onChange({ slideshowSec: Math.min(60, Math.max(1, Number(e.target.value) || 3)) })
                     }
                   />
-                  <span>ثانیه</span>
+                  <span>{t(t('ثانیه'))}</span>
                 </div>
               )}
-              {row('حلقه‌ای بودن گالری', 'در آخرین عکس به اولی برگردد', check(prefs.galleryLoop, 'galleryLoop'))}
+              {row(t('حلقه‌ای بودن گالری'), t('در آخرین عکس به اولی برگردد'), check(prefs.galleryLoop, 'galleryLoop'))}
               {row(
-                'سقف پیش‌نمایش متن',
-                'کیلوبایت؛ فایل بزرگ‌تر بریده می‌شود',
+                t('سقف پیش‌نمایش متن'),
+                t('کیلوبایت؛ فایل بزرگ‌تر بریده می‌شود'),
                 <div className="inline-field">
                   <input
                     type="number"
@@ -589,18 +590,18 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'transfer' && (
             <>
               {row(
-                'رد کردن فایل‌های موجود',
-                'اگر نامی در مقصد هست، همان‌جا بمانَد و کپی نشود (به‌جای ساختن «نام (۲)»)',
+                t('رد کردن فایل‌های موجود'),
+                t('اگر نامی در مقصد هست، همان‌جا بمانَد و کپی نشود (به‌جای ساختن «نام (۲)»)'),
                 check(prefs.transferSkipExisting, 'transferSkipExisting')
               )}
               {row(
-                'فقط جدیدترها',
-                'اگر فایل مقصد جدیدتر یا هم‌زمان باشد، منتقل نشود',
+                t('فقط جدیدترها'),
+                t('اگر فایل مقصد جدیدتر یا هم‌زمان باشد، منتقل نشود'),
                 check(prefs.transferNewerOnly, 'transferNewerOnly')
               )}
               {row(
-                'محدودیت سرعت',
-                'کیلوبایت بر ثانیه؛ ۰ یعنی بی‌نهایت',
+                t('محدودیت سرعت'),
+                t('کیلوبایت بر ثانیه؛ ۰ یعنی بی‌نهایت'),
                 <div className="inline-field">
                   <input
                     type="number"
@@ -624,33 +625,33 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'operations' && (
             <>
               {row(
-                'دوبار کلیک روی فایل',
+                t('دوبار کلیک روی فایل'),
                 null,
                 seg(
                   prefs.doubleClick,
                   [
-                    { v: 'open', label: 'اجرا' },
-                    { v: 'gallery', label: 'گالری' },
-                    { v: 'preview', label: 'پیش‌نمایش' }
+                    { v: 'open', label: t('اجرا') },
+                    { v: 'gallery', label: t('گالری') },
+                    { v: 'preview', label: t('پیش‌نمایش') }
                   ],
                   'doubleClick'
                 )
               )}
-              {row('تأیید پیش از حذف', 'پرسش قبل از سطل بازیافت یا حذف قطعی', check(prefs.confirmDelete, 'confirmDelete'))}
-              {row('حذف پیش‌فرض به سطل بازیافت', 'خاموش = حذف قطعی', check(prefs.trashByDefault, 'trashByDefault'))}
+              {row(t('تأیید پیش از حذف'), t('پرسش قبل از سطل بازیافت یا حذف قطعی'), check(prefs.confirmDelete, 'confirmDelete'))}
+              {row(t('حذف پیش‌فرض به سطل بازیافت'), t('خاموش = حذف قطعی'), check(prefs.trashByDefault, 'trashByDefault'))}
             </>
           )}
 
           {page === 'launch' && (
             <>
               {row(
-                'کلید سراسری باز کردن',
-                'روی X11 کار می‌کند؛ روی Wayland باید همان کلید را در تنظیمات KDE به «Add Command» بدهی (راهنما در docs/INTEGRATION.md)',
+                t('کلید سراسری باز کردن'),
+                t('روی X11 کار می‌کند؛ روی Wayland باید همان کلید را در تنظیمات KDE به «Add Command» بدهی (راهنما در docs/INTEGRATION.md)'),
                 check(prefs.hotkeyEnabled, 'hotkeyEnabled')
               )}
               {row(
-                'ترکیب کلید',
-                'مثال: Super+E یا Ctrl+Alt+M',
+                t('ترکیب کلید'),
+                t('مثال: Super+E یا Ctrl+Alt+M'),
                 <input
                   className="pref-input"
                   dir="ltr"
@@ -664,13 +665,13 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'launch' && (
             <>
               {row(
-                'تک‌نمونه (single instance)',
-                'اجرای دوباره، پنجرهٔ موجود را جلو می‌آورد · با راه‌اندازی بعدی اعمال می‌شود',
+                t('تک‌نمونه (single instance)'),
+                t('اجرای دوباره، پنجرهٔ موجود را جلو می‌آورد · با راه‌اندازی بعدی اعمال می‌شود'),
                 check(prefs.singleInstance, 'singleInstance')
               )}
               {row(
-                'پوشهٔ شروع',
-                'خالی = همان نشست قبلی',
+                t('پوشهٔ شروع'),
+                t('خالی = همان نشست قبلی'),
                 <input
                   className="pref-input"
                   dir="ltr"
@@ -685,7 +686,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'advanced' && (
             <>
               <div className="hint">
-                پک‌های آیکون افزوده‌شده: {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : 'هیچ'}
+                پک‌های آیکون افزوده‌شده: {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : t('هیچ')}
               </div>
               <div className="hint">
                 تنظیمات در <code>state.json</code> کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api, type DirRef } from './api'
 import { baseName } from './format'
@@ -26,12 +27,12 @@ type Props = {
 export function Sidebar({ labels, onPickLabel, roots, marks, activePath, onNav, onUnmark }: Props) {
   return (
     <aside className="side">
-      <div className="side-title">مکان‌ها</div>
+      <div className="side-title">{t(t('مکان‌ها'))}</div>
       {roots.map((r) => (
         <TreeNode key={r.path} node={r} depth={0} activePath={activePath} onNav={onNav} />
       ))}
 
-      {labels.length > 0 && <div className="side-title">برچسب‌ها</div>}
+      {labels.length > 0 && <div className="side-title">{t(t('برچسب‌ها'))}</div>}
       {labels.map((l) => (
         <div key={l.id} className="tree-row">
           <span className="twisty" />
@@ -43,7 +44,7 @@ export function Sidebar({ labels, onPickLabel, roots, marks, activePath, onNav, 
         </div>
       ))}
 
-      {marks.length > 0 && <div className="side-title">نشان‌شده‌ها</div>}
+      {marks.length > 0 && <div className="side-title">{t(t('نشان‌شده‌ها'))}</div>}
       {marks.map((m) => (
         <div key={m} className={'tree-row mark' + (activePath === m ? ' on' : '')}>
           <span className="twisty" />
@@ -51,7 +52,7 @@ export function Sidebar({ labels, onPickLabel, roots, marks, activePath, onNav, 
             <StarIcon filled size={13} />
             <span>{baseName(m)}</span>
           </button>
-          <button className="x" title="حذف نشان" onClick={() => onUnmark(m)}>
+          <button className="x" title={t(t('حذف نشان'))} onClick={() => onUnmark(m)}>
             <XIcon size={12} />
           </button>
         </div>
@@ -76,12 +77,12 @@ function TreeNode({ node, depth, activePath, onNav }: {
 
   const active = activePath === node.path
   const Glyph = depth === 0 ? (node.name === '~' ? HomeIcon : DriveIcon) : FolderIcon
-  const label = node.name === '~' ? 'خانه' : node.name === '/' ? 'ریشه' : node.name
+  const label = node.name === '~' ? t('خانه') : node.name === '/' ? t('ریشه') : node.name
 
   return (
     <>
       <div className={'tree-row' + (active ? ' on' : '')} style={{ paddingInlineStart: 6 + depth * 12 }}>
-        <button className="twisty" onClick={() => setOpen((o) => !o)} aria-label="باز/بسته">
+        <button className="twisty" onClick={() => setOpen((o) => !o)} aria-label={t(t('باز/بسته'))}>
           {open ? <ChevronDownIcon size={12} /> : <ChevronLeftIcon size={12} />}
         </button>
         <button className="tree-name" dir="auto" title={node.path} onClick={() => onNav(node.path)}>

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { baseName, dirOf, fa, joinPath, planRename, type RenameMode } from './format'
@@ -64,20 +65,20 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
         {mode === 'template' ? (
           <>
             <label className="field">
-              <span>الگو</span>
+              <span>{t(t('الگو'))}</span>
               <input dir="auto" value={template} onChange={(e) => setTemplate(e.target.value)} />
             </label>
             <div className="hint">
-              {anyTags ? 'کلیدهای متادیتا هم کار می‌کنند: ' : ''}
+              {anyTags ? t('کلیدهای متادیتا هم کار می‌کنند: ') : ''}
               {anyTags && <span dir="ltr">{'{title} {artist} {album} {year} {date} {camera}'}</span>}
             </div>
             <div className="hint">
-              جای‌نگهدارها: <code>{'{name}'}</code> نام، <code>{'{ext}'}</code> پسوند،{' '}
-              <code>{'{n}'}</code> شماره، <code>{'{nn}'}</code> شماره با صفر
+              جای‌نگهدارها: <code>{'{name}'}</code>{t(t('نام،'))}<code>{'{ext}'}</code> پسوند،{' '}
+              <code>{'{n}'}</code>{t(t('شماره،'))}<code>{'{nn}'}</code> شماره با صفر
             </div>
             <div className="two">
               <label className="field">
-                <span>شروع شماره</span>
+                <span>{t(t('شروع شماره'))}</span>
                 <input
                   dir="ltr"
                   type="number"
@@ -86,7 +87,7 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
                 />
               </label>
               <label className="field">
-                <span>صفر پیشرو</span>
+                <span>{t(t('صفر پیشرو'))}</span>
                 <input
                   dir="ltr"
                   type="number"
@@ -99,11 +100,11 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
         ) : (
           <div className="two">
             <label className="field">
-              <span>الگوی جست‌وجو</span>
+              <span>{t(t('الگوی جست‌وجو'))}</span>
               <input dir="ltr" value={find} onChange={(e) => setFind(e.target.value)} placeholder="(\d+)" />
             </label>
             <label className="field">
-              <span>جایگزین</span>
+              <span>{t(t('جایگزین'))}</span>
               <input dir="ltr" value={replace} onChange={(e) => setReplace(e.target.value)} placeholder="$1" />
             </label>
           </div>
@@ -120,13 +121,13 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
           {names.length > 8 && <div className="hint">و {fa(names.length - 8)} مورد دیگر…</div>}
         </div>
 
-        {clash && <div className="warn">دو فایل نام یکسان می‌گیرند — الگو را عوض کن.</div>}
+        {clash && <div className="warn">{t(t('دو فایل نام یکسان می‌گیرند — الگو را عوض کن.'))}</div>}
 
         <div className="dlg-actions">
           <button disabled={!canApply} onClick={() => onApply(pairs)}>
             اعمال {fa(pairs.length)} تغییر
           </button>
-          <button onClick={onClose}>انصراف</button>
+          <button onClick={onClose}>{t(t('انصراف'))}</button>
         </div>
       </div>
     </div>

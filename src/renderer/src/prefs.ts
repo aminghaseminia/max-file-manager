@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS } from './commands.ts'
 
 /** The toolbar the app ships with; the user can change it in preferences. */
@@ -16,6 +17,7 @@ export const DEFAULT_TOOLBAR = [
   'terminal'
 ]
 
+export type Lang = 'en' | 'fa'
 export type View = 'list' | 'grid'
 export type Layout = 'dual' | 'single'
 export type DoubleClick = 'open' | 'gallery' | 'preview'
@@ -23,14 +25,14 @@ export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dim
 
 /** Optional columns, in the order the user arranged them (name is always first). */
 export const COLUMNS: { id: ColId; label: string }[] = [
-  { id: 'type', label: 'نوع' },
-  { id: 'size', label: 'اندازه' },
-  { id: 'date', label: 'تاریخ' },
-  { id: 'mode', label: 'مجوز' },
-  { id: 'owner', label: 'مالک' },
-  { id: 'links', label: 'لینک' },
-  { id: 'dims', label: 'ابعاد' },
-  { id: 'rating', label: 'امتیاز' }
+  { id: 'type', label: t('نوع') },
+  { id: 'size', label: t('اندازه') },
+  { id: 'date', label: t('تاریخ') },
+  { id: 'mode', label: t('مجوز') },
+  { id: 'owner', label: t('مالک') },
+  { id: 'links', label: t('لینک') },
+  { id: 'dims', label: t('ابعاد') },
+  { id: 'rating', label: t('امتیاز') }
 ]
 
 /**
@@ -38,6 +40,8 @@ export const COLUMNS: { id: ColId; label: string }[] = [
  * FreeCommander use (see docs/PREFERENCES.md). Anything not listed here is not configurable yet.
  */
 export type Prefs = {
+  /** UI language; English is the default */
+  lang: Lang
   // appearance
   theme: 'dark' | 'light'
   view: View
@@ -103,6 +107,7 @@ export type Prefs = {
 }
 
 export const DEFAULTS: Prefs = {
+  lang: 'fa',
   theme: 'dark',
   view: 'list',
   foldersFirst: true,
@@ -221,6 +226,7 @@ function normalShortcuts(raw: unknown): Record<string, string> {
 export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) | null | undefined): Prefs {
   const p = { ...DEFAULTS, ...(raw ?? {}) }
   return {
+    lang: p.lang === 'fa' ? 'fa' : 'en',
     theme: p.theme === 'light' ? 'light' : 'dark',
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,

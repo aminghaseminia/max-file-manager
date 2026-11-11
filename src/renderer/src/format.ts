@@ -1,13 +1,14 @@
+import { t } from './i18n.ts'
 import type { Entry } from './api.ts'
 
 export type SortKey = 'name' | 'size' | 'mtime' | 'ext'
 
-const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹'
+const FA_DIGITS = t('۰۱۲۳۴۵۶۷۸۹')
 
 /** Persian digits for anything the user reads; paths and file names stay untouched. */
 export const fa = (s: string | number): string => String(s).replace(/[0-9]/g, (d) => FA_DIGITS[+d])
 
-const UNITS = ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت', 'پتابایت']
+const UNITS = [t('بایت'), t('کیلوبایت'), t('مگابایت'), t('گیگابایت'), t('ترابایت'), t('پتابایت')]
 
 /** Persian civil (Jalali) date from a unix ms timestamp — the conversion users actually read. */
 export function toJalali(ms: number): [number, number, number] {
@@ -50,7 +51,7 @@ export function fmtSize(bytes: number, dir: boolean, format: SizeFormat = 'human
   if (!bytes) return `۰ ${UNITS[0]}`
   const i = Math.min(UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
   const v = bytes / 1024 ** i
-  const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0).replace('.', '٫')
+  const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0).replace('.', t('٫'))
   return `${fa(n)} ${UNITS[i]}`
 }
 
@@ -184,9 +185,9 @@ const KIND: Record<string, Kind> = {
 export const kindOf = (e: Entry): Kind => (e.dir ? 'dir' : (KIND[e.ext] ?? 'file'))
 
 const LABEL: Record<Kind, string> = {
-  dir: 'پوشه', image: 'تصویر', video: 'ویدئو', audio: 'صدا', archive: 'بایگانی',
-  text: 'متن', doc: 'سند', pdf: 'PDF', sheet: 'صفحه گسترده', slides: 'ارائه',
-  code: 'کد', file: 'فایل'
+  dir: t('پوشه'), image: t('تصویر'), video: t('ویدئو'), audio: t('صدا'), archive: t('بایگانی'),
+  text: t('متن'), doc: t('سند'), pdf: 'PDF', sheet: t('صفحه گسترده'), slides: t('ارائه'),
+  code: t('کد'), file: t('فایل')
 }
 
 /** Persian type name; unknown extensions show themselves instead of a useless «فایل». */

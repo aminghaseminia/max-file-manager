@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api, type Entry, type Preview } from './api'
 import { fa, fmtDate, fmtSize, mediaUrl } from './format'
@@ -45,7 +46,7 @@ export function PreviewPanel({
     let live = true
     void api
       .preview(entry.path, maxKB)
-      .then((p) => live && (p ? setData(p) : setErr('پیش‌نمایش ممکن نشد')))
+      .then((p) => live && (p ? setData(p) : setErr(t('پیش‌نمایش ممکن نشد'))))
       .catch((e) => live && setErr(String(e?.message ?? e)))
     return () => {
       live = false
@@ -56,8 +57,8 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (!entry || !/\.pdf$/i.test(entry.path)) return
-    const t = setTimeout(() => setPdfBoot((n) => n + 1), 450)
-    return () => clearTimeout(t)
+    const boot = setTimeout(() => setPdfBoot((n) => n + 1), 450)
+    return () => clearTimeout(boot)
   }, [entry])
 
   useEffect(() => {
@@ -68,8 +69,8 @@ export function PreviewPanel({
     let live = true
     void api.tags([entry.path]).then((r) => {
       if (!live) return
-      const t = r?.[entry.path]
-      setTags(t && t.kind && t.kind !== 'none' ? t : null)
+      const tagRow = r?.[entry.path]
+      setTags(tagRow && tagRow.kind && tagRow.kind !== 'none' ? tagRow : null)
     })
     return () => {
       live = false
@@ -80,7 +81,7 @@ export function PreviewPanel({
     <aside className={'preview' + (fill ? ' fill' : '')}>
       <div className="preview-head">
         {onNavImage && (
-          <button className="tb" title="تصویر قبلی (←)" onClick={() => onNavImage(-1)}>
+          <button className="tb" title={t(t('تصویر قبلی (←)'))} onClick={() => onNavImage(-1)}>
             <ChevronRightIcon />
           </button>
         )}
@@ -95,7 +96,7 @@ export function PreviewPanel({
           </div>
         )}
         <span className="preview-title" dir="auto">
-          {entry ? entry.name : 'پیش‌نمایش'}
+          {entry ? entry.name : t('پیش‌نمایش')}
         </span>
         {imageIndex && (
           <span className="pill">
@@ -104,24 +105,24 @@ export function PreviewPanel({
         )}
         <span className="spacer" />
         {onGallery && imageIndex && (
-          <button className="tb" title="گالری (Space)" onClick={onGallery}>
+          <button className="tb" title={t(t('گالری (Space)'))} onClick={onGallery}>
             <GridIcon />
           </button>
         )}
         {onNavImage && (
-          <button className="tb" title="تصویر بعدی (→)" onClick={() => onNavImage(1)}>
+          <button className="tb" title={t(t('تصویر بعدی (→)'))} onClick={() => onNavImage(1)}>
             <ChevronLeftIcon />
           </button>
         )}
-        <button className="tb" title="بستن پیش‌نمایش (F3)" onClick={onClose}>
+        <button className="tb" title={t(t('بستن پیش‌نمایش (F3)'))} onClick={onClose}>
           <XIcon size={12} />
         </button>
       </div>
 
       {!entry ? (
-        <div className="preview-empty">یک فایل انتخاب کن</div>
+        <div className="preview-empty">{t(t('یک فایل انتخاب کن'))}</div>
       ) : entry.dir ? (
-        <div className="preview-empty">پوشه — برای دیدن محتوا بازش کن</div>
+        <div className="preview-empty">{t(t('پوشه — برای دیدن محتوا بازش کن'))}</div>
       ) : (
         <>
           <div
@@ -132,7 +133,7 @@ export function PreviewPanel({
               <img className="preview-img" src={mediaUrl(entry.path)} alt="" />
             )}
             {data?.kind === 'image' && entry.size >= MAX_INLINE_IMAGE && (
-              <div className="preview-empty">تصویر بزرگ است؛ برای دیدن بازش کن</div>
+              <div className="preview-empty">{t(t('تصویر بزرگ است؛ برای دیدن بازش کن'))}</div>
             )}
             {data?.kind === 'pdf' && (
               <iframe
@@ -215,7 +216,7 @@ export function PreviewPanel({
               {tags && tags.camera && <span className="tag-pill">📷 {tags.camera}</span>}
               {tags && tags.date && <span className="tag-pill">{tags.date.slice(0, 10)}</span>}
               {tags && tags.iso && <span className="tag-pill">ISO {tags.iso}</span>}
-              {data?.capped && <span className="dim">نمایش بریده شد</span>}
+              {data?.capped && <span className="dim">{t(t('نمایش بریده شد'))}</span>}
             </div>
             {!entry.dir && (
               <button className="btn" onClick={() => onOpen(entry.path)}>

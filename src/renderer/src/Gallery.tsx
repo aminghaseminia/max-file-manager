@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
 import { fa, mediaUrl } from './format'
@@ -100,8 +101,8 @@ export function Gallery({
 
   useEffect(() => {
     if (!slide || total < 2) return
-    const t = setInterval(() => go(1), Math.max(1, slideshowSec) * 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(() => go(1), Math.max(1, slideshowSec) * 1000)
+    return () => clearInterval(timer)
   }, [slide, total, slideshowSec])
 
   /** Every edit runs on a canvas at full resolution, so no step loses pixels. */
@@ -112,7 +113,7 @@ export function Gallery({
     if (!src) {
       const r = await api.imageData(cur.path)
       if (!r.dataUrl) {
-        onSaved(r.error ?? 'تصویر بارگذاری نشد')
+        onSaved(r.error ?? t('تصویر بارگذاری نشد'))
         return null
       }
       src = r.dataUrl
@@ -342,21 +343,21 @@ export function Gallery({
           </span>
         )}
         <span className="spacer" />
-        <button className="tb" title="چرخش به راست (R)" onClick={() => void rotate(1)}>
+        <button className="tb" title={t(t('چرخش به راست (R)'))} onClick={() => void rotate(1)}>
           <RotateIcon />
         </button>
-        <button className="tb" title="چرخش به چپ" onClick={() => void rotate(-1)}>
+        <button className="tb" title={t(t('چرخش به چپ'))} onClick={() => void rotate(-1)}>
           <RestoreIcon />
         </button>
-        <button className="tb" title="آینهٔ افقی" onClick={() => void flip('y')}>
+        <button className="tb" title={t(t('آینهٔ افقی'))} onClick={() => void flip('y')}>
           <DupeIcon />
         </button>
-        <button className="tb" title="آینهٔ عمودی" onClick={() => void flip('x')}>
+        <button className="tb" title={t(t('آینهٔ عمودی'))} onClick={() => void flip('x')}>
           <ConfirmIcon />
         </button>
         <button
           className={'tb' + (cropping ? ' on' : '')}
-          title="برش (روی تصویر بکش)"
+          title={t(t('برش (روی تصویر بکش)'))}
           onClick={() => {
             setCropping((c) => !c)
             setCrop(null)
@@ -367,7 +368,7 @@ export function Gallery({
         </button>
         <button
           className="tb"
-          title="تغییر اندازه"
+          title={t(t('تغییر اندازه'))}
           onClick={() =>
             setResize({
               w: edit?.w ?? imgRef.current?.naturalWidth ?? 0,
@@ -380,32 +381,32 @@ export function Gallery({
         <span className="divider" />
         <button
           className="tb"
-          title="کوچک‌نمایی (-)"
+          title={t(t('کوچک‌نمایی (-)'))}
           onClick={() => (setFit(false), setZoom((z) => Math.max(0.1, z / 1.25)))}
         >
           <MinusIcon />
         </button>
         <button
           className="tb"
-          title="بزرگ‌نمایی (+)"
+          title={t(t('بزرگ‌نمایی (+)'))}
           onClick={() => (setFit(false), setZoom((z) => Math.min(8, z * 1.25)))}
         >
           <PlusIcon />
         </button>
-        <button className="tb" title="اندازهٔ اصلی (0)" onClick={resetView}>
+        <button className="tb" title={t(t('اندازهٔ اصلی (0)'))} onClick={resetView}>
           <StarIcon />
         </button>
         <button
           className={'tb' + (slide ? ' on' : '')}
-          title="پخش خودکار (Space)"
+          title={t(t('پخش خودکار (Space)'))}
           onClick={() => setSlide((s) => !s)}
         >
           {slide ? <PauseIcon /> : <PlayIcon />}
         </button>
-        <button className="tb" title="تمام‌صفحه (F)" onClick={onFullscreen}>
+        <button className="tb" title={t(t('تمام‌صفحه (F)'))} onClick={onFullscreen}>
           {fullscreen ? <RestoreIcon /> : <MaximizeIcon />}
         </button>
-        <button className="tb" title="بستن (Esc)" onClick={onClose}>
+        <button className="tb" title={t(t('بستن (Esc)'))} onClick={onClose}>
           <XIcon size={13} />
         </button>
       </div>
@@ -461,7 +462,7 @@ export function Gallery({
           setZoom((z) => Math.min(8, Math.max(0.1, z * (e.deltaY < 0 ? 1.1 : 0.9))))
         }}
       >
-        <button className="gallery-nav prev" title="قبلی (←)" onClick={() => go(-1)}>
+        <button className="gallery-nav prev" title={t(t('قبلی (←)'))} onClick={() => go(-1)}>
           <ChevronRightIcon />
         </button>
         {cur && (
@@ -496,7 +497,7 @@ export function Gallery({
             )}
           </div>
         )}
-        <button className="gallery-nav next" title="بعدی (→)" onClick={() => go(1)}>
+        <button className="gallery-nav next" title={t(t('بعدی (→)'))} onClick={() => go(1)}>
           <ChevronLeftIcon />
         </button>
       </div>
@@ -531,7 +532,7 @@ export function Gallery({
               }}
             />
           </label>
-          <span className="hint">نسبت حفظ می‌شود</span>
+          <span className="hint">{t(t('نسبت حفظ می‌شود'))}</span>
           <span className="spacer" />
           <button className="btn" onClick={() => void applyResize()}>
             اعمال

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState, type ReactElement } from 'react'
 import { api, type FolderMeta, type IconRef, type IconTheme } from './api'
 import { mediaUrl } from './format'
@@ -16,11 +17,11 @@ type Props = {
 const COLORS = ['#6aa8ff', '#b18cff', '#ff7a9c', '#4fd1c5', '#e3a44d', '#63c98f', '#f0736b', '#9aa3b2']
 
 const BUILTIN: { key: string; label: string; Glyph: () => ReactElement }[] = [
-  { key: 'g:folder', label: 'پوشه', Glyph: FolderIcon },
-  { key: 'g:star', label: 'ستاره', Glyph: () => <StarIcon filled /> },
-  { key: 'g:home', label: 'خانه', Glyph: HomeIcon },
-  { key: 'g:archive', label: 'بایگانی', Glyph: ArchiveIcon },
-  { key: 'g:image', label: 'تصویر', Glyph: ImageIcon }
+  { key: 'g:folder', label: t('پوشه'), Glyph: FolderIcon },
+  { key: 'g:star', label: t('ستاره'), Glyph: () => <StarIcon filled /> },
+  { key: 'g:home', label: t('خانه'), Glyph: HomeIcon },
+  { key: 'g:archive', label: t('بایگانی'), Glyph: ArchiveIcon },
+  { key: 'g:image', label: t('تصویر'), Glyph: ImageIcon }
 ]
 
 export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, onClose }: Props) {
@@ -73,7 +74,7 @@ export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, 
                   onClick={() => onSave({ color: c })}
                 />
               ))}
-              <button className="swatch none" title="بدون رنگ" onClick={() => onSave({ color: '' })}>
+              <button className="swatch none" title={t(t('بدون رنگ'))} onClick={() => onSave({ color: '' })}>
                 ×
               </button>
             </div>
@@ -86,7 +87,7 @@ export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, 
           <>
             <div className="row-gap">
               <label className="field">
-                <span>پک آیکون</span>
+                <span>{t(t('پک آیکون'))}</span>
                 <select value={theme} onChange={(e) => setTheme(e.target.value)}>
                   {themes.map((t) => (
                     <option key={t.dir} value={t.dir}>
@@ -97,7 +98,7 @@ export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, 
               </label>
               <label className="filter grow">
                 <SearchIcon />
-                <input dir="auto" placeholder="نام آیکون" value={q} onChange={(e) => setQ(e.target.value)} />
+                <input dir="auto" placeholder={t(t('نام آیکون'))} value={q} onChange={(e) => setQ(e.target.value)} />
               </label>
             </div>
 
@@ -122,12 +123,12 @@ export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, 
                   <img src={mediaUrl(i.path)} alt="" loading="lazy" />
                 </button>
               ))}
-              {!shown.length && <span className="hint">آیکونی با این نام در این پک نیست.</span>}
+              {!shown.length && <span className="hint">{t(t('آیکونی با این نام در این پک نیست.'))}</span>}
             </div>
 
             <div className="row-gap">
               <label className="field">
-                <span>افزودن پک دلخواه (مسیر پوشهٔ svg/png)</span>
+                <span>{t(t('افزودن پک دلخواه (مسیر پوشهٔ svg/png)'))}</span>
                 <input
                   dir="ltr"
                   value={newDir}
@@ -143,8 +144,8 @@ export function FolderDialog({ dir, name, meta, iconDirs, onSave, onAddIconDir, 
         )}
 
         <div className="dlg-actions">
-          <button onClick={() => onSave({ color: '', icon: '' })}>پاک کردن ظاهر</button>
-          <button onClick={onClose}>بستن</button>
+          <button onClick={() => onSave({ color: '', icon: '' })}>{t(t('پاک کردن ظاهر'))}</button>
+          <button onClick={onClose}>{t(t('بستن'))}</button>
         </div>
       </div>
     </div>

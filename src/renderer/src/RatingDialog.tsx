@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useState } from 'react'
 import { api } from './api'
 import { baseName } from './format'
@@ -33,13 +34,13 @@ export function RatingDialog({ name, stars, note, onSave, onClose }: Props) {
               ★
             </button>
           ))}
-          <span className="dim">{value ? `${value} از ۵` : 'بی‌امتیاز'}</span>
+          <span className="dim">{value ? `${value} از ۵` : t('بی‌امتیاز')}</span>
         </div>
         <textarea
           className="note-input"
           dir="auto"
           rows={4}
-          placeholder="توضیح کوتاه…"
+          placeholder={t(t('توضیح کوتاه…'))}
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={500}
@@ -64,7 +65,7 @@ export async function convertToWebp(files: string[], maxSide: number, quality: n
   for (const src of files) {
     try {
       const r = await api.imageData(src)
-      if ('error' in r || !r.dataUrl) throw new Error(r.error ?? 'خواندن تصویر ممکن نشد')
+      if ('error' in r || !r.dataUrl) throw new Error(r.error ?? t('خواندن تصویر ممکن نشد'))
       const img = new Image()
       img.src = r.dataUrl
       await img.decode()
@@ -74,7 +75,7 @@ export async function convertToWebp(files: string[], maxSide: number, quality: n
       c.height = Math.max(1, Math.round(img.naturalHeight * scale))
       c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
       const out = c.toDataURL('image/webp', Math.min(100, Math.max(1, quality)) / 100)
-      if (!out.startsWith('data:image/webp')) throw new Error('این نسخهٔ کرومیوم WebP نمی‌سازد')
+      if (!out.startsWith('data:image/webp')) throw new Error(t('این نسخهٔ کرومیوم WebP نمی‌سازد'))
       const saved = await api.saveImageAs(src, out)
       if ('error' in saved) throw new Error(saved.error)
       done++
@@ -107,7 +108,7 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
         <div className="dialog-title">تبدیل تصاویر ({count} فایل)</div>
         <div className="pref-row">
           <div className="pref-label">
-            <span>قالب خروجی</span>
+            <span>{t(t('قالب خروجی'))}</span>
           </div>
           <div className="pref-control">
             <div className="seg">
@@ -121,8 +122,8 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
         </div>
         <div className="pref-row">
           <div className="pref-label">
-            <span>بلندترین ضلع</span>
-            <span className="hint">پیکسل؛ ۰ یعنی اندازهٔ اصلی</span>
+            <span>{t(t('بلندترین ضلع'))}</span>
+            <span className="hint">{t(t('پیکسل؛ ۰ یعنی اندازهٔ اصلی'))}</span>
           </div>
           <div className="pref-control">
             <input
@@ -137,8 +138,8 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
         </div>
         <div className="pref-row">
           <div className="pref-label">
-            <span>کیفیت</span>
-            <span className="hint">فقط برای JPEG</span>
+            <span>{t(t('کیفیت'))}</span>
+            <span className="hint">{t(t('فقط برای JPEG'))}</span>
           </div>
           <div className="pref-control">
             <input
@@ -153,7 +154,7 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
         </div>
         <div className="pref-row">
           <div className="pref-label">
-            <span>خروجی در پنجرهٔ مقابل</span>
+            <span>{t(t('خروجی در پنجرهٔ مقابل'))}</span>
             <span className="hint" dir="auto">
               {otherPane}
             </span>
@@ -213,11 +214,11 @@ export function TagDialog({ name, tags, onSave, onClose }: TagProps) {
         <div className="dialog-title" dir="auto">
           برچسب‌های صوتی — {name}
         </div>
-        {field('عنوان', title, setTitle)}
-        {field('هنرمند', artist, setArtist)}
-        {field('آلبوم', album, setAlbum)}
-        {field('سال', year, setYear)}
-        <div className="hint">فقط فایل‌های صوتی (ID3) نوشته می‌شوند؛ EXIF فعلاً فقط خوانده می‌شود.</div>
+        {field(t('عنوان'), title, setTitle)}
+        {field(t('هنرمند'), artist, setArtist)}
+        {field(t('آلبوم'), album, setAlbum)}
+        {field(t('سال'), year, setYear)}
+        <div className="hint">{t(t('فقط فایل‌های صوتی (ID3) نوشته می‌شوند؛ EXIF فعلاً فقط خوانده می‌شود.'))}</div>
         <div className="dialog-actions">
           <button className="btn" onClick={() => onSave({ title, artist, album, year })}>
             ذخیره

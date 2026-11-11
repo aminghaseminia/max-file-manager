@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type SearchHit } from './api'
 import { fmtDate, fmtSize } from './format'
@@ -39,7 +40,7 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
       return
     }
     let live = true
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       void api.search.query(q, 300).then((r) => {
         if (!live) return
         setHits(r)
@@ -48,21 +49,21 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
     }, DEBOUNCE)
     return () => {
       live = false
-      clearTimeout(t)
+      clearTimeout(timer)
     }
   }, [q])
 
   const reindex = async () => {
-    setBusy('شروع ایندکس…')
+    setBusy(t('شروع ایندکس…'))
     const r = await api.search.index({ roots, exclude })
     setStats(r.stats)
     setBusy(`ایندکس شد: ${r.files} فایل در ${Math.round(r.durationMs / 100) / 10}s`)
   }
 
   const age = useMemo(() => {
-    if (!stats?.lastIndex) return 'هنوز ایندکس نشده'
+    if (!stats?.lastIndex) return t('هنوز ایندکس نشده')
     const mins = Math.round((Date.now() - stats.lastIndex) / 60000)
-    return mins < 1 ? 'همین حالا' : `${mins} دقیقه پیش`
+    return mins < 1 ? t('همین حالا') : `${mins} دقیقه پیش`
   }, [stats])
 
   const onKey = (ev: React.KeyboardEvent) => {
@@ -93,20 +94,20 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
           <input
             ref={input}
             className="search-input"
-            placeholder="نام فایل یا پوشه… (پیشوند و چند کلمه هم کار می‌کند)"
+            placeholder={t(t('نام فایل یا پوشه… (پیشوند و چند کلمه هم کار می‌کند)'))}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
           <span className="dim search-stats">
             {stats ? `${stats.files} فایل · ${stats.dirs} پوشه · ${age}` : '…'}
           </span>
-          <button className="tb" title="به‌روزرسانی ایندکس" onClick={() => void reindex()}>
+          <button className="tb" title={t(t('به‌روزرسانی ایندکس'))} onClick={() => void reindex()}>
             <RefreshIcon />
           </button>
-          <button className="tb" title="پوشه‌ها و استثناها" onClick={onManage}>
+          <button className="tb" title={t(t('پوشه‌ها و استثناها'))} onClick={onManage}>
             ⚙
           </button>
-          <button className="tb" title="بستن (Esc)" onClick={onClose}>
+          <button className="tb" title={t(t('بستن (Esc)'))} onClick={onClose}>
             <XIcon size={12} />
           </button>
         </div>
@@ -115,7 +116,7 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
 
         <div className="search-results" ref={list}>
           {q && hits.length === 0 && !busy && (
-            <div className="dim search-empty">چیزی پیدا نشد — اگر تازه اضافه شده، ایندکس را به‌روز کن</div>
+            <div className="dim search-empty">{t(t('چیزی پیدا نشد — اگر تازه اضافه شده، ایندکس را به‌روز کن'))}</div>
           )}
           {hits.map((h, i) => (
             <div

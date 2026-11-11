@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import type { Job } from './api'
 import { fa, fmtSize } from './format'
 import { CopyIcon, MoveIcon, PauseIcon, PlayIcon, XIcon } from './Icons'
@@ -11,12 +12,12 @@ type Props = {
 }
 
 const STATE_LABEL: Record<string, string> = {
-  queued: 'در صف',
-  running: 'در حال اجرا',
-  paused: 'مکث',
-  done: 'انجام شد',
-  cancelled: 'لغو شد',
-  error: 'خطا'
+  queued: t('در صف'),
+  running: t('در حال اجرا'),
+  paused: t('مکث'),
+  done: t('انجام شد'),
+  cancelled: t('لغو شد'),
+  error: t('خطا')
 }
 
 export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
@@ -24,10 +25,10 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
   return (
     <div className="jobs">
       <div className="jobs-head">
-        <span className="jobs-title">عملیات‌ها</span>
+        <span className="jobs-title">{t(t('عملیات‌ها'))}</span>
         <span className="pill">{fa(jobs.filter((j) => j.state === 'running').length)} در حال اجرا</span>
         <span className="spacer" />
-        <button className="tb" title="پاک کردن تمام‌شده‌ها" onClick={onClear}>
+        <button className="tb" title={t(t('پاک کردن تمام‌شده‌ها'))} onClick={onClear}>
           <XIcon size={12} />
         </button>
       </div>
@@ -51,7 +52,7 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
               </span>
               <span className="spacer" />
               {!!j.skipped && (
-                <span className="job-skip" title="با فیلتر انتقال رد شد">
+                <span className="job-skip" title={t(t('با فیلتر انتقال رد شد'))}>
                   {fa(j.skipped)} رد‌شده
                 </span>
               )}
@@ -63,14 +64,14 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
               {(j.state === 'running' || j.state === 'paused') && (
                 <button
                   className="tb"
-                  title={j.state === 'paused' ? 'ادامه' : 'مکث'}
+                  title={j.state === 'paused' ? t('ادامه') : t('مکث')}
                   onClick={() => (j.state === 'paused' ? onResume(j.id) : onPause(j.id))}
                 >
                   {j.state === 'paused' ? <PlayIcon /> : <PauseIcon />}
                 </button>
               )}
               {live && (
-                <button className="tb" title="لغو" onClick={() => onCancel(j.id)}>
+                <button className="tb" title={t(t('لغو'))} onClick={() => onCancel(j.id)}>
                   <XIcon size={12} />
                 </button>
               )}

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
@@ -13,10 +14,10 @@ export function AgentsPage() {
   useEffect(load, [])
 
   const configure = async (patch: { mode?: 'off' | 'read' | 'write'; port?: number }) => {
-    setBusy('در حال اعمال…')
+    setBusy(t('در حال اعمال…'))
     const r = await api.mcp.configure(patch)
     setToken(r.token)
-    setBusy(r.running ? `سرور روی 127.0.0.1:${r.port} فعال است (${r.mode})` : 'سرور خاموش است')
+    setBusy(r.running ? `سرور روی 127.0.0.1:${r.port} فعال است (${r.mode})` : t('سرور خاموش است'))
     load()
   }
 
@@ -29,8 +30,8 @@ export function AgentsPage() {
 
       <div className="pref-row">
         <div className="pref-label">
-          <span>دسترسی ایجنت‌ها</span>
-          <span className="hint">فقط روی 127.0.0.1 و با توکن</span>
+          <span>{t(t('دسترسی ایجنت‌ها'))}</span>
+          <span className="hint">{t(t('فقط روی 127.0.0.1 و با توکن'))}</span>
         </div>
         <div className="pref-control">
           <div className="seg">
@@ -40,7 +41,7 @@ export function AgentsPage() {
                 className={st?.mode === m ? 'on' : ''}
                 onClick={() => void configure({ mode: m })}
               >
-                {m === 'off' ? 'خاموش' : m === 'read' ? 'فقط خواندن' : 'خواندن و نوشتن'}
+                {m === 'off' ? t('خاموش') : m === 'read' ? t('فقط خواندن') : t('خواندن و نوشتن')}
               </button>
             ))}
           </div>
@@ -49,19 +50,19 @@ export function AgentsPage() {
 
       <div className="pref-row">
         <div className="pref-label">
-          <span>توکن</span>
+          <span>{t(t('توکن'))}</span>
           <span className="hint">فایل {st ? 'mcp.json' : '…'} با دسترسی 600</span>
         </div>
         <div className="pref-control">
           <code className="token-box" dir="ltr">
-            {token || (st?.hasToken ? '•••••••••••• (ذخیره شده)' : 'ساخته نشده')}
+            {token || (st?.hasToken ? t('•••••••••••• (ذخیره شده)') : t('ساخته نشده'))}
           </code>
           <button
             className="btn ghost"
             onClick={() =>
-              void api.mcp.token().then((t) => {
-                setToken(t)
-                setBusy('توکن تازه ساخته شد؛ کلاینت‌ها را به‌روز کن')
+              void api.mcp.token().then((tok) => {
+                setToken(tok)
+                setBusy(t('توکن تازه ساخته شد؛ کلاینت‌ها را به‌روز کن'))
                 load()
               })
             }
@@ -80,13 +81,13 @@ export function AgentsPage() {
       </div>
 
       <div className="pref-label">
-        <span>آخرین فراخوانی‌ها (لاگ دسترسی)</span>
+        <span>{t(t('آخرین فراخوانی‌ها (لاگ دسترسی)'))}</span>
       </div>
       <div className="mcp-log" dir="ltr">
         {(st?.log ?? []).slice().reverse().map((line, i) => (
           <div key={i}>{line}</div>
         ))}
-        {!st?.log?.length && <div className="dim">هنوز چیزی ثبت نشده</div>}
+        {!st?.log?.length && <div className="dim">{t(t('هنوز چیزی ثبت نشده'))}</div>}
       </div>
     </>
   )

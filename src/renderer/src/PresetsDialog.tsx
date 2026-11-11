@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useState } from 'react'
 import type { NamedLayout } from './prefs'
 import { fa } from './format'
@@ -37,7 +38,7 @@ export function PresetsDialog({
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog presets-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">چیدمان‌ها و فیلترها</div>
+        <div className="dialog-title">{t(t('چیدمان‌ها و فیلترها'))}</div>
         <div className="seg">
           <button className={tab === 'layouts' ? 'on' : ''} onClick={() => setTab('layouts')}>
             چیدمان‌ها
@@ -50,18 +51,18 @@ export function PresetsDialog({
         {tab === 'layouts' ? (
           <>
             <div className="preset-list">
-              {Object.keys(layouts).length === 0 && <div className="dim">چیدمانی ذخیره نشده</div>}
+              {Object.keys(layouts).length === 0 && <div className="dim">{t(t('چیدمانی ذخیره نشده'))}</div>}
               {Object.entries(layouts).map(([name, l]) => (
                 <div className="preset-row" key={name}>
                   <span className="preset-name">{name}</span>
                   <span className="dim preset-desc">
-                    {l.layout === 'single' ? 'تک‌پنجره' : 'دوپنجره'} ·{' '}
-                    {l.view === 'grid' ? 'شبکه' : 'فهرست'} · {fa((l.columns ?? []).length)} ستون
+                    {l.layout === 'single' ? t('تک‌پنجره') : t('دوپنجره')} ·{' '}
+                    {l.view === 'grid' ? t('شبکه') : t('فهرست')} · {fa((l.columns ?? []).length)} ستون
                   </span>
                   <button className="btn ghost" onClick={() => onApplyLayout(name)}>
                     اعمال
                   </button>
-                  <button className="tb" title="حذف" onClick={() => onDeleteLayout(name)}>
+                  <button className="tb" title={t(t('حذف'))} onClick={() => onDeleteLayout(name)}>
                     <XIcon size={11} />
                   </button>
                 </div>
@@ -70,7 +71,7 @@ export function PresetsDialog({
             <div className="preset-save">
               <input
                 className="pref-input"
-                placeholder="نام چیدمان تازه"
+                placeholder={t(t('نام چیدمان تازه'))}
                 value={layoutName}
                 onChange={(e) => setLayoutName(e.target.value)}
               />
@@ -89,7 +90,7 @@ export function PresetsDialog({
         ) : (
           <>
             <div className="preset-list">
-              {Object.keys(filters).length === 0 && <div className="dim">فیلتری ذخیره نشده</div>}
+              {Object.keys(filters).length === 0 && <div className="dim">{t(t('فیلتری ذخیره نشده'))}</div>}
               {Object.entries(filters).map(([name, pattern]) => (
                 <div className="preset-row" key={name}>
                   <span className="preset-name">{name}</span>
@@ -99,7 +100,7 @@ export function PresetsDialog({
                   <button className="btn ghost" onClick={() => onApplyFilter(pattern)}>
                     اعمال
                   </button>
-                  <button className="tb" title="حذف" onClick={() => onDeleteFilter(name)}>
+                  <button className="tb" title={t(t('حذف'))} onClick={() => onDeleteFilter(name)}>
                     <XIcon size={11} />
                   </button>
                 </div>
@@ -108,14 +109,14 @@ export function PresetsDialog({
             <div className="preset-save">
               <input
                 className="pref-input"
-                placeholder="نام فیلتر"
+                placeholder={t(t('نام فیلتر'))}
                 value={filterName}
                 onChange={(e) => setFilterName(e.target.value)}
               />
               <input
                 className="pref-input wide"
                 dir="ltr"
-                placeholder="*.log یا #red یا *3"
+                placeholder={t(t('*.log یا #red یا *3'))}
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
               />

@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 import { MaximizeIcon, MinusIcon, RestoreIcon, XIcon } from './Icons'
@@ -13,17 +14,17 @@ export function WindowButtons() {
 
   return (
     <div className="winbtns">
-      <button className="winbtn" title="کوچک" onClick={() => void api.window.minimize()}>
+      <button className="winbtn" title={t(t('کوچک'))} onClick={() => void api.window.minimize()}>
         <MinusIcon />
       </button>
       <button
         className="winbtn"
-        title={max ? 'بازگردانی' : 'بزرگ'}
+        title={max ? t('بازگردانی') : t('بزرگ')}
         onClick={() => void api.window.maximize()}
       >
         {max ? <RestoreIcon /> : <MaximizeIcon />}
       </button>
-      <button className="winbtn close" title="بستن" onClick={() => void api.window.close()}>
+      <button className="winbtn close" title={t(t('بستن'))} onClick={() => void api.window.close()}>
         <XIcon size={12} />
       </button>
     </div>
