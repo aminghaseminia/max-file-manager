@@ -14,6 +14,7 @@ import { rowsOf } from '../../shared/export.ts'
 import { PresetsDialog } from './PresetsDialog'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
+import { PaneTree } from './PaneTree'
 import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
 import { WindowButtons } from './WindowButtons'
@@ -38,6 +39,7 @@ import {
   DocIcon,
   ImageIcon,
   PdfIcon,
+  PlayIcon,
   StarIcon,
   DriveIcon,
   DupeIcon,
@@ -55,7 +57,6 @@ import {
   MoveIcon,
   PaletteIcon,
   PinIcon,
-  PlayIcon,
   PlusIcon,
   PreviewIcon,
   RefreshIcon,
@@ -716,6 +717,22 @@ export default function App() {
 
   const pickMenu = (id: string) => {
     if (!menu || !panes) return
+    if (id.startsWith('script:')) {
+      const name = id.slice(7)
+      const cmd = prefs.scripts[name]
+      const p = menu.path ?? tabOf(panes[active])
+      if (cmd) {
+        setNote(`اجرای ${name}…`)
+        void api.runScript(cmd, p, dirOf(p)).then((r) => {
+          setNote(
+            'error' in r
+              ? `${name}: ${r.error.slice(0, 120)}`
+              : `${name}: ${(r.output || 'انجام شد').slice(0, 120)}`
+          )
+        })
+      }
+      return
+    }
     const me = panes[active]
     const path = menu.path
     const tabIdx = menu.tab
@@ -872,7 +889,7 @@ export default function App() {
             baseName(tabOf(panes![active])) || 'listing',
             rows,
             id === 'exportCsv' ? 'csv' : 'pdf',
-            theme
+            'light'
           )
           setNote(
             'error' in r ? `صدور نشد — ${r.error}` : `فهرست ذخیره شد: ${baseName(r.path)} · ${fa(r.rows)} ردیف`
@@ -998,6 +1015,11 @@ export default function App() {
       ...(me.sel.length === 2
         ? [{ id: 'diff', label: 'مقایسهٔ دو فایل انتخاب‌شده', key: 'Ctrl+Shift+Z', icon: <DupeIcon /> }]
         : []),
+      ...Object.keys(prefs.scripts).map((name) => ({
+        id: 'script:' + name,
+        label: `اجرای «${name}»`,
+        icon: <PlayIcon />
+      })),
       { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', icon: <DriveIcon /> },
       { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
@@ -1466,7 +1488,7 @@ export default function App() {
               </div>
             )
           }
-          return (
+          const paneEl = (
           <Pane
             key={i}
             index={i}
@@ -1552,6 +1574,14 @@ export default function App() {
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
             onDropFiles={(files, dest) => void dropFiles(files, dest)}
           />
+          )
+          return prefs.paneTree && prefs.layout === 'dual' ? (
+            <div className="pane-with-tree" key={'wrap' + i}>
+              <PaneTree path={tabOf(pane)} onNav={(d) => go(i, d)} />
+              {paneEl}
+            </div>
+          ) : (
+            paneEl
           )
         })}
 

@@ -118,10 +118,16 @@ export type Api = {
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
   registerHotkey(accel: string): Promise<{ ok: boolean; accel: string }>
+  runScript(
+    command: string,
+    path?: string,
+    dir?: string
+  ): Promise<{ ok: true; output: string } | { error: string }>
   openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
+  clearThumbs(): Promise<{ removed: number }>
   tags(paths: string[]): Promise<Record<string, Record<string, string>>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
   saveImageAs(src: string, dataUrl: string): Promise<{ path: string } | { error: string }>

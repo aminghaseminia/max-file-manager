@@ -17,6 +17,10 @@ The editor takes exactly the preview's place (and can go full-window):
 
 ![editor docked](docs/screenshot-editor-docked.png)
 
+Cached thumbnails (256px, `thumb://`), a folder tree inside every pane, and user scripts:
+
+![settings file types](docs/settings/filetypes.png)
+
 Named layouts and filters, per-folder view formats and per-extension colours:
 
 ![presets](docs/screenshot-presets.png)
@@ -116,6 +120,8 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
 - **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default
 - **PDF preview** through Chromium's viewer, **Office preview** (docx/xlsx/pptx) by extracting text from zip+XML, and **ID3/EXIF tags** shown in the preview and usable in batch rename (`{title} {artist} {album} {year} {date} {camera}`)
+- **Thumbnail cache**: 256px PNGs keyed by path+mtime+size, served over `thumb://`, pruned LRU (4000 files / 300 MB); a 2400×1600 JPEG becomes a 532-byte tile
+- **Per-pane folder tree** (dual tree) with lazy expansion, and **user scripts** (shell lines with `{path}` / `{dir}`) in the context menu with their output reported
 - **Layouts and named filters** (`Ctrl+Shift+P`), **per-folder formats** (view/columns/sort stored in the folder's `.mfm.json`) and **per-extension colours** under Preferences → «انواع فایل»
 - **Stars and notes** per file in the folder's `.mfm.json`, a rating column, and a `*3` filter for «three stars or more»
 - **Batch image conversion**: JPEG/PNG, longest-side resize with the aspect kept, JPEG quality, output next to the source or in the other pane

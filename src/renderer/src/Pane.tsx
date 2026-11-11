@@ -10,6 +10,7 @@ import {
   modeString,
   isImage,
   mediaUrl,
+  thumbUrl,
   orderEntries,
   typeLabel,
   type SortKey
@@ -117,6 +118,8 @@ type Props = {
 const ROW = 28
 const TILE_W = 108
 const TILE_H = 112
+
+const isImageName = (n: string) => /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(n)
 
 export function Pane(props: Props) {
   const { pane, sort, active, view } = props
@@ -607,7 +610,12 @@ export function Pane(props: Props) {
                 >
                   <span className="thumb">
                     {!e.dir && isImage(e.ext) && e.size < 8_000_000 ? (
-                      <img src={mediaUrl(e.path)} alt="" loading="lazy" draggable={false} />
+                      <img
+                        src={isImageName(e.name) ? thumbUrl(e.path, 256) : mediaUrl(e.path)}
+                        alt=""
+                        loading="lazy"
+                        draggable={false}
+                      />
                     ) : e.dir ? (
                       <FolderGlyph entry={e} size={34} />
                     ) : e.icon ? (

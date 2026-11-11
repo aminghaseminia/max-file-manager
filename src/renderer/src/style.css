@@ -2416,3 +2416,76 @@ html[data-rounded='1'] .app {
   opacity: 0.4;
   cursor: default;
 }
+
+/* ---------- per-pane folder tree (dual tree) ---------- */
+.pane-with-tree {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  border-inline-end: 1px solid var(--line);
+}
+.pane-with-tree .pane {
+  flex: 1 1 auto;
+  border-inline-end: 0;
+}
+.ptree {
+  width: 168px;
+  flex: none;
+  overflow: auto;
+  padding: 6px 0;
+  background: var(--panel-2);
+  border-inline-end: 1px solid var(--line);
+  font-size: 11.5px;
+}
+.ptree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-inline-end: 4px;
+}
+.ptree-row.on .ptree-name {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.ptree-twisty {
+  width: 14px;
+  flex: none;
+  background: none;
+  border: 0;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ptree-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 5px;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: start;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ptree-name:hover {
+  background: var(--panel);
+}
+.ptree-name svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--dim);
+}
+.ptree-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

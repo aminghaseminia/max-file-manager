@@ -35,6 +35,8 @@ export function PreviewPanel({
   const [err, setErr] = useState('')
   const [htmlCode, setHtmlCode] = useState(false)
   const [tags, setTags] = useState<Record<string, string> | null>(null)
+  /** Chromium's PDF viewer sizes itself once, on load; a remount after layout fixes the zoom */
+  const [pdfBoot, setPdfBoot] = useState(0)
 
   useEffect(() => {
     setData(null)
@@ -51,6 +53,12 @@ export function PreviewPanel({
   }, [entry, maxKB])
 
   const lines = (data?.text ?? '').split(/\r?\n/)
+
+  useEffect(() => {
+    if (!entry || !/\.pdf$/i.test(entry.path)) return
+    const t = setTimeout(() => setPdfBoot((n) => n + 1), 450)
+    return () => clearTimeout(t)
+  }, [entry])
 
   useEffect(() => {
     if (!entry || entry.dir) {
@@ -127,7 +135,13 @@ export function PreviewPanel({
               <div className="preview-empty">تصویر بزرگ است؛ برای دیدن بازش کن</div>
             )}
             {data?.kind === 'pdf' && (
-              <iframe className="preview-pdf" src={mediaUrl(entry.path)} title={entry.name} />
+              <iframe
+                className="preview-pdf"
+                // the viewer honours these fragment hints; without zoom the page renders tiny
+                key={pdfBoot}
+                src={`${mediaUrl(entry.path)}#zoom=page-width&view=FitH&t=${pdfBoot}`}
+                title={entry.name}
+              />
             )}
             {data?.kind === 'office' && (
               <div className="preview-text" dir="auto">

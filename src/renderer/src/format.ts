@@ -150,6 +150,12 @@ export function baseName(p: string): string {
   return s.split(/[\\/]/).pop() || s
 }
 
+/** Small cached thumbnail for grid tiles; falls back to mfm:// for non-images. */
+export function thumbUrl(p: string, side = 256): string {
+  const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
+  return `thumb://local${segs.join('/')}?s=${side}`
+}
+
 /** Local file → the mfm:// URL the renderer may load in <img>. */
 export function mediaUrl(p: string): string {
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))

@@ -23,6 +23,8 @@ import {
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
+import { execFile } from 'node:child_process'
+import { clearThumbs, thumbFor } from './thumbs.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -33,7 +35,8 @@ import type { DirRef, Entry } from './types.ts'
 
 // mfm:// serves local files to <img> so the renderer never gets a filesystem API.
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'mfm', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  { scheme: 'mfm', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'thumb', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ])
 
 type Chrome = { customTitlebar: boolean; rounded: boolean }
@@ -257,6 +260,21 @@ app.whenReady().then(async () => {
     return new Response(res.body, { status: res.status, headers })
   })
 
+  protocol.handle('thumb', async (req) => {
+    const url = new URL(req.url)
+    const p = decodeURIComponent(url.pathname)
+    const side = Number(url.searchParams.get('s') ?? 256) || 256
+    if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
+    const file = await thumbFor(p, side)
+    if (!file) return new Response('no thumb', { status: 404 })
+    const res = await net.fetch(pathToFileURL(file).toString())
+    const headers = new Headers(res.headers)
+    headers.set('Cache-Control', 'public, max-age=86400')
+    return new Response(res.body, { status: res.status, headers })
+  })
+
+  ipcMain.handle('thumbs:clear', () => clearThumbs())
+
   win = createWindow()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
@@ -340,6 +358,27 @@ app.whenReady().then(async () => {
       win.focus()
     })
     return { ok, accel: a }
+  })
+  ipcMain.handle('app:runScript', async (_e, a: { command: string; path?: string; dir?: string }) => {
+    const cmd = String(a?.command ?? '').trim()
+    if (!cmd) return { error: 'دستوری تعریف نشده' }
+    const dir = path.isAbsolute(a?.dir ?? '') ? a!.dir! : os.homedir()
+    const target = a?.path && path.isAbsolute(a.path) ? a.path : ''
+    // the command is the user's own text from prefs; {path}/{dir} are shell-quoted
+    const line = cmd
+      .replace(/\{path\}/g, target ? `'${target.replace(/'/g, `'\\''`)}'` : '')
+      .replace(/\{dir\}/g, `'${dir.replace(/'/g, `'\\''`)}'`)
+    return new Promise((resolve) => {
+      execFile(
+        'sh',
+        ['-c', line],
+        { cwd: dir, timeout: 60_000, maxBuffer: 1 << 20 },
+        (err, stdout, stderr) => {
+          const out = `${stdout ?? ''}${stderr ?? ''}`.trim().slice(0, 2000)
+          resolve(err ? { error: out || err.message } : { ok: true, output: out })
+        }
+      )
+    })
   })
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
@@ -458,7 +497,22 @@ app.whenReady().then(async () => {
     await saveChrome(chrome)
     // frame/transparent cannot change on a live window: rebuild it, the UI comes back from state.json
     const old = win
-    win = createWindow()
+    protocol.handle('thumb', async (req) => {
+    const url = new URL(req.url)
+    const p = decodeURIComponent(url.pathname)
+    const side = Number(url.searchParams.get('s') ?? 256) || 256
+    if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
+    const file = await thumbFor(p, side)
+    if (!file) return new Response('no thumb', { status: 404 })
+    const res = await net.fetch(pathToFileURL(file).toString())
+    const headers = new Headers(res.headers)
+    headers.set('Cache-Control', 'public, max-age=86400')
+    return new Response(res.body, { status: res.status, headers })
+  })
+
+  ipcMain.handle('thumbs:clear', () => clearThumbs())
+
+  win = createWindow()
     if (old && !old.isDestroyed()) old.destroy()
     return chrome
   })

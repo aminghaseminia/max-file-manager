@@ -74,6 +74,10 @@ export type Prefs = {
   filters: Record<string, string>
   /** extension → colour for the small type dot */
   fileTypes: Record<string, string>
+  /** show a folder tree inside every pane (Opus «Dual Tree») */
+  paneTree: boolean
+  /** user commands: name → shell line, `{path}` and `{dir}` are substituted */
+  scripts: Record<string, string>
   // transfer filters
   transferSkipExisting: boolean
   transferNewerOnly: boolean
@@ -122,6 +126,8 @@ export const DEFAULTS: Prefs = {
   layouts: {},
   filters: {},
   fileTypes: {},
+  paneTree: false,
+  scripts: {},
   transferSkipExisting: false,
   transferNewerOnly: false,
   speedLimitKB: 0,
@@ -169,6 +175,15 @@ function normalFilters(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object') return out
   for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
     if (name.trim() && typeof v === 'string' && v.trim()) out[name.slice(0, 60)] = v.slice(0, 200)
+  }
+  return out
+}
+
+function normalScripts(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [name, cmd] of Object.entries(raw as Record<string, unknown>)) {
+    if (name.trim() && typeof cmd === 'string' && cmd.trim()) out[name.slice(0, 40)] = cmd.slice(0, 500)
   }
   return out
 }
@@ -240,6 +255,8 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layouts: normalLayouts(p.layouts),
     filters: normalFilters(p.filters),
     fileTypes: normalFileTypes(p.fileTypes),
+    paneTree: p.paneTree === true,
+    scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,
     transferNewerOnly: p.transferNewerOnly === true,
     speedLimitKB:

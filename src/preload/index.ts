@@ -18,9 +18,12 @@ contextBridge.exposeInMainWorld('api', {
   dupes: (dir: string) => ipcRenderer.invoke('fs:dupes', dir),
   archive: (p: string) => ipcRenderer.invoke('fs:archive', p),
   registerHotkey: (accel: string) => ipcRenderer.invoke('hotkey:register', accel),
+  runScript: (command: string, path?: string, dir?: string) =>
+    ipcRenderer.invoke('app:runScript', { command, path, dir }),
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
+  clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
   saveImageAs: (src: string, dataUrl: string) => ipcRenderer.invoke('image:saveAs', { src, dataUrl }),

@@ -115,7 +115,8 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
       ? renderMarkdown(text)
       : `<pre dir="ltr">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`
     const out = path.replace(/\.[^./\\]+$/, '') + '.pdf'
-    const r = await api.htmlToPdf(body, out, theme)
+    // paper is light: a dark PDF is unreadable when printed or previewed
+    const r = await api.htmlToPdf(body, out, 'light')
     setBusy(false)
     onNote('error' in r ? `PDF ساخته نشد — ${r.error}` : `PDF ساخته شد: ${baseName(r.path)}`)
     if (!('error' in r)) onSaved()
