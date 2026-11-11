@@ -197,3 +197,85 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 - **تست‌هایی که خروجی فارسی را می‌سنجند** باید با `setLang('fa')` شروع شوند؛ پیش‌فرض برنامه انگلیسی است.
 - **پیش از هر اجرای `SMOKE_SHOT`/`SMOKE_JS` پروسهٔ قبلی را ببند**: قفل تک‌نمونه اجرای تازه را بی‌صدا رد می‌کند و آدم خیال می‌کند بیلد خراب است. با `pgrep -f "dist/electron \." | xargs -r kill -9` (نه `pkill -f` که خودش را هم می‌کشد).
 - **`pkill -f` در همان خطی که الگو را دارد، خودش را می‌کشد** (exit -15). با PID یا با `pgrep | xargs kill` بکش.
+
+## Updating from upstream (this macOS fork)
+
+`origin` is `aminghaseminia/max-file-manager`; `upstream` is `majidasgari/max-file-manager`.
+**A pull is code execution.** Never build or install before the review below — the only reason this fork exists separately is so incoming code can be treated as untrusted until it has been read.
+
+### 1. Fetch, then look before merging
+
+```bash
+git fetch upstream
+git log --oneline HEAD..upstream/main      # what is coming
+git diff --stat HEAD..upstream/main
+```
+
+If the log is empty there is nothing to audit and nothing to rebuild — stop and say so.
+
+### 2. Review the incoming diff for backdoors and security regressions
+
+Read the config and dependency surface first, then the source:
+
+```bash
+git diff HEAD..upstream/main -- package.json package-lock.json electron-builder.yml .github scripts bin
+git diff HEAD..upstream/main -- src
+```
+
+**Blockers — stop, report, do not build:**
+
+- a new or changed `preinstall`/`install`/`postinstall`/`prepare` script, in the repo or in any dependency
+- a dependency resolved from git, ssh or plain http, or from a host other than `registry.npmjs.org`
+- a lockfile package with no `integrity` hash
+- `eval`, `new Function`, `vm.*`, or `Buffer.from(…, 'base64')` used as code; minified or obfuscated source under `src/`
+- a new outbound network call (`fetch`, `net.request`, `WebSocket`, `sendBeacon`) anywhere; the only legitimate one is the GitHub release check in `src/main/updates.ts`
+- new `child_process` use, especially `exec` or `sh -c` with anything that is not a literal; `app:runScript` is the one accepted exception and must stay user-authored with no shipped default
+- `webPreferences` loosened (`contextIsolation: false`, `nodeIntegration: true`), CSP in `src/renderer/index.html` widened, or the `preload` bridge exposing new privileged surface
+- new persistence: LaunchAgents, login items, `setLoginItemSettings`, launchd, cron, `setAsDefaultProtocolClient`
+- an auto-update path that downloads and executes; opening a GitHub release page in the browser is fine
+- `src/main/mcp.ts` gaining a privileged tool or defaulting to anything but `off`
+
+Re-check the supply chain and the packaged bundle:
+
+```bash
+npm audit --omit=dev
+python3 -c "import json,collections,urllib.parse;d=json.load(open('package-lock.json'));c=collections.Counter(urllib.parse.urlparse(v['resolved']).netloc for v in d['packages'].values() if v.get('resolved'));print(c)"
+npx asar list "release/mac-arm64/Max File Manager.app/Contents/Resources/app.asar" \
+  | grep -vE '\.(js|css|woff2?|ttf|png|svg|html|json|mjs|map)$'   # must print only /out dirs
+```
+
+### 3. Merge, then gate
+
+```bash
+git merge --ff-only upstream/main
+npm ci
+npm run typecheck
+npm test
+```
+
+`src/main/jobs.test.ts` → "cancel stops the transfer" fails on fast SSDs: a 24 MB copy finishes before `cancel()` lands. That is test timing, not a defect; note it and do not block on it.
+
+### 4. Build and install
+
+```bash
+npm run dist:mac
+osascript -e 'quit app "Max File Manager"' 2>/dev/null
+rm -rf "/Applications/Max File Manager.app"
+ditto "release/mac-arm64/Max File Manager.app" "/Applications/Max File Manager.app"
+codesign --verify --deep --strict "/Applications/Max File Manager.app"
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
+  -f "/Applications/Max File Manager.app"
+```
+
+The build is ad-hoc signed and not notarized (`identity: '-'` in `electron-builder.yml`), which is fine locally and will not pass Gatekeeper on another machine.
+
+### 5. Report
+
+State the commits pulled, the audit outcome for every blocker above, the test result, and the version actually installed.
+
+## macOS specifics that are local to this fork
+
+- **`public.folder` cannot be reassigned.** Finder is protected by LaunchServices; `LSHandlers` in `com.apple.launchservices.secure.plist` and `LSHandlerRank: Owner` were both tried and both leave Finder as the handler. Do not retry it. The app is still registered as a folder handler, so right-click → Open With → Max File Manager works.
+- **Folder opens arrive as Apple events, not argv.** `src/main/index.ts` handles `app.on('open-file')` and queues the path until the window exists; `mac.extendInfo` in `electron-builder.yml` declares `public.folder`.
+- **Option+E is a native Services workflow**, not a background tool: `~/Library/Services/Open Max File Manager.workflow` runs `open -b tech.performai.maxfilemanager`, and the key binding lives in `pbs.plist` → `NSServicesStatus` → `"(null) - Open Max File Manager - runWorkflowAsService"` as `~e`. Re-apply with `defaults write`/`plistlib` and `killall pbs` if it is ever lost.
+- **Local toolchain trap:** a Homebrew `simdjson` upgrade can leave `node` unrunnable (`Library not loaded: libsimdjson.*.dylib`). Fix with `brew upgrade node`; it is unrelated to this repo.
