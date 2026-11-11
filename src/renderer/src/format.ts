@@ -122,16 +122,20 @@ export function orderEntries(
   filter = '',
   foldersFirst = true,
   pins?: Set<string>,
-  labels?: Record<string, string>
+  labels?: Record<string, string>,
+  ratings?: Record<string, number>
 ): Entry[] {
   const q = filter.trim().toLowerCase()
-  // `#red` / `#قرمز` keeps only the files carrying that label
+  // `#red` keeps only that label; `*3` keeps files rated 3 or more
   let kept = q
-    ? entries.filter((e) =>
-        q.startsWith('#')
-          ? (labels?.[e.name] ?? '').includes(q.slice(1))
-          : e.name.toLowerCase().includes(q)
-      )
+    ? entries.filter((e) => {
+        if (q.startsWith('#')) return (labels?.[e.name] ?? '').includes(q.slice(1))
+        if (q.startsWith('*')) {
+          const min = Number(q.slice(1)) || 0
+          return (ratings?.[e.name] ?? 0) >= min
+        }
+        return e.name.toLowerCase().includes(q)
+      })
     : entries
   const sorted = sortEntries(kept, key, asc, foldersFirst)
   if (!pins || !pins.size) return sorted

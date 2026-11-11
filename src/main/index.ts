@@ -8,10 +8,12 @@ import { saveImage } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
-import { LABELS, readMeta, setLabel, setMeta, togglePin, type FolderMeta } from './meta.ts'
+import { LABELS, readMeta, setLabel, setMeta, setNote, setRating, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
+import { convertImages, type ConvertOpts } from './convert.ts'
+import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
@@ -251,7 +253,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
     const l = await list(dir, showHidden, dims)
     const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
-    return { ...l, pins: meta?.pins ?? [], labels: meta?.labels ?? {} }
+    return {
+      ...l,
+      pins: meta?.pins ?? [],
+      labels: meta?.labels ?? {},
+      ratings: meta?.ratings ?? {},
+      notes: meta?.notes ?? {}
+    }
   })
   ipcMain.handle('fs:statfs', async (_e, p: string) => {
     if (!path.isAbsolute(p)) return null
@@ -325,6 +333,23 @@ app.whenReady().then(async () => {
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
   })
+  ipcMain.handle('image:batchConvert', (_e, a: { files: string[]; opts: ConvertOpts }) =>
+    convertImages((a?.files ?? []).slice(0, 500), a?.opts ?? { format: 'jpeg', maxSide: 0, quality: 90 })
+  )
+  ipcMain.handle(
+    'export:listing',
+    (
+      _e,
+      a: { dir: string; name: string; rows: ExportRow[]; format: 'csv' | 'pdf'; theme?: string }
+    ) =>
+      exportListing(
+        a?.dir ?? '',
+        String(a?.name ?? 'listing'),
+        a?.rows ?? [],
+        a?.format ?? 'csv',
+        a?.theme ?? 'dark'
+      )
+  )
   ipcMain.handle(
     'sync:compare',
     (_e, a: { left: string; right: string; deep?: boolean; compareBy?: 'mtime' | 'ctime' | 'hash'; ignore?: string[] }) =>
@@ -353,6 +378,12 @@ app.whenReady().then(async () => {
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
+  ipcMain.handle('meta:setRating', (_e, a: { dir: string; name: string; stars: number }) =>
+    path.isAbsolute(a?.dir ?? '') ? setRating(a.dir, String(a.name ?? ''), Number(a.stars ?? 0)) : {}
+  )
+  ipcMain.handle('meta:setNote', (_e, a: { dir: string; name: string; text: string }) =>
+    path.isAbsolute(a?.dir ?? '') ? setNote(a.dir, String(a.name ?? ''), String(a.text ?? '')) : {}
+  )
   ipcMain.handle('meta:setLabel', (_e, a: { dir: string; name: string; label: string | null }) =>
     path.isAbsolute(a?.dir ?? '') ? setLabel(a.dir, String(a.name ?? ''), a.label ?? null) : {}
   )

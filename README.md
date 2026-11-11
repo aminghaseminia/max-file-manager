@@ -17,6 +17,10 @@ The editor takes exactly the preview's place (and can go full-window):
 
 ![editor docked](docs/screenshot-editor-docked.png)
 
+Ratings (with a `*3` filter), per-file notes, batch image conversion and CSV/PDF listing export:
+
+![rating and convert](docs/screenshot-rating-convert.png)
+
 Sync can compare by modification time, creation time or content hash, with ignore patterns:
 
 ![sync options](docs/screenshot-sync-options.png)
@@ -103,6 +107,9 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Desktop integration**: «ترمینال اینجا» (`Ctrl+Alt+T`, konsole/gnome-terminal/xfce4/x-terminal or `cmd`), «نمایش در فایل‌منیجر سیستم», and dragging files **out** of the app into any other program
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
 - **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default
+- **Stars and notes** per file in the folder's `.mfm.json`, a rating column, and a `*3` filter for «three stars or more»
+- **Batch image conversion**: JPEG/PNG, longest-side resize with the aspect kept, JPEG quality, output next to the source or in the other pane
+- **Listing export** to CSV (UTF-8 BOM, proper quoting) and PDF
 - **Coloured labels** (8-colour palette) with a dot on the row, per-label counts in the sidebar and a `#label` filter — all stored in the folder's `.mfm.json`
 - **Pin files inside a folder** — pinned names sort to the very top with a pin mark and live in the folder's `.mfm.json`
 - **Transfer filters**: skip files that already exist, copy only newer ones, and a KB/s speed limit

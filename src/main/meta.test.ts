@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { iconsIn, themeDirs } from './icons.ts'
-import { LABELS, META_FILE, readMeta, setLabel, setMeta, togglePin } from './meta.ts'
+import { LABELS, META_FILE, readMeta, setLabel, setMeta, setNote, setRating, togglePin } from './meta.ts'
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'mfm-meta-'))
 
@@ -89,4 +89,25 @@ test('labels round-trip, reject unknown ids and unsafe names', async () => {
   assert.deepEqual((await readMeta(dir))?.labels, { 'ok.txt': 'red' }, 'reading drops garbage')
 
   assert.equal(LABELS.length, 8)
+})
+
+test('ratings and notes round-trip and reject garbage', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-rate-'))
+  assert.deepEqual(await setRating(dir, 'a.txt', 4), { 'a.txt': 4 })
+  assert.deepEqual(await setRating(dir, 'a.txt', 0), {}, '0 clears the rating')
+  assert.deepEqual(await setRating(dir, 'a.txt', 9), { 'a.txt': 5 }, 'clamped to five stars')
+  assert.deepEqual(await setRating(dir, '../x', 3), {}, 'unsafe name rejected')
+
+  assert.deepEqual(await setNote(dir, 'a.txt', '  یادداشت  '), { 'a.txt': 'یادداشت' })
+  assert.deepEqual(await setNote(dir, 'a.txt', '   '), {}, 'blank clears the note')
+  assert.deepEqual(await setRating(dir, 'a.txt', 0), {}, 'clearing the last rating too')
+  assert.equal(await readMeta(dir), null, 'nothing left, so the meta file is gone')
+})
+
+test('a rating and a note written at the same time both survive', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-race-'))
+  await Promise.all([setRating(dir, 'x.png', 4), setNote(dir, 'x.png', 'همزمان')])
+  const meta = await readMeta(dir)
+  assert.deepEqual(meta?.ratings, { 'x.png': 4 }, 'the rating is not lost to the note write')
+  assert.deepEqual(meta?.notes, { 'x.png': 'همزمان' })
 })

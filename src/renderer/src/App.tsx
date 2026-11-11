@@ -9,6 +9,8 @@ import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
+import { ConvertDialog, RatingDialog } from './RatingDialog'
+import { rowsOf } from '../../shared/export.ts'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { Sidebar } from './Sidebar'
@@ -31,6 +33,10 @@ import {
 import {
   ArchiveOpenIcon,
   ChevronLeftIcon,
+  DocIcon,
+  ImageIcon,
+  PdfIcon,
+  StarIcon,
   DriveIcon,
   DupeIcon,
   CopyIcon,
@@ -120,6 +126,12 @@ export default function App() {
   const [editor, setEditor] = useState<string | null>(null)
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
+  const [rateFor, setRateFor] = useState<{ dir: string; name: string } | null>(null)
+  const [convertAsk, setConvertAsk] = useState<{
+    files: string[]
+    busy: boolean
+    result: string
+  } | null>(null)
   const [labelFor, setLabelFor] = useState<{ dir: string; name: string } | null>(null)
   const [sync, setSync] = useState<{
     left: string
@@ -788,6 +800,47 @@ export default function App() {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })
         break
+      case 'rate': {
+        if (path) setRateFor({ dir: dirOf(path), name: baseName(path) })
+        break
+      }
+      case 'convert': {
+        const imgs = (me.sel.length ? me.sel : path ? [path] : []).filter((p) =>
+          /\.(png|jpe?g|webp|bmp|gif|avif)$/i.test(p)
+        )
+        if (!imgs.length) {
+          setNote('تصویری انتخاب نشده')
+          break
+        }
+        setConvertAsk({ files: imgs, busy: false, result: '' })
+        break
+      }
+      case 'exportCsv':
+      case 'exportPdf': {
+        const pane = panes![active]
+        const rows = rowsOf(
+          visibleOf(active),
+          {
+            labels: pane.listing?.labels,
+            ratings: pane.listing?.ratings,
+            notes: pane.listing?.notes
+          },
+          (id: string) => palette.find((l) => l.id === id)?.name ?? ''
+        )
+        void (async () => {
+          const r = await api.exportListing(
+            tabOf(panes![active]),
+            baseName(tabOf(panes![active])) || 'listing',
+            rows,
+            id === 'exportCsv' ? 'csv' : 'pdf',
+            theme
+          )
+          setNote(
+            'error' in r ? `صدور نشد — ${r.error}` : `فهرست ذخیره شد: ${baseName(r.path)} · ${fa(r.rows)} ردیف`
+          )
+        })()
+        break
+      }
       case 'label': {
         if (path) setLabelFor({ dir: dirOf(path), name: baseName(path) })
         break
@@ -917,6 +970,10 @@ export default function App() {
       items.push(
         { id: 'edit', label: 'ویرایش متن', key: 'F4', icon: <RenameIcon /> },
         { id: 'label', label: 'برچسب رنگی…', icon: <PaletteIcon /> },
+        { id: 'rate', label: 'امتیاز و توضیح…', icon: <StarIcon /> },
+        { id: 'convert', label: 'تبدیل تصاویر…', icon: <ImageIcon /> },
+        { id: 'exportCsv', label: 'صدور فهرست (CSV)', icon: <DocIcon /> },
+        { id: 'exportPdf', label: 'صدور فهرست (PDF)', icon: <PdfIcon /> },
         { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
         {
         id: 'pinFile',
@@ -1566,6 +1623,54 @@ export default function App() {
 
       {diff && (
         <DiffDialog a={diff.a} b={diff.b} result={diff.result} onClose={() => setDiff(null)} />
+      )}
+
+      {rateFor && (
+        <RatingDialog
+          name={rateFor.name}
+          stars={panes?.[active]?.listing?.ratings?.[rateFor.name] ?? 0}
+          note={panes?.[active]?.listing?.notes?.[rateFor.name] ?? ''}
+          onClose={() => setRateFor(null)}
+          onSave={(stars, note) => {
+            const target = rateFor
+            setRateFor(null)
+            void Promise.all([
+              api.setRating(target.dir, target.name, stars),
+              api.setNote(target.dir, target.name, note)
+            ]).then(() => load(active, tabOf(panes![active])))
+            setNote(stars ? `${stars} ستاره ثبت شد` : 'امتیاز برداشته شد')
+          }}
+        />
+      )}
+
+      {convertAsk && (
+        <ConvertDialog
+          count={convertAsk.files.length}
+          busy={convertAsk.busy}
+          result={convertAsk.result}
+          otherPane={tabOf(panes![1 - active])}
+          onClose={() => setConvertAsk(null)}
+          onRun={(opts) => {
+            setConvertAsk({ ...convertAsk, busy: true })
+            void api
+              .convertImages(convertAsk.files, {
+                format: opts.format,
+                maxSide: opts.maxSide,
+                quality: opts.quality,
+                dest: opts.toOtherPane ? tabOf(panes![1 - active]) : undefined
+              })
+              .then(async (r) => {
+                setConvertAsk({
+                  ...convertAsk,
+                  busy: false,
+                  result: r.errors.length
+                    ? `${fa(r.done)} تبدیل شد، ${fa(r.errors.length)} خطا — ${r.errors[0]}`
+                    : `${fa(r.done)} تصویر تبدیل شد`
+                })
+                await Promise.all([load(0, tabOf(panes![0])), load(1, tabOf(panes![1]))])
+              })
+          }}
+        />
       )}
 
       {labelFor && (

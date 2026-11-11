@@ -36,6 +36,8 @@ export type Listing = {
   entries: Entry[]
   pins?: string[]
   labels?: Record<string, string>
+  ratings?: Record<string, number>
+  notes?: Record<string, string>
 }
 export type DirRef = { name: string; path: string }
 export type Result = { done: number; errors: string[] }
@@ -119,6 +121,17 @@ export type Api = {
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
+  convertImages(
+    files: string[],
+    opts: { format: 'jpeg' | 'png' | 'webp'; maxSide: number; quality: number; dest?: string }
+  ): Promise<{ done: number; errors: string[]; outDir: string }>
+  exportListing(
+    dir: string,
+    name: string,
+    rows: unknown,
+    format: 'csv' | 'pdf',
+    theme?: string
+  ): Promise<{ path: string; rows: number } | { error: string }>
   syncCompare(
     left: string,
     right: string,
@@ -145,6 +158,8 @@ export type Api = {
   getMeta(dir: string): Promise<FolderMeta | null>
   labelPalette(): Promise<{ id: string; name: string; color: string }[]>
   setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>>
+  setRating(dir: string, name: string, stars: number): Promise<Record<string, number>>
+  setNote(dir: string, name: string, text: string): Promise<Record<string, string>>
   togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
   iconThemes(extra: string[]): Promise<IconTheme[]>

@@ -19,7 +19,7 @@ export const DEFAULT_TOOLBAR = [
 export type View = 'list' | 'grid'
 export type Layout = 'dual' | 'single'
 export type DoubleClick = 'open' | 'gallery' | 'preview'
-export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dims'
+export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dims' | 'rating'
 
 /** Optional columns, in the order the user arranged them (name is always first). */
 export const COLUMNS: { id: ColId; label: string }[] = [
@@ -29,7 +29,8 @@ export const COLUMNS: { id: ColId; label: string }[] = [
   { id: 'mode', label: 'مجوز' },
   { id: 'owner', label: 'مالک' },
   { id: 'links', label: 'لینک' },
-  { id: 'dims', label: 'ابعاد' }
+  { id: 'dims', label: 'ابعاد' },
+  { id: 'rating', label: 'امتیاز' }
 ]
 
 /**

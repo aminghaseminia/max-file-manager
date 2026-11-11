@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('api', {
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
+  convertImages: (files: string[], opts: unknown) =>
+    ipcRenderer.invoke('image:batchConvert', { files, opts }),
+  exportListing: (dir: string, name: string, rows: unknown, format: string, theme?: string) =>
+    ipcRenderer.invoke('export:listing', { dir, name, rows, format, theme }),
   syncCompare: (left: string, right: string, opts?: unknown) =>
     ipcRenderer.invoke('sync:compare', { left, right, ...(opts as object) }),
   syncApply: (left: string, right: string, rows: unknown, mode: string, deleteExtra?: boolean) =>
@@ -36,6 +40,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('fs:extract', { archive, names, dest }),
   getMeta: (dir: string) => ipcRenderer.invoke('meta:get', dir),
   labelPalette: () => ipcRenderer.invoke('meta:labels'),
+  setRating: (dir: string, name: string, stars: number) =>
+    ipcRenderer.invoke('meta:setRating', { dir, name, stars }),
+  setNote: (dir: string, name: string, text: string) =>
+    ipcRenderer.invoke('meta:setNote', { dir, name, text }),
   setLabel: (dir: string, name: string, label: string | null) =>
     ipcRenderer.invoke('meta:setLabel', { dir, name, label }),
   togglePin: (dir: string, name: string, on?: boolean) =>

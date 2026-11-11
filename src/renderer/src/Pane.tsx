@@ -141,12 +141,22 @@ export function Pane(props: Props) {
   const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
   const pinSet = useMemo(() => new Set(pane.listing?.pins ?? []), [pane.listing?.pins])
   const labelMap = pane.listing?.labels ?? {}
+  const ratingMap = pane.listing?.ratings ?? {}
   const labelColor = (name: string) =>
     props.palette.find((l) => l.id === labelMap[name])?.color ?? ''
 
   const entries = useMemo(
     () =>
-      orderEntries(source, sort.key, sort.asc, pane.filter, props.foldersFirst, pinSet, labelMap),
+      orderEntries(
+        source,
+        sort.key,
+        sort.asc,
+        pane.filter,
+        props.foldersFirst,
+        pinSet,
+        labelMap,
+        ratingMap
+      ),
     [source, pane.filter, sort, props.foldersFirst]
   )
 
@@ -212,6 +222,10 @@ export function Pane(props: Props) {
         return e.nlink != null ? fa(e.nlink) : ''
       case 'dims':
         return e.w && e.h ? `${fa(e.w)}×${fa(e.h)}` : ''
+      case 'rating': {
+        const n = ratingMap[e.name] ?? 0
+        return n ? '★'.repeat(n) : ''
+      }
     }
   }
 
@@ -222,7 +236,8 @@ export function Pane(props: Props) {
     mode: { label: 'مجوز', width: 92 },
     owner: { label: 'مالک', width: 72, end: true },
     links: { label: 'لینک', width: 52, end: true },
-    dims: { label: 'ابعاد', width: 90, end: true }
+    dims: { label: 'ابعاد', width: 90, end: true },
+    rating: { label: 'امتیاز', width: 74, end: true }
   }
 
   const gridTemplate =
