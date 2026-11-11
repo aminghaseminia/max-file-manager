@@ -11,6 +11,7 @@ type Page =
   | 'toolbar'
   | 'keys'
   | 'layout'
+  | 'search'
   | 'filetypes'
   | 'archive'
   | 'transfer'
@@ -25,6 +26,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'toolbar', label: 'نوار ابزار' },
   { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'search', label: 'جست‌وجو' },
   { id: 'filetypes', label: 'انواع فایل' },
   { id: 'archive', label: 'بایگانی و گالری' },
   { id: 'transfer', label: 'انتقال' },
@@ -42,6 +44,7 @@ type Props = {
 
 export function Preferences({ prefs, palette, onChange, onClose }: Props) {
   const [extInput, setExtInput] = useState('')
+  const [newRoot, setNewRoot] = useState('')
   const [page, setPage] = useState<Page>('appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
 
@@ -368,6 +371,72 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 seg(prefs.sidebar, [{ v: 'docked', label: 'چسبیده' }, { v: 'float', label: 'شناور' }], 'sidebar')
               )}
               {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+            </>
+          )}
+
+          {page === 'search' && (
+            <>
+              <div className="hint">
+                ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents،
+                Downloads، Desktop، Pictures، Music، Videos). جست‌وجو با Ctrl+Shift+K.
+              </div>
+              <div className="preset-list">
+                {prefs.searchRoots.length === 0 && (
+                  <div className="dim">پوشهٔ پیش‌فرض سیستم استفاده می‌شود</div>
+                )}
+                {prefs.searchRoots.map((r) => (
+                  <div className="preset-row" key={r}>
+                    <span className="preset-name" dir="auto">
+                      {r}
+                    </span>
+                    <button
+                      className="tb"
+                      title="حذف از ایندکس"
+                      onClick={() =>
+                        onChange({ searchRoots: prefs.searchRoots.filter((x) => x !== r) })
+                      }
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="preset-save">
+                <input
+                  className="pref-input wide"
+                  dir="ltr"
+                  placeholder="/path/to/folder"
+                  value={newRoot}
+                  onChange={(e) => setNewRoot(e.target.value)}
+                />
+                <button
+                  className="btn"
+                  disabled={!newRoot.startsWith('/')}
+                  onClick={() => {
+                    onChange({ searchRoots: [...prefs.searchRoots, newRoot.trim()] })
+                    setNewRoot('')
+                  }}
+                >
+                  افزودن پوشه
+                </button>
+              </div>
+              {row(
+                'استثناها',
+                'با کاما جدا کن؛ * هم مجاز است (مثلاً node_modules, *.tmp)',
+                <input
+                  className="pref-input wide"
+                  dir="ltr"
+                  value={prefs.searchExclude.join(', ')}
+                  onChange={(e) =>
+                    onChange({
+                      searchExclude: e.target.value
+                        .split(',')
+                        .map((x) => x.trim())
+                        .filter(Boolean)
+                    })
+                  }
+                />
+              )}
             </>
           )}
 

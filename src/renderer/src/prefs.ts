@@ -74,6 +74,10 @@ export type Prefs = {
   filters: Record<string, string>
   /** extension → colour for the small type dot */
   fileTypes: Record<string, string>
+  /** folders the indexer walks (empty = the OS defaults at runtime) */
+  searchRoots: string[]
+  /** glob-ish names/paths the indexer skips */
+  searchExclude: string[]
   /** show a folder tree inside every pane (Opus «Dual Tree») */
   paneTree: boolean
   /** user commands: name → shell line, `{path}` and `{dir}` are substituted */
@@ -126,6 +130,8 @@ export const DEFAULTS: Prefs = {
   layouts: {},
   filters: {},
   fileTypes: {},
+  searchRoots: [],
+  searchExclude: ['node_modules', '.git', '.cache', '.venv', 'dist', 'build', '*.tmp', '.Trash', 'snap'],
   paneTree: false,
   scripts: {},
   transferSkipExisting: false,
@@ -255,6 +261,12 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layouts: normalLayouts(p.layouts),
     filters: normalFilters(p.filters),
     fileTypes: normalFileTypes(p.fileTypes),
+    searchRoots: Array.isArray(p.searchRoots)
+      ? p.searchRoots.filter((r) => typeof r === 'string' && r.startsWith('/'))
+      : [],
+    searchExclude: Array.isArray(p.searchExclude)
+      ? p.searchExclude.filter((r) => typeof r === 'string' && r.trim())
+      : DEFAULTS.searchExclude,
     paneTree: p.paneTree === true,
     scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,

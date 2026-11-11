@@ -15,6 +15,7 @@ import { PresetsDialog } from './PresetsDialog'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { PaneTree } from './PaneTree'
+import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
 import { WindowButtons } from './WindowButtons'
@@ -23,6 +24,7 @@ import { COMMAND_BY_ID, COMMANDS, type CommandId } from './commands'
 import { formatAccel, matchAccel } from './keys'
 import {
   baseName,
+  defaultSearchRoots,
   dirOf,
   fa,
   fmtSize,
@@ -129,6 +131,7 @@ export default function App() {
   const [editor, setEditor] = useState<string | null>(null)
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [tagFor, setTagFor] = useState<{
     path: string
@@ -309,6 +312,18 @@ export default function App() {
     if (!p) return
     void api.statfs(p).then((r) => setFree(r?.free ?? null))
   }, [path0, path1, active])
+
+  // keep the index warm: refresh it in the background when it is older than an hour
+  useEffect(() => {
+    if (!booted) return
+    const roots = prefs.searchRoots.length ? prefs.searchRoots : defaultSearchRoots(home)
+    if (!roots.length) return
+    void api.search.stats().then((st) => {
+      if (Date.now() - st.lastIndex < 3_600_000) return
+      void api.search.index({ roots, exclude: prefs.searchExclude })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booted])
 
   // the OS-level hotkey follows the preference; the result is reported because it can fail
   useEffect(() => {
@@ -1221,6 +1236,7 @@ export default function App() {
       const p = panes![active].sel[0] ?? tabOf(panes![active])
       void api.reveal(p)
     },
+    searchIndex: () => setSearchOpen(true),
     presets: () => setPresetsOpen(true),
     saveFormat: () => {
       const dir = tabOf(panes![active])
@@ -1307,6 +1323,8 @@ export default function App() {
     return source.filter((e) => me.sel.includes(e.path)).reduce((n, e) => n + e.size, 0)
   })()
   const running = jobs.filter((j) => j.state === 'running' || j.state === 'paused').length
+
+  const searchRoots = prefs.searchRoots.length ? prefs.searchRoots : defaultSearchRoots(home)
 
   const sideOpen = previewOn || !!editor
   const sideContent = editor && !editorMax ? (
@@ -1679,6 +1697,36 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {searchOpen && (
+        <SearchOverlay
+          roots={searchRoots}
+          exclude={prefs.searchExclude}
+          onClose={() => setSearchOpen(false)}
+          onManage={() => {
+            setSearchOpen(false)
+            setSettingsOpen(true)
+          }}
+          onReveal={(hit) => {
+            setSearchOpen(false)
+            const dir = hit.dir ? hit.path : dirOf(hit.path)
+            go(active, dir)
+            setTimeout(() => {
+              setPanes((p) =>
+                p
+                  ? patch(p, active, {
+                      sel: hit.dir ? [] : [hit.path]
+                    })
+                  : p
+              )
+            }, 350)
+          }}
+          onOpen={(hit) => {
+            setSearchOpen(false)
+            void api.open(hit.path)
+          }}
+        />
+      )}
 
       {presetsOpen && (
         <PresetsDialog

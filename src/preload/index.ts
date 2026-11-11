@@ -24,6 +24,17 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
+  search: {
+    index: (cfg: unknown) => ipcRenderer.invoke('search:index', cfg),
+    query: (query: string, limit?: number) => ipcRenderer.invoke('search:query', { query, limit }),
+    stats: () => ipcRenderer.invoke('search:stats'),
+    clear: () => ipcRenderer.invoke('search:clear'),
+    onProgress: (cb: (p: unknown) => void) => {
+      const fn = (_e: unknown, p: unknown) => cb(p)
+      ipcRenderer.on('search:progress', fn)
+      return () => ipcRenderer.removeListener('search:progress', fn)
+    }
+  },
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
   saveImageAs: (src: string, dataUrl: string) => ipcRenderer.invoke('image:saveAs', { src, dataUrl }),

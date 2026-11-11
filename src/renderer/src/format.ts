@@ -267,3 +267,9 @@ export function planRename(names: string[], o: RenameOpts): string[] {
 }
 
 
+
+/** The folders every desktop expects to be searchable by default. */
+export function defaultSearchRoots(home: string): string[] {
+  if (!home) return []
+  return ['Documents', 'Downloads', 'Desktop', 'Pictures', 'Music', 'Videos'].map((d) => joinPath(home, d))
+}

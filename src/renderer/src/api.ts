@@ -17,6 +17,14 @@ export type Entry = {
   w?: number
   h?: number
 }
+export type SearchHit = {
+  path: string
+  name: string
+  dir: boolean
+  size: number
+  mtime: number
+  ext: string
+}
 export type SyncRow = {
   rel: string
   state: string
@@ -128,6 +136,18 @@ export type Api = {
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>
+  search: {
+    index(config: { roots: string[]; exclude: string[] }): Promise<{
+      files: number
+      dirs: number
+      durationMs: number
+      stats: { files: number; dirs: number; lastIndex: number }
+    }>
+    query(query: string, limit?: number): Promise<SearchHit[]>
+    stats(): Promise<{ files: number; dirs: number; lastIndex: number }>
+    clear(): Promise<{ files: number; dirs: number; lastIndex: number }>
+    onProgress(cb: (p: { scanned: number; added: number; done: number; total: number; root: string }) => void): () => void
+  }
   tags(paths: string[]): Promise<Record<string, Record<string, string>>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
   saveImageAs(src: string, dataUrl: string): Promise<{ path: string } | { error: string }>

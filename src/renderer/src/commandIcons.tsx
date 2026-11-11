@@ -61,6 +61,7 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   toggleLayout: <SplitIcon />,
   terminal: <ChevronLeftIcon />,
   reveal: <DriveIcon />,
+  searchIndex: <SearchIcon />,
   presets: <LayersIcon />,
   saveFormat: <ListIcon />,
   prefs: <SettingsIcon />
