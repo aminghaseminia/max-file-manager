@@ -34,6 +34,8 @@ export type CommandId =
   | 'toggleLayout'
   | 'terminal'
   | 'reveal'
+  | 'presets'
+  | 'saveFormat'
   | 'prefs'
 
 export type CommandGroup = 'transfer' | 'file' | 'view' | 'tab' | 'window'
@@ -72,6 +74,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'addressBar', label: 'نوار آدرس', key: 'Ctrl+L', group: 'window' },
   { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', group: 'window' },
   { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', key: '', group: 'window' },
+  { id: 'presets', label: 'چیدمان‌ها و فیلترها', key: 'Ctrl+Shift+P', group: 'window' },
+  { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' }
 ]
 

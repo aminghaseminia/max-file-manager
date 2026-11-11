@@ -68,6 +68,12 @@ export type Prefs = {
   slideshowSec: number
   galleryLoop: boolean
   previewMaxKB: number
+  /** named window layouts (Opus «Layouts/Styles») */
+  layouts: Record<string, NamedLayout>
+  /** named name filters shown in the presets dialog */
+  filters: Record<string, string>
+  /** extension → colour for the small type dot */
+  fileTypes: Record<string, string>
   // transfer filters
   transferSkipExisting: boolean
   transferNewerOnly: boolean
@@ -113,6 +119,9 @@ export const DEFAULTS: Prefs = {
   slideshowSec: 3,
   galleryLoop: true,
   previewMaxKB: 200,
+  layouts: {},
+  filters: {},
+  fileTypes: {},
   transferSkipExisting: false,
   transferNewerOnly: false,
   speedLimitKB: 0,
@@ -124,6 +133,55 @@ export const DEFAULTS: Prefs = {
   startFolder: '',
   iconDirs: [],
   iconTheme: ''
+}
+
+export type NamedLayout = {
+  layout?: 'dual' | 'single'
+  sidebar?: 'docked' | 'float'
+  sidebarOpen?: boolean
+  view?: 'list' | 'grid'
+  columns?: string[]
+  toolbar?: string[]
+}
+
+const COLS = new Set(['type', 'size', 'date', 'mode', 'owner', 'links', 'dims', 'rating'])
+
+function normalLayouts(raw: unknown): Record<string, NamedLayout> {
+  const out: Record<string, NamedLayout> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!name.trim() || !v || typeof v !== 'object') continue
+    const l = v as NamedLayout
+    const keep: NamedLayout = {}
+    if (l.layout === 'dual' || l.layout === 'single') keep.layout = l.layout
+    if (l.sidebar === 'docked' || l.sidebar === 'float') keep.sidebar = l.sidebar
+    if (typeof l.sidebarOpen === 'boolean') keep.sidebarOpen = l.sidebarOpen
+    if (l.view === 'list' || l.view === 'grid') keep.view = l.view
+    if (Array.isArray(l.columns)) keep.columns = l.columns.filter((c) => COLS.has(c))
+    if (Array.isArray(l.toolbar)) keep.toolbar = l.toolbar.filter((c) => typeof c === 'string')
+    out[name.slice(0, 60)] = keep
+  }
+  return out
+}
+
+function normalFilters(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (name.trim() && typeof v === 'string' && v.trim()) out[name.slice(0, 60)] = v.slice(0, 200)
+  }
+  return out
+}
+
+function normalFileTypes(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [ext, color] of Object.entries(raw as Record<string, unknown>)) {
+    const e = ext.trim().toLowerCase().replace(/^\./, '')
+    if (!/^[a-z0-9_+-]{1,16}$/.test(e)) continue
+    if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) out[e] = color
+  }
+  return out
 }
 
 /** Only known commands survive; a missing or garbage value falls back to the default key. */
@@ -179,6 +237,9 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
       typeof p.previewMaxKB === 'number' && p.previewMaxKB >= 16 && p.previewMaxKB <= 8192
         ? Math.round(p.previewMaxKB)
         : 200,
+    layouts: normalLayouts(p.layouts),
+    filters: normalFilters(p.filters),
+    fileTypes: normalFileTypes(p.fileTypes),
     transferSkipExisting: p.transferSkipExisting === true,
     transferNewerOnly: p.transferNewerOnly === true,
     speedLimitKB:

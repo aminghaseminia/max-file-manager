@@ -11,6 +11,7 @@ import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
 import { ConvertDialog, RatingDialog, TagDialog, convertToWebp } from './RatingDialog'
 import { rowsOf } from '../../shared/export.ts'
+import { PresetsDialog } from './PresetsDialog'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
 import { Sidebar } from './Sidebar'
@@ -127,6 +128,7 @@ export default function App() {
   const [editor, setEditor] = useState<string | null>(null)
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
+  const [presetsOpen, setPresetsOpen] = useState(false)
   const [tagFor, setTagFor] = useState<{
     path: string
     name: string
@@ -317,6 +319,22 @@ export default function App() {
         }
       })
   }, [prefs.hotkey, prefs.hotkeyEnabled])
+
+  // a folder can carry its own view/columns/sort (Opus «Folder Format»)
+  useEffect(() => {
+    const fmt = panes?.[active]?.listing?.format
+    if (!fmt) return
+    if (fmt.view && fmt.view !== view) setView(fmt.view as typeof view)
+    if (Array.isArray(fmt.columns) && fmt.columns.join(',') !== prefs.columns.join(',')) {
+      updatePrefs({ columns: fmt.columns as typeof prefs.columns })
+    }
+    if (fmt.sortKey && (fmt.sortKey !== sort.key || fmt.sortAsc !== sort.asc)) {
+      setSort({ key: fmt.sortKey as typeof sort.key, asc: fmt.sortAsc !== false })
+    }
+    // keyed on the listing object so a reload of the folder re-applies its format,
+    // while the inner comparisons keep it from fighting the user's own changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panes?.[active]?.listing])
 
   const transferOpts = () => ({
     skipExisting: prefs.transferSkipExisting,
@@ -812,6 +830,15 @@ export default function App() {
             setTagFor({ path, name: baseName(path), tags: (r?.[path] as Record<string, string>) ?? {} })
           )
         break
+      case 'presets':
+        setPresetsOpen(true)
+        break
+      case 'saveFormat': {
+        void api
+          .setFormat(tabOf(me), { view, columns: prefs.columns, sortKey: sort.key, sortAsc: sort.asc })
+          .then(() => setNote('قالب این پوشه ذخیره شد'))
+        break
+      }
       case 'rate': {
         if (path) setRateFor({ dir: dirOf(path), name: baseName(path) })
         break
@@ -987,7 +1014,8 @@ export default function App() {
           ? [{ id: 'tags', label: 'برچسب‌های صوتی…', icon: <AudioIcon /> }]
           : []),
         { id: 'convert', label: 'تبدیل تصاویر…', icon: <ImageIcon /> },
-        { id: 'exportCsv', label: 'صدور فهرست (CSV)', icon: <DocIcon /> },
+        { id: 'saveFormat', label: 'ذخیرهٔ قالب نمایش این پوشه', icon: <LayersIcon /> },
+      { id: 'exportCsv', label: 'صدور فهرست (CSV)', icon: <DocIcon /> },
         { id: 'exportPdf', label: 'صدور فهرست (PDF)', icon: <PdfIcon /> },
         { id: 'zipCreate', label: 'ساخت آرشیو در پنجرهٔ مقابل', icon: <ArchiveOpenIcon /> },
         {
@@ -1170,6 +1198,18 @@ export default function App() {
     reveal: () => {
       const p = panes![active].sel[0] ?? tabOf(panes![active])
       void api.reveal(p)
+    },
+    presets: () => setPresetsOpen(true),
+    saveFormat: () => {
+      const dir = tabOf(panes![active])
+      void api
+        .setFormat(dir, {
+          view,
+          columns: prefs.columns,
+          sortKey: sort.key,
+          sortAsc: sort.asc
+        })
+        .then(() => setNote('قالب این پوشه ذخیره شد'))
     },
     prefs: () => setSettingsOpen(true)
   }
@@ -1374,6 +1414,7 @@ export default function App() {
       {settingsOpen && (
         <Preferences
           prefs={prefs}
+          palette={palette}
           onChange={updatePrefs}
           onClose={() => setSettingsOpen(false)}
         />
@@ -1477,6 +1518,7 @@ export default function App() {
             onTabMove={(from, to) => moveTab(i, from, to)}
             middleClickClosesTab={prefs.middleClickClosesTab}
             palette={palette}
+            typeColors={prefs.fileTypes}
             onOp={(kind) => {
               if (kind === 'mkdir') setPrompt({ kind: 'mkdir', value: '' })
               else if (kind === 'rename') openRename(i)
@@ -1607,6 +1649,61 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {presetsOpen && (
+        <PresetsDialog
+          layouts={prefs.layouts}
+          filters={prefs.filters}
+          currentFilter={panes?.[active]?.filter ?? ''}
+          onClose={() => setPresetsOpen(false)}
+          onSaveLayout={(name) =>
+            updatePrefs({
+              layouts: {
+                ...prefs.layouts,
+                [name]: {
+                  layout: prefs.layout,
+                  sidebar: prefs.sidebar,
+                  sidebarOpen: prefs.sidebarOpen,
+                  view,
+                  columns: prefs.columns,
+                  toolbar: prefs.toolbar
+                }
+              }
+            })
+          }
+          onApplyLayout={(name) => {
+            const l = prefs.layouts[name]
+            if (!l) return
+            updatePrefs({
+              layout: l.layout ?? prefs.layout,
+              sidebar: l.sidebar ?? prefs.sidebar,
+              sidebarOpen: l.sidebarOpen ?? prefs.sidebarOpen,
+              view: l.view ?? prefs.view,
+              columns: (l.columns as typeof prefs.columns) ?? prefs.columns,
+              toolbar: l.toolbar ?? prefs.toolbar
+            })
+            if (l.view) setView(l.view)
+            setNote(`چیدمان «${name}» اعمال شد`)
+          }}
+          onDeleteLayout={(name) => {
+            const next = { ...prefs.layouts }
+            delete next[name]
+            updatePrefs({ layouts: next })
+          }}
+          onSaveFilter={(name, pattern) =>
+            updatePrefs({ filters: { ...prefs.filters, [name]: pattern } })
+          }
+          onApplyFilter={(pattern) => {
+            setPanes((p) => p && patch(p, active, { filter: pattern }))
+            setPresetsOpen(false)
+          }}
+          onDeleteFilter={(name) => {
+            const next = { ...prefs.filters }
+            delete next[name]
+            updatePrefs({ filters: next })
+          }}
+        />
+      )}
 
       {sync && (
         <SyncDialog

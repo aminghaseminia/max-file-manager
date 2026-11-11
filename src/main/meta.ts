@@ -17,6 +17,15 @@ export type FolderMeta = {
   ratings?: Record<string, number>
   /** name → a short free-form description */
   notes?: Record<string, string>
+  /** view/sort/columns this folder wants (Opus «Folder Format») */
+  format?: FolderFormat
+}
+
+export type FolderFormat = {
+  view?: 'list' | 'grid'
+  columns?: string[]
+  sortKey?: string
+  sortAsc?: boolean
 }
 
 /** The label palette; ids are stable because they are stored in `.mfm.json`. */
@@ -96,7 +105,11 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
     if (Object.keys(ratings).length) out.ratings = ratings
     const notes = cleanNotes(m.notes)
     if (Object.keys(notes).length) out.notes = notes
-    return out.color || out.icon || out.pins || out.labels || out.ratings || out.notes ? out : null
+    const fmt = cleanFormat(m.format)
+    if (fmt) out.format = fmt
+    return out.color || out.icon || out.pins || out.labels || out.ratings || out.notes || out.format
+      ? out
+      : null
   } catch {
     return null
   }
@@ -140,8 +153,19 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
   const notes = cleanNotes(next.notes)
   if (Object.keys(notes).length) next.notes = notes
   else delete next.notes
+  const fmt = cleanFormat(next.format)
+  if (fmt) next.format = fmt
+  else delete next.format
   const file = path.join(dir, META_FILE)
-  if (!next.color && !next.icon && !next.pins && !next.labels && !next.ratings && !next.notes) {
+  if (
+    !next.color &&
+    !next.icon &&
+    !next.pins &&
+    !next.labels &&
+    !next.ratings &&
+    !next.notes &&
+    !next.format
+  ) {
     await fs.rm(file, { force: true })
     return null
   }
@@ -161,6 +185,26 @@ export async function togglePin(dir: string, name: string, on?: boolean): Promis
 }
 
 /** Sets or clears one file's label; returns the folder's label map afterwards. */
+const FMT_COLS = new Set(['type', 'size', 'date', 'mode', 'owner', 'links', 'dims', 'rating'])
+
+const cleanFormat = (raw: unknown): FolderFormat | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const f = raw as FolderFormat
+  const out: FolderFormat = {}
+  if (f.view === 'list' || f.view === 'grid') out.view = f.view
+  if (Array.isArray(f.columns)) out.columns = f.columns.filter((c) => FMT_COLS.has(c))
+  if (typeof f.sortKey === 'string' && f.sortKey.length < 20) out.sortKey = f.sortKey
+  if (typeof f.sortAsc === 'boolean') out.sortAsc = f.sortAsc
+  return Object.keys(out).length ? out : null
+}
+
+/** Stores the folder's own view format. */
+export async function setFormat(dir: string, fmt: FolderFormat): Promise<FolderFormat | null> {
+  const clean = cleanFormat(fmt)
+  await setMeta(dir, { format: clean ?? {} })
+  return clean
+}
+
 export async function setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>> {
   if (!bare(name)) return {}
   const cur = { ...((await readMeta(dir))?.labels ?? {}) }

@@ -10,6 +10,7 @@ import {
   FolderPlusIcon,
   GaugeIcon,
   GridIcon,
+  LayersIcon,
   ListIcon,
   MoveIcon,
   PinIcon,
@@ -60,5 +61,7 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   toggleLayout: <SplitIcon />,
   terminal: <ChevronLeftIcon />,
   reveal: <DriveIcon />,
+  presets: <LayersIcon />,
+  saveFormat: <ListIcon />,
   prefs: <SettingsIcon />
 }

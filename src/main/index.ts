@@ -8,7 +8,18 @@ import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
-import { LABELS, readMeta, setLabel, setMeta, setNote, setRating, togglePin, type FolderMeta } from './meta.ts'
+import {
+  LABELS,
+  readMeta,
+  setFormat,
+  setLabel,
+  setMeta,
+  setNote,
+  setRating,
+  togglePin,
+  type FolderFormat,
+  type FolderMeta
+} from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
@@ -259,7 +270,8 @@ app.whenReady().then(async () => {
       pins: meta?.pins ?? [],
       labels: meta?.labels ?? {},
       ratings: meta?.ratings ?? {},
-      notes: meta?.notes ?? {}
+      notes: meta?.notes ?? {},
+      format: meta?.format ?? null
     }
   })
   ipcMain.handle('fs:statfs', async (_e, p: string) => {
@@ -392,6 +404,9 @@ app.whenReady().then(async () => {
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
+  ipcMain.handle('meta:setFormat', (_e, a: { dir: string; format: FolderFormat }) =>
+    path.isAbsolute(a?.dir ?? '') ? setFormat(a.dir, a.format ?? {}) : null
+  )
   ipcMain.handle('meta:setRating', (_e, a: { dir: string; name: string; stars: number }) =>
     path.isAbsolute(a?.dir ?? '') ? setRating(a.dir, String(a.name ?? ''), Number(a.stars ?? 0)) : {}
   )

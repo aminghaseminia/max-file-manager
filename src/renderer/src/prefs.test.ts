@@ -45,3 +45,19 @@ test('migrateLegacy folds the old top-level keys into prefs', () => {
     iconTheme: 'breeze'
   })
 })
+
+test('named layouts, filters and file-type colours survive only in valid form', () => {
+  const p = mergePrefs({
+    layouts: {
+      good: { layout: 'single', view: 'grid', columns: ['size', 'bogus'], sidebar: 'float' },
+      bad: 'nope'
+    } as never,
+    filters: { تصاویر: '*.jpg', empty: '   ' } as never,
+    fileTypes: { PDF: '#4f8ff0', '.txt': '#4fb56a', bad: 'red', evil: '#zzzzzz' } as never
+  })
+  assert.deepEqual(Object.keys(p.layouts), ['good'])
+  assert.deepEqual(p.layouts.good.columns, ['size'], 'unknown columns are dropped')
+  assert.equal(p.layouts.good.layout, 'single')
+  assert.deepEqual(Object.keys(p.filters), ['تصاویر'])
+  assert.deepEqual(p.fileTypes, { pdf: '#4f8ff0', txt: '#4fb56a' })
+})

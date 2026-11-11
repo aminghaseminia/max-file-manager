@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('fs:extract', { archive, names, dest }),
   getMeta: (dir: string) => ipcRenderer.invoke('meta:get', dir),
   labelPalette: () => ipcRenderer.invoke('meta:labels'),
+  setFormat: (dir: string, format: unknown) => ipcRenderer.invoke('meta:setFormat', { dir, format }),
   setRating: (dir: string, name: string, stars: number) =>
     ipcRenderer.invoke('meta:setRating', { dir, name, stars }),
   setNote: (dir: string, name: string, text: string) =>

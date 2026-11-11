@@ -11,6 +11,7 @@ type Page =
   | 'toolbar'
   | 'keys'
   | 'layout'
+  | 'filetypes'
   | 'archive'
   | 'transfer'
   | 'operations'
@@ -24,6 +25,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'toolbar', label: 'نوار ابزار' },
   { id: 'keys', label: 'کلید میان‌بر' },
   { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'filetypes', label: 'انواع فایل' },
   { id: 'archive', label: 'بایگانی و گالری' },
   { id: 'transfer', label: 'انتقال' },
   { id: 'operations', label: 'عملیات فایل' },
@@ -33,11 +35,13 @@ const PAGES: { id: Page; label: string }[] = [
 
 type Props = {
   prefs: Prefs
+  palette: { id: string; name: string; color: string }[]
   onChange(patch: Partial<Prefs>): void
   onClose(): void
 }
 
-export function Preferences({ prefs, onChange, onClose }: Props) {
+export function Preferences({ prefs, palette, onChange, onClose }: Props) {
+  const [extInput, setExtInput] = useState('')
   const [page, setPage] = useState<Page>('appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
 
@@ -364,6 +368,61 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
                 seg(prefs.sidebar, [{ v: 'docked', label: 'چسبیده' }, { v: 'float', label: 'شناور' }], 'sidebar')
               )}
               {row('نمایش سایدبار', null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+            </>
+          )}
+
+          {page === 'filetypes' && (
+            <>
+              <div className="hint">
+                برای هر پسوند یک رنگ بگذار؛ نقطهٔ رنگی کنار نام فایل در فهرست دیده می‌شود.
+              </div>
+              <div className="preset-save">
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  placeholder="پسوند، مثلاً pdf"
+                  value={extInput}
+                  onChange={(e) => setExtInput(e.target.value.replace(/^\./, '').toLowerCase())}
+                />
+                {palette.map((c) => (
+                  <button
+                    key={c.id}
+                    className="swatch"
+                    title={c.name}
+                    style={{ background: c.color }}
+                    disabled={!extInput.trim()}
+                    onClick={() =>
+                      onChange({
+                        fileTypes: { ...prefs.fileTypes, [extInput.trim()]: c.color }
+                      })
+                    }
+                  />
+                ))}
+              </div>
+              <div className="preset-list">
+                {Object.keys(prefs.fileTypes).length === 0 && (
+                  <div className="dim">هنوز پسوندی رنگ نگرفته</div>
+                )}
+                {Object.entries(prefs.fileTypes).map(([ext, color]) => (
+                  <div className="preset-row" key={ext}>
+                    <span className="ftdot" style={{ background: color }} />
+                    <span className="preset-name" dir="ltr">
+                      .{ext}
+                    </span>
+                    <button
+                      className="tb"
+                      title="حذف"
+                      onClick={() => {
+                        const next = { ...prefs.fileTypes }
+                        delete next[ext]
+                        onChange({ fileTypes: next })
+                      }}
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 

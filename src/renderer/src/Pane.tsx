@@ -96,6 +96,7 @@ type Props = {
   onTabMove(from: number, to: number): void
   middleClickClosesTab: boolean
   palette: { id: string; name: string; color: string }[]
+  typeColors: Record<string, string>
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
   onBookmark(): void
@@ -558,6 +559,13 @@ export function Pane(props: Props) {
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
+                  {!e.dir && props.typeColors[(e.ext || '').toLowerCase()] && (
+                    <span
+                      className="ftdot"
+                      style={{ background: props.typeColors[(e.ext || '').toLowerCase()] }}
+                      title={`نوع ${e.ext}`}
+                    />
+                  )}
                   {labelColor(e.name) && (
                     <span className="lbl" style={{ background: labelColor(e.name) }} title="برچسب" />
                   )}

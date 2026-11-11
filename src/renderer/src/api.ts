@@ -38,6 +38,7 @@ export type Listing = {
   labels?: Record<string, string>
   ratings?: Record<string, number>
   notes?: Record<string, string>
+  format?: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean } | null
 }
 export type DirRef = { name: string; path: string }
 export type Result = { done: number; errors: string[] }
@@ -162,6 +163,10 @@ export type Api = {
   labelPalette(): Promise<{ id: string; name: string; color: string }[]>
   setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>>
   setRating(dir: string, name: string, stars: number): Promise<Record<string, number>>
+  setFormat(
+    dir: string,
+    format: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean }
+  ): Promise<unknown>
   setNote(dir: string, name: string, text: string): Promise<Record<string, string>>
   togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
