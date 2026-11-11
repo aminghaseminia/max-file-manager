@@ -503,7 +503,9 @@ export default function App() {
   }
   refreshRef.current = reloadAll
 
-  const go = (i: number, dir: string) =>
+  const go = (i: number, dir: string) => {
+    // type-ahead belongs to the folder it was typed in: leaving must not carry filter or buffer along
+    typedBuf.current = ''
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
@@ -511,14 +513,17 @@ export default function App() {
       return patch(p, i, {
         tabs: s.tabs.map((t, j) => (j === s.ti ? dir : t)),
         sel: [],
+        filter: '',
         hist,
         hi: hist.length - 1,
         virtual: null,
         results: null
       })
     })
+  }
 
-  const jump = (i: number, delta: number) =>
+  const jump = (i: number, delta: number) => {
+    typedBuf.current = ''
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
@@ -528,10 +533,12 @@ export default function App() {
         hi,
         tabs: s.tabs.map((t, j) => (j === s.ti ? s.hist[hi] : t)),
         sel: [],
+        filter: '',
         virtual: null,
         results: null
       })
     })
+  }
 
   const up = (i: number) => {
     const parent = panes?.[i].listing?.parent
@@ -1866,21 +1873,25 @@ export default function App() {
         if (!needle) return null
         return visibleOf(active).find((e) => e.name.toLowerCase().startsWith(needle)) ?? null
       }
+      // typing narrows the list itself, the way a Linux file manager's quick filter does
+      const applyTyped = () => {
+        setPanes((p) => p && patch(p, active, { filter: typedBuf.current }))
+        const hit = findTyped()
+        if (hit) pick(hit)
+      }
       if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key.length === 1 && ev.key !== ' ') {
         ev.preventDefault()
         if (Date.now() - typedAt.current > 800) typedBuf.current = ''
         typedBuf.current += ev.key
         typedAt.current = Date.now()
-        const hit = findTyped()
-        if (hit) pick(hit)
+        applyTyped()
         return
       }
       if (ev.key === 'Backspace' && typedBuf.current) {
         ev.preventDefault()
         typedBuf.current = typedBuf.current.slice(0, -1)
         typedAt.current = Date.now()
-        const hit = findTyped()
-        if (hit) pick(hit)
+        applyTyped()
         return
       }
 
