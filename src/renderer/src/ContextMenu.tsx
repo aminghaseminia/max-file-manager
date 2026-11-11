@@ -48,7 +48,11 @@ function clampPanel(el: HTMLElement, x: number, y: number): void {
 export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const nestedRef = useRef<HTMLDivElement>(null)
-  const [sub, setSub] = useState<{ key: string; items: MenuItem[]; x: number; y: number } | null>(null)
+  const [sub, setSub] = useState<{
+    key: string
+    items: MenuItem[]
+    anchor: { left: number; right: number; top: number }
+  } | null>(null)
   const closeTimer = useRef<number | null>(null)
 
   const cancelClose = () => {
@@ -85,15 +89,34 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
   }, [x, y, items.length])
 
   useLayoutEffect(() => {
-    if (nestedRef.current && sub) clampPanel(nestedRef.current, sub.x, sub.y)
+    const el = nestedRef.current
+    if (!el || !sub) return
+    const rtl = document.documentElement.dir === 'rtl'
+    const bodyTop = document.querySelector('.app .body')?.getBoundingClientRect().top ?? 8
+    const minTop = Math.max(8, Math.round(bodyTop + 4))
+    const maxHeight = Math.max(120, window.innerHeight - minTop - 8)
+    el.style.maxHeight = `${maxHeight}px`
+    const w = el.offsetWidth
+    const h = Math.min(el.scrollHeight, maxHeight)
+    const gap = 4
+    // The preferred side is beside the item. When the menu sits at the window edge that side has
+    // no room, so fall back to the far side of the *whole* panel: clamping to the viewport instead
+    // would slide the submenu back over the menu it belongs to.
+    const beside = rtl ? sub.anchor.left - w - gap : sub.anchor.right + gap
+    const root = ref.current?.getBoundingClientRect()
+    const outside = root
+      ? rtl
+        ? root.right + gap
+        : root.left - w - gap
+      : beside
+    const chosen = beside + w <= window.innerWidth - 8 ? beside : outside
+    el.style.left = `${Math.max(8, Math.min(chosen, window.innerWidth - w - 8))}px`
+    el.style.top = `${Math.max(minTop, Math.min(sub.anchor.top - 4, window.innerHeight - h - 8))}px`
   }, [sub])
 
   const openSub = (ev: React.MouseEvent, child: MenuItem[], key: string) => {
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
-    const rtl = document.documentElement.dir === 'rtl'
-    const width = 248
-    const x2 = rtl ? rect.left - width - 4 : rect.right + 4
-    setSub({ key, items: child, x: x2, y: rect.top - 4 })
+    setSub({ key, items: child, anchor: { left: rect.left, right: rect.right, top: rect.top } })
   }
 
   const rows = (list: MenuItem[], inSub = false) =>
@@ -153,7 +176,7 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
           className="ctx ctx-nested"
           ref={nestedRef}
           role="menu"
-          style={{ left: sub.x, top: sub.y, minWidth: 248, maxWidth: 'min(440px, 92vw)' }}
+          style={{ left: 0, top: 0, minWidth: 248, maxWidth: 'min(440px, 92vw)' }}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
