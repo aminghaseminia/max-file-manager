@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
+  writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
+  saveImageAs: (src: string, dataUrl: string) => ipcRenderer.invoke('image:saveAs', { src, dataUrl }),
   convertImages: (files: string[], opts: unknown) =>
     ipcRenderer.invoke('image:batchConvert', { files, opts }),
   exportListing: (dir: string, name: string, rows: unknown, format: string, theme?: string) =>

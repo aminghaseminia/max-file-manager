@@ -122,6 +122,8 @@ export type Api = {
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   tags(paths: string[]): Promise<Record<string, Record<string, string>>>
+  writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
+  saveImageAs(src: string, dataUrl: string): Promise<{ path: string } | { error: string }>
   convertImages(
     files: string[],
     opts: { format: 'jpeg' | 'png' | 'webp'; maxSide: number; quality: number; dest?: string }

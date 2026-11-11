@@ -9,7 +9,7 @@ import { JobsBar } from './JobsBar'
 import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
-import { ConvertDialog, RatingDialog } from './RatingDialog'
+import { ConvertDialog, RatingDialog, TagDialog, convertToWebp } from './RatingDialog'
 import { rowsOf } from '../../shared/export.ts'
 import { Preferences } from './Preferences'
 import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
@@ -32,6 +32,7 @@ import {
 } from './format'
 import {
   ArchiveOpenIcon,
+  AudioIcon,
   ChevronLeftIcon,
   DocIcon,
   ImageIcon,
@@ -126,6 +127,11 @@ export default function App() {
   const [editor, setEditor] = useState<string | null>(null)
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
+  const [tagFor, setTagFor] = useState<{
+    path: string
+    name: string
+    tags: Record<string, string>
+  } | null>(null)
   const [rateFor, setRateFor] = useState<{ dir: string; name: string } | null>(null)
   const [convertAsk, setConvertAsk] = useState<{
     files: string[]
@@ -800,6 +806,12 @@ export default function App() {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })
         break
+      case 'tags':
+        if (path)
+          void api.tags([path]).then((r) =>
+            setTagFor({ path, name: baseName(path), tags: (r?.[path] as Record<string, string>) ?? {} })
+          )
+        break
       case 'rate': {
         if (path) setRateFor({ dir: dirOf(path), name: baseName(path) })
         break
@@ -971,6 +983,9 @@ export default function App() {
         { id: 'edit', label: 'ویرایش متن', key: 'F4', icon: <RenameIcon /> },
         { id: 'label', label: 'برچسب رنگی…', icon: <PaletteIcon /> },
         { id: 'rate', label: 'امتیاز و توضیح…', icon: <StarIcon /> },
+        ...(path && /\.(mp3|m4a)$/i.test(path)
+          ? [{ id: 'tags', label: 'برچسب‌های صوتی…', icon: <AudioIcon /> }]
+          : []),
         { id: 'convert', label: 'تبدیل تصاویر…', icon: <ImageIcon /> },
         { id: 'exportCsv', label: 'صدور فهرست (CSV)', icon: <DocIcon /> },
         { id: 'exportPdf', label: 'صدور فهرست (PDF)', icon: <PdfIcon /> },
@@ -1625,6 +1640,22 @@ export default function App() {
         <DiffDialog a={diff.a} b={diff.b} result={diff.result} onClose={() => setDiff(null)} />
       )}
 
+      {tagFor && (
+        <TagDialog
+          name={tagFor.name}
+          tags={tagFor.tags}
+          onClose={() => setTagFor(null)}
+          onSave={(fields) => {
+            const target = tagFor
+            setTagFor(null)
+            void api.writeTags(target.path, fields).then(async (r) => {
+              setNote('error' in r ? `نوشتن برچسب نشد — ${r.error}` : 'برچسب‌های صوتی ذخیره شد')
+              await load(active, tabOf(panes![active]))
+            })
+          }}
+        />
+      )}
+
       {rateFor && (
         <RatingDialog
           name={rateFor.name}
@@ -1652,13 +1683,16 @@ export default function App() {
           onClose={() => setConvertAsk(null)}
           onRun={(opts) => {
             setConvertAsk({ ...convertAsk, busy: true })
-            void api
-              .convertImages(convertAsk.files, {
-                format: opts.format,
-                maxSide: opts.maxSide,
-                quality: opts.quality,
-                dest: opts.toOtherPane ? tabOf(panes![1 - active]) : undefined
-              })
+            const job =
+              opts.format === 'webp'
+                ? convertToWebp(convertAsk.files, opts.maxSide, opts.quality)
+                : api.convertImages(convertAsk.files, {
+                    format: opts.format,
+                    maxSide: opts.maxSide,
+                    quality: opts.quality,
+                    dest: opts.toOtherPane ? tabOf(panes![1 - active]) : undefined
+                  })
+            void job
               .then(async (r) => {
                 setConvertAsk({
                   ...convertAsk,

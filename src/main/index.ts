@@ -4,14 +4,14 @@ import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
-import { saveImage } from './image.ts'
+import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconsIn, themeDirs } from './icons.ts'
 import { preview } from './preview.ts'
 import { LABELS, readMeta, setLabel, setMeta, setNote, setRating, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
-import { readTags } from './metadata.ts'
+import { readTags, writeId3 } from './metadata.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -341,6 +341,12 @@ app.whenReady().then(async () => {
     }
     return out
   })
+  ipcMain.handle('image:saveAs', (_e, a: { src: string; dataUrl: string }) =>
+    saveImageAs(a?.src ?? '', String(a?.dataUrl ?? ''))
+  )
+  ipcMain.handle('meta:writeTags', (_e, a: { path: string; fields: Record<string, string> }) =>
+    writeId3(a?.path ?? '', a?.fields ?? {})
+  )
   ipcMain.handle('image:batchConvert', (_e, a: { files: string[]; opts: ConvertOpts }) =>
     convertImages((a?.files ?? []).slice(0, 500), a?.opts ?? { format: 'jpeg', maxSide: 0, quality: 90 })
   )

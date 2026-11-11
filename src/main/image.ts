@@ -38,3 +38,25 @@ export async function saveImage(
     return { error: String(e?.message ?? e) }
   }
 }
+
+/** Writes a converted image as `name.ext` (conversion, not an edit copy). */
+export async function saveImageAs(
+  src: string,
+  dataUrl: string
+): Promise<{ path: string } | { error: string }> {
+  const m = DATA_URL.exec(dataUrl)
+  if (!m) return { error: 'دادهٔ تصویر نامعتبر است' }
+  if (!path.isAbsolute(src)) return { error: 'مسیر نامعتبر' }
+  const buf = Buffer.from(m[2], 'base64')
+  if (!buf.length) return { error: 'تصویر خالی است' }
+  const ext = MIME[m[1]] ?? 'png'
+  const dir = path.dirname(src)
+  const base = path.basename(src, path.extname(src))
+  const target = await freeName(path.join(dir, `${base}.${ext}`))
+  try {
+    await fs.writeFile(target, buf)
+    return { path: target }
+  } catch (e: any) {
+    return { error: String(e?.message ?? e) }
+  }
+}

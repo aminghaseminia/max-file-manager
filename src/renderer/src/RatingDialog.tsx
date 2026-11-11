@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { api } from './api'
 import { baseName } from './format'
 import { XIcon } from './Icons'
 
@@ -54,6 +55,34 @@ export function RatingDialog({ name, stars, note, onSave, onClose }: Props) {
       </div>
     </div>
   )
+}
+
+/** WebP is not encodable in the main process, so those go through a canvas here. */
+export async function convertToWebp(files: string[], maxSide: number, quality: number): Promise<{ done: number; errors: string[] }> {
+  let done = 0
+  const errors: string[] = []
+  for (const src of files) {
+    try {
+      const r = await api.imageData(src)
+      if ('error' in r || !r.dataUrl) throw new Error(r.error ?? 'خواندن تصویر ممکن نشد')
+      const img = new Image()
+      img.src = r.dataUrl
+      await img.decode()
+      const scale = maxSide > 0 ? Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight)) : 1
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(img.naturalWidth * scale))
+      c.height = Math.max(1, Math.round(img.naturalHeight * scale))
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+      const out = c.toDataURL('image/webp', Math.min(100, Math.max(1, quality)) / 100)
+      if (!out.startsWith('data:image/webp')) throw new Error('این نسخهٔ کرومیوم WebP نمی‌سازد')
+      const saved = await api.saveImageAs(src, out)
+      if ('error' in saved) throw new Error(saved.error)
+      done++
+    } catch (e: any) {
+      errors.push(`${src.split('/').pop()}: ${e?.message ?? String(e)}`)
+    }
+  }
+  return { done, errors }
 }
 
 type ConvertProps = {
@@ -143,6 +172,55 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
             onClick={() => onRun({ format, maxSide, quality, toOtherPane: toOther })}
           >
             تبدیل
+          </button>
+          <button className="btn ghost" onClick={onClose}>
+            <XIcon size={11} /> بستن
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type TagProps = {
+  name: string
+  tags: Record<string, string>
+  onSave(fields: Record<string, string>): void
+  onClose(): void
+}
+
+/** Writes ID3 text fields; EXIF is read-only for now. */
+export function TagDialog({ name, tags, onSave, onClose }: TagProps) {
+  const [title, setTitle] = useState(tags.title ?? '')
+  const [artist, setArtist] = useState(tags.artist ?? '')
+  const [album, setAlbum] = useState(tags.album ?? '')
+  const [year, setYear] = useState(tags.year ?? '')
+
+  const field = (label: string, value: string, set: (v: string) => void) => (
+    <div className="pref-row">
+      <div className="pref-label">
+        <span>{label}</span>
+      </div>
+      <div className="pref-control">
+        <input className="pref-input wide" dir="auto" value={value} onChange={(e) => set(e.target.value)} />
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="modal" onMouseDown={onClose}>
+      <div className="dialog rating-dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dialog-title" dir="auto">
+          برچسب‌های صوتی — {name}
+        </div>
+        {field('عنوان', title, setTitle)}
+        {field('هنرمند', artist, setArtist)}
+        {field('آلبوم', album, setAlbum)}
+        {field('سال', year, setYear)}
+        <div className="hint">فقط فایل‌های صوتی (ID3) نوشته می‌شوند؛ EXIF فعلاً فقط خوانده می‌شود.</div>
+        <div className="dialog-actions">
+          <button className="btn" onClick={() => onSave({ title, artist, album, year })}>
+            ذخیره
           </button>
           <button className="btn ghost" onClick={onClose}>
             <XIcon size={11} /> بستن
