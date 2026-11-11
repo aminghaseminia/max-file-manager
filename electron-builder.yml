@@ -25,3 +25,12 @@ mac:
   identity: '-'
   hardenedRuntime: false
   notarize: false
+  # macOS has no "default file manager" switch; claiming public.folder is the closest native option
+  # (Finder keeps the desktop and Reveal in Finder, so this is not a Finder replacement)
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Folder
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.folder

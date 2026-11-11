@@ -121,6 +121,20 @@ let win: BrowserWindow | null = null
 
 const firstPath = process.argv.slice(1).find((a) => path.isAbsolute(a))
 
+// macOS hands "open this folder" over as an Apple event, not argv; queue it until the window exists
+const pendingOpens: string[] = []
+app.on('open-file', (e, p) => {
+  e.preventDefault()
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    win.webContents.send('app:open-path', p)
+  } else {
+    pendingOpens.push(p)
+  }
+})
+
 // single instance: a second launch focuses the window and opens the path it was given
 if (bootPrefs.singleInstance !== false) {
   if (!app.requestSingleInstanceLock()) {
@@ -911,8 +925,12 @@ app.whenReady().then(async () => {
     return true
   })
 
-  if (firstPath) {
-    win.webContents.once('did-finish-load', () => win?.webContents.send('app:open-path', firstPath))
+  const opens = pendingOpens.length ? [...pendingOpens] : firstPath ? [firstPath] : []
+  pendingOpens.length = 0
+  if (opens.length) {
+    win.webContents.once('did-finish-load', () => {
+      for (const p of opens) win?.webContents.send('app:open-path', p)
+    })
   }
 
   // SMOKE_SHOT=<file.png> renders the window once, saves a screenshot and quits; SMOKE_JS drives the UI first.
