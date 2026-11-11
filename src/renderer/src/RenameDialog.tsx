@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { api } from './api'
 import { baseName, dirOf, fa, joinPath, planRename, type RenameMode } from './format'
 
 type Props = {
@@ -8,6 +9,7 @@ type Props = {
 }
 
 export function RenameDialog({ paths, onApply, onClose }: Props) {
+  const [tags, setTags] = useState<Record<string, Record<string, string>>>({})
   const [mode, setMode] = useState<RenameMode>('template')
   const [template, setTemplate] = useState('{name}')
   const [find, setFind] = useState('')
@@ -17,7 +19,7 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
 
   const names = useMemo(() => paths.map(baseName), [paths])
   const planned = useMemo(
-    () => planRename(names, { mode, template, find, replace, start, pad }),
+    () => planRename(names, { mode, template, find, replace, start, pad, tags }),
     [names, mode, template, find, replace, start, pad]
   )
   const pairs = useMemo(
@@ -29,6 +31,21 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
   )
   const clash = new Set(planned).size !== planned.length
   const canApply = pairs.length > 0 && !clash
+
+  useEffect(() => {
+    if (mode !== 'template') return
+    let live = true
+    // the planner keys by file name, the api returns absolute paths
+    void api.tags(paths).then((r) => {
+      if (!live) return
+      setTags(Object.fromEntries(Object.entries(r ?? {}).map(([p, t]) => [baseName(p), t])))
+    })
+    return () => {
+      live = false
+    }
+  }, [mode, paths])
+
+  const anyTags = Object.values(tags).some((t) => t && t.kind && t.kind !== 'none')
 
   return (
     <div className="modal" onMouseDown={onClose}>
@@ -50,6 +67,10 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
               <span>الگو</span>
               <input dir="auto" value={template} onChange={(e) => setTemplate(e.target.value)} />
             </label>
+            <div className="hint">
+              {anyTags ? 'کلیدهای متادیتا هم کار می‌کنند: ' : ''}
+              {anyTags && <span dir="ltr">{'{title} {artist} {album} {year} {date} {camera}'}</span>}
+            </div>
             <div className="hint">
               جای‌نگهدارها: <code>{'{name}'}</code> نام، <code>{'{ext}'}</code> پسوند،{' '}
               <code>{'{n}'}</code> شماره، <code>{'{nn}'}</code> شماره با صفر

@@ -91,7 +91,7 @@ export type StoredState = {
 
 export type Chrome = { customTitlebar: boolean; rounded: boolean }
 export type FolderMeta = { color?: string; icon?: string }
-export type PreviewKind = 'dir' | 'text' | 'image' | 'audio' | 'video' | 'binary'
+export type PreviewKind = 'dir' | 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'office' | 'binary'
 export type Preview = {
   kind: PreviewKind
   size: number
@@ -121,6 +121,7 @@ export type Api = {
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
+  tags(paths: string[]): Promise<Record<string, Record<string, string>>>
   convertImages(
     files: string[],
     opts: { format: 'jpeg' | 'png' | 'webp'; maxSide: number; quality: number; dest?: string }

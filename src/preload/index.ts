@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
+  tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   convertImages: (files: string[], opts: unknown) =>
     ipcRenderer.invoke('image:batchConvert', { files, opts }),
   exportListing: (dir: string, name: string, rows: unknown, format: string, theme?: string) =>

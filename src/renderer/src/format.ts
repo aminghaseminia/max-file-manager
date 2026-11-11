@@ -221,6 +221,8 @@ export type RenameOpts = {
   replace: string
   start: number
   pad: number
+  /** per-file tags (ID3/EXIF) for `{title} {artist} {album} {year} {date} {camera}` */
+  tags?: Record<string, Record<string, string>>
 }
 
 /**
@@ -242,9 +244,16 @@ export function planRename(names: string[], o: RenameOpts): string[] {
     const base = dot > 0 ? n.slice(0, dot) : n
     const ext = dot > 0 ? n.slice(dot + 1) : ''
     const num = o.start + i
+    const tag = o.tags?.[n] ?? {}
     const out = o.template
       .replace(/\{name\}/g, base)
       .replace(/\{ext\}/g, ext)
+      .replace(/\{title\}/g, tag.title ?? base)
+      .replace(/\{artist\}/g, tag.artist ?? '')
+      .replace(/\{album\}/g, tag.album ?? '')
+      .replace(/\{year\}/g, tag.year ?? '')
+      .replace(/\{date\}/g, (tag.date ?? '').slice(0, 10))
+      .replace(/\{camera\}/g, tag.camera ?? '')
       .replace(/\{nn\}/g, String(num).padStart(Math.max(1, o.pad), '0'))
       .replace(/\{n\}/g, String(num))
     return ext && !out.toLowerCase().endsWith('.' + ext.toLowerCase()) ? `${out}.${ext}` : out

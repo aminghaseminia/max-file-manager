@@ -17,6 +17,10 @@ The editor takes exactly the preview's place (and can go full-window):
 
 ![editor docked](docs/screenshot-editor-docked.png)
 
+PDF preview (Chromium's own viewer), Office text preview, and ID3/EXIF tags both in the preview and as rename fields:
+
+![pdf preview](docs/screenshot-pdf-preview.png)
+
 Ratings (with a `*3` filter), per-file notes, batch image conversion and CSV/PDF listing export:
 
 ![rating and convert](docs/screenshot-rating-convert.png)
@@ -107,6 +111,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Desktop integration**: «ترمینال اینجا» (`Ctrl+Alt+T`, konsole/gnome-terminal/xfce4/x-terminal or `cmd`), «نمایش در فایل‌منیجر سیستم», and dragging files **out** of the app into any other program
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
 - **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default
+- **PDF preview** through Chromium's viewer, **Office preview** (docx/xlsx/pptx) by extracting text from zip+XML, and **ID3/EXIF tags** shown in the preview and usable in batch rename (`{title} {artist} {album} {year} {date} {camera}`)
 - **Stars and notes** per file in the folder's `.mfm.json`, a rating column, and a `*3` filter for «three stars or more»
 - **Batch image conversion**: JPEG/PNG, longest-side resize with the aspect kept, JPEG quality, output next to the source or in the other pane
 - **Listing export** to CSV (UTF-8 BOM, proper quoting) and PDF

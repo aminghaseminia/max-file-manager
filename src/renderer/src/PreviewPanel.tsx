@@ -34,6 +34,7 @@ export function PreviewPanel({
   const [data, setData] = useState<Preview | null>(null)
   const [err, setErr] = useState('')
   const [htmlCode, setHtmlCode] = useState(false)
+  const [tags, setTags] = useState<Record<string, string> | null>(null)
 
   useEffect(() => {
     setData(null)
@@ -50,6 +51,22 @@ export function PreviewPanel({
   }, [entry, maxKB])
 
   const lines = (data?.text ?? '').split(/\r?\n/)
+
+  useEffect(() => {
+    if (!entry || entry.dir) {
+      setTags(null)
+      return
+    }
+    let live = true
+    void api.tags([entry.path]).then((r) => {
+      if (!live) return
+      const t = r?.[entry.path]
+      setTags(t && t.kind && t.kind !== 'none' ? t : null)
+    })
+    return () => {
+      live = false
+    }
+  }, [entry])
 
   return (
     <aside className={'preview' + (fill ? ' fill' : '')}>
@@ -109,6 +126,19 @@ export function PreviewPanel({
             {data?.kind === 'image' && entry.size >= MAX_INLINE_IMAGE && (
               <div className="preview-empty">تصویر بزرگ است؛ برای دیدن بازش کن</div>
             )}
+            {data?.kind === 'pdf' && (
+              <iframe className="preview-pdf" src={mediaUrl(entry.path)} title={entry.name} />
+            )}
+            {data?.kind === 'office' && (
+              <div className="preview-text" dir="auto">
+                {(data.text ?? '').split('\n').slice(0, 4000).map((ln, n) => (
+                  <div className="pline" key={n}>
+                    <span className="pln">{n + 1}</span>
+                    <span className="ptext">{ln || ' '}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {data?.kind === 'audio' && <audio className="preview-media" controls src={mediaUrl(entry.path)} />}
             {data?.kind === 'video' && (
               <video className="preview-media" controls src={mediaUrl(entry.path)} />
@@ -165,6 +195,12 @@ export function PreviewPanel({
             <div className="preview-meta" dir="auto">
               {!entry.dir && <span>{fmtSize(entry.size, false)}</span>}
               <span>{fmtDate(entry.mtime)}</span>
+              {tags && tags.title && <span className="tag-pill">🎵 {tags.title}</span>}
+              {tags && tags.artist && <span className="tag-pill">{tags.artist}</span>}
+              {tags && tags.album && <span className="tag-pill">{tags.album}</span>}
+              {tags && tags.camera && <span className="tag-pill">📷 {tags.camera}</span>}
+              {tags && tags.date && <span className="tag-pill">{tags.date.slice(0, 10)}</span>}
+              {tags && tags.iso && <span className="tag-pill">ISO {tags.iso}</span>}
               {data?.capped && <span className="dim">نمایش بریده شد</span>}
             </div>
             {!entry.dir && (

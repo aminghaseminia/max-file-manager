@@ -11,6 +11,7 @@ import { preview } from './preview.ts'
 import { LABELS, readMeta, setLabel, setMeta, setNote, setRating, togglePin, type FolderMeta } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
+import { readTags } from './metadata.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -332,6 +333,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
+  })
+  ipcMain.handle('fs:tags', async (_e, ps: string[]) => {
+    const out: Record<string, unknown> = {}
+    for (const p of (ps ?? []).slice(0, 200)) {
+      if (path.isAbsolute(p)) out[p] = await readTags(p)
+    }
+    return out
   })
   ipcMain.handle('image:batchConvert', (_e, a: { files: string[]; opts: ConvertOpts }) =>
     convertImages((a?.files ?? []).slice(0, 500), a?.opts ?? { format: 'jpeg', maxSide: 0, quality: 90 })
