@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Installs this app as a desktop application and the default folder handler.
+# Re-runnable: every step overwrites only what it owns.
+set -euo pipefail
+
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DESKTOP_DIR="$HOME/.local/share/applications"
+DESKTOP_FILE="$DESKTOP_DIR/max-file-manager.desktop"
+ICON="$APP_DIR/build/icon.png"
+
+# Packaged build wins; otherwise run the repo in dev mode.
+if [ -x "$APP_DIR/dist/linux-unpacked/max-file-manager" ]; then
+  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager %F"
+elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
+  EXEC="$APP_DIR/node_modules/.bin/electron $APP_DIR %F"
+else
+  echo "no runnable build found in $APP_DIR" >&2
+  exit 1
+fi
+
+mkdir -p "$DESKTOP_DIR"
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=مدیر فایل مکس
+Name[en]=Max File Manager
+Comment=File manager (dual pane, tabs, sync)
+Comment[en]=Dual-pane file manager
+Exec=$EXEC
+Icon=$ICON
+Terminal=false
+Categories=System;FileManager;Utility;
+MimeType=inode/directory;x-scheme-handler/file;application/x-gnome-saved-search;
+Keywords=files;manager;explorer;
+StartupNotify=true
+StartupWMClass=max-file-manager
+EOF
+chmod 644 "$DESKTOP_FILE"
+
+command -v update-desktop-database >/dev/null && update-desktop-database "$DESKTOP_DIR" || true
+
+# Default handler for folders: this is what Firefox's "Open Containing Folder" and xdg-open use.
+xdg-mime default max-file-manager.desktop inode/directory || true
+xdg-mime default max-file-manager.desktop x-scheme-handler/file || true
+xdg-mime default max-file-manager.desktop application/x-gnome-saved-search 2>/dev/null || true
+
+echo "desktop entry : $DESKTOP_FILE"
+echo "exec          : $EXEC"
+echo "folder handler: $(xdg-mime query default inode/directory)"
+echo "file handler  : $(xdg-mime query default x-scheme-handler/file)"
+echo
+
+if [ "${1:-}" = "--with-kde-shortcut" ] && command -v kwriteconfig6 >/dev/null; then
+  # Plasma 6 has no khotkeys; custom shortcuts are created through System Settings, which stores
+  # them in kglobalshortcutsrc. Writing that file directly is not a supported interface, so the
+  # script only points at the exact dialog instead of guessing a schema.
+  echo "KDE shortcut: System Settings → Keyboard → Shortcuts → Add → Command or Script:"
+  echo "  $EXEC"
+  echo "  then press Meta+E for it."
+  exit 0
+fi
+
+cat <<EOF
+KDE (Plasma 6): System Settings → Keyboard → Shortcuts → "Add" → "Command or Script",
+paste:
+  $EXEC
+and assign Meta+E. (The in-app hotkey in Preferences works on X11 only; Wayland needs this step.)
+
+Windows: Win+E is owned by Explorer, so a global hotkey cannot take it over from a normal app.
+Use the in-app hotkey with a free combination (e.g. Ctrl+Alt+E) and, if you want Win+E itself,
+either replace Explorer's binding with a keyboard remapper or run Explorer replacement mode.
+EOF

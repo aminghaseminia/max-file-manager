@@ -38,15 +38,31 @@ type Props = {
   capped: boolean
   busy: boolean
   result: string
+  compareBy: 'mtime' | 'ctime' | 'hash'
+  ignore: string
+  onRecompare(compareBy: 'mtime' | 'ctime' | 'hash', ignore: string): void
   onApply(mode: 'ltr' | 'rtl', deleteExtra: boolean): void
   onClose(): void
 }
 
 /** Two-folder sync: show every difference, pick a direction, run it. */
-export function SyncDialog({ left, right, rows, capped, busy, result, onApply, onClose }: Props) {
+export function SyncDialog({
+  left,
+  right,
+  rows,
+  capped,
+  busy,
+  result,
+  compareBy,
+  ignore,
+  onRecompare,
+  onApply,
+  onClose
+}: Props) {
   const [mode, setMode] = useState<'ltr' | 'rtl'>('ltr')
   const [deleteExtra, setDeleteExtra] = useState(false)
   const [only, setOnly] = useState(false)
+  const [ignoreText, setIgnoreText] = useState(ignore)
 
   const differs = rows.filter((r) => r.state !== 'same')
   const shown = only ? differs : rows
@@ -64,6 +80,36 @@ export function SyncDialog({ left, right, rows, capped, busy, result, onApply, o
         </div>
 
         <div className="sync-controls">
+          <div className="seg">
+            {(['mtime', 'ctime', 'hash'] as const).map((k) => (
+              <button
+                key={k}
+                className={compareBy === k ? 'on' : ''}
+                title={
+                  k === 'mtime'
+                    ? 'تاریخ آخرین تغییر'
+                    : k === 'ctime'
+                      ? 'تاریخ ساخت فایل'
+                      : 'هش محتوا (کندتر و دقیق‌تر)'
+                }
+                onClick={() => onRecompare(k, ignoreText)}
+              >
+                {k === 'mtime' ? 'تاریخ تغییر' : k === 'ctime' ? 'تاریخ ساخت' : 'هش محتوا'}
+              </button>
+            ))}
+          </div>
+          <label className="check-label">
+            <span>نادیده گرفتن:</span>
+            <input
+              className="ignore-input"
+              dir="ltr"
+              placeholder="*.log, node_modules"
+              value={ignoreText}
+              onChange={(e) => setIgnoreText(e.target.value)}
+              onBlur={() => ignoreText !== ignore && onRecompare(compareBy, ignoreText)}
+              onKeyDown={(e) => e.key === 'Enter' && onRecompare(compareBy, ignoreText)}
+            />
+          </label>
           <div className="seg">
             <button className={mode === 'ltr' ? 'on' : ''} onClick={() => setMode('ltr')}>
               {baseName(left)} ← {baseName(right)}

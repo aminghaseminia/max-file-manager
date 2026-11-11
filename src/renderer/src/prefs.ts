@@ -78,6 +78,8 @@ export type Prefs = {
   trashByDefault: boolean
   // launching
   singleInstance: boolean
+  hotkey: string
+  hotkeyEnabled: boolean
   /** '' means: reopen the last session */
   startFolder: string
   // icon packs (folder look)
@@ -116,6 +118,8 @@ export const DEFAULTS: Prefs = {
   confirmDelete: true,
   trashByDefault: true,
   singleInstance: true,
+  hotkey: 'Super+E',
+  hotkeyEnabled: false,
   startFolder: '',
   iconDirs: [],
   iconTheme: ''
@@ -183,6 +187,8 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     confirmDelete: p.confirmDelete !== false,
     trashByDefault: p.trashByDefault !== false,
     singleInstance: p.singleInstance !== false,
+    hotkey: typeof p.hotkey === 'string' && p.hotkey.trim() ? p.hotkey.trim() : 'Super+E',
+    hotkeyEnabled: p.hotkeyEnabled === true,
     startFolder: typeof p.startFolder === 'string' ? p.startFolder : '',
     iconDirs: Array.isArray(p.iconDirs) ? p.iconDirs.filter((d) => typeof d === 'string' && d) : [],
     iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : ''

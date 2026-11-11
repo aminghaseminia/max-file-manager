@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, net, protocol, shell } from 'electron'
 import { readFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -230,6 +230,8 @@ function createWindow(): BrowserWindow {
   return w
 }
 
+app.on('will-quit', () => globalShortcut.unregisterAll())
+
 app.whenReady().then(async () => {
   protocol.handle('mfm', async (req) => {
     const p = decodeURIComponent(new URL(req.url).pathname)
@@ -305,13 +307,31 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
   )
+  ipcMain.handle('hotkey:register', (_e, accel: string) => {
+    globalShortcut.unregisterAll()
+    const a = String(accel ?? '').trim()
+    if (!a) return { ok: false, accel: '' }
+    // Win+E is owned by Explorer on Windows and needs a portal on Wayland; the caller shows the result
+    const ok = globalShortcut.register(a, () => {
+      if (!win) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    })
+    return { ok, accel: a }
+  })
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
   })
-  ipcMain.handle('sync:compare', (_e, a: { left: string; right: string; deep?: boolean }) =>
-    compareTrees(a?.left ?? '', a?.right ?? '', !!a?.deep)
+  ipcMain.handle(
+    'sync:compare',
+    (_e, a: { left: string; right: string; deep?: boolean; compareBy?: 'mtime' | 'ctime' | 'hash'; ignore?: string[] }) =>
+      compareTrees(a?.left ?? '', a?.right ?? '', !!a?.deep, {
+        compareBy: a?.compareBy,
+        ignore: Array.isArray(a?.ignore) ? a.ignore.slice(0, 50) : []
+      })
   )
   ipcMain.handle(
     'sync:apply',

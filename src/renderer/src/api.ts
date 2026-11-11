@@ -20,8 +20,8 @@ export type Entry = {
 export type SyncRow = {
   rel: string
   state: string
-  left?: { size: number; mtime: number; dir: boolean }
-  right?: { size: number; mtime: number; dir: boolean }
+  left?: { size: number; mtime: number; ctime: number; dir: boolean }
+  right?: { size: number; mtime: number; ctime: number; dir: boolean }
 }
 export type DiffResult = {
   lines: { kind: 'same' | 'add' | 'del' | 'change'; a?: number; b?: number; text: string }[]
@@ -114,6 +114,7 @@ export type Api = {
   walk(dir: string, opts: WalkOpts): Promise<WalkResult>
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
+  registerHotkey(accel: string): Promise<{ ok: boolean; accel: string }>
   openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   /** hands the files to the OS so they can be dropped into another app */
@@ -121,7 +122,7 @@ export type Api = {
   syncCompare(
     left: string,
     right: string,
-    deep?: boolean
+    opts?: { compareBy?: 'mtime' | 'ctime' | 'hash'; ignore?: string[]; deep?: boolean }
   ): Promise<{ rows: SyncRow[]; leftCount: number; rightCount: number; capped: boolean }>
   syncApply(
     left: string,

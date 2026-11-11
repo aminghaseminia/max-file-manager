@@ -2274,3 +2274,63 @@ html[data-rounded='1'] .app {
 .diff-text {
   flex: 1;
 }
+
+/* the editor pane itself never scrolls sideways: wide tables and code scroll inside themselves */
+.ed-visual {
+  overflow-x: hidden;
+}
+.ed-visual .milkdown,
+.ed-visual .milkdown .ProseMirror {
+  max-width: 100%;
+  min-width: 0;
+}
+.ed-visual .milkdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.ed-visual .milkdown td,
+.ed-visual .milkdown th {
+  word-break: break-word;
+}
+.ed-visual .cm-editor,
+.ed-visual .codemirror-host,
+.ed-visual .milkdown-code-block,
+.ed-visual .milkdown [data-type='code-block'] {
+  max-width: 100%;
+  min-width: 0;
+}
+.ed-visual .milkdown img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* the code block editor wraps its own lines (EditorView.lineWrapping); keep it inside the pane */
+.ed-visual .cm-editor,
+.ed-visual .cm-scroller {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ignore-input {
+  width: 170px;
+  padding: 4px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.pref-input {
+  width: 160px;
+  padding: 5px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}

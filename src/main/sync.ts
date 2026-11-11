@@ -11,11 +11,31 @@ export type SyncState =
   | 'contentDiff'
   | 'typeDiff'
 
-export type SyncSide = { size: number; mtime: number; dir: boolean }
+export type SyncSide = { size: number; mtime: number; ctime: number; dir: boolean }
+export type SyncOptions = {
+  /** newest-wins by modification time, by creation time, or by content hash */
+  compareBy?: 'mtime' | 'ctime' | 'hash'
+  /** glob-ish patterns matched against the relative path, e.g. "*.log", "node_modules" */
+  ignore?: string[]
+}
 export type SyncRow = { rel: string; state: SyncState; left?: SyncSide; right?: SyncSide }
 
 const SAME_MTIME_MS = 2000
 const MAX_ROWS = 20000
+
+/** "*.log" / "node_modules" style patterns against the relative path. */
+export function ignored(rel: string, patterns: string[]): boolean {
+  if (!patterns.length) return false
+  const base = rel.split(/[\\/]/).pop() ?? rel
+  return patterns.some((raw) => {
+    const p = raw.trim()
+    if (!p) return false
+    const rx = new RegExp(
+      '^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
+    )
+    return rx.test(base) || rx.test(rel)
+  })
+}
 
 type Tree = Map<string, SyncSide>
 
@@ -23,7 +43,13 @@ async function walk(root: string, rel = '', out: Tree = new Map()): Promise<Tree
   const full = rel ? path.join(root, rel) : root
   const st = await fs.lstat(full).catch(() => null)
   if (!st) return out
-  if (rel) out.set(rel, { size: st.isDirectory() ? 0 : st.size, mtime: st.mtimeMs, dir: st.isDirectory() })
+  if (rel)
+    out.set(rel, {
+      size: st.isDirectory() ? 0 : st.size,
+      mtime: st.mtimeMs,
+      ctime: st.birthtimeMs || st.ctimeMs,
+      dir: st.isDirectory()
+    })
   if (!st.isDirectory()) return out
   for (const name of await fs.readdir(full)) {
     if (name === '.mfm.json') continue
@@ -36,10 +62,10 @@ async function walk(root: string, rel = '', out: Tree = new Map()): Promise<Tree
  * Newest wins, which is what makes a one-way sync safe: a file that differs in size but is older
  * must not overwrite the newer one. Only a size difference with the same timestamp is ambiguous.
  */
-const stateOf = (l: SyncSide, r: SyncSide): SyncState => {
+const stateOf = (l: SyncSide, r: SyncSide, by: 'mtime' | 'ctime' | 'hash'): SyncState => {
   if (l.dir !== r.dir) return 'typeDiff'
   if (l.dir) return 'same'
-  const d = l.mtime - r.mtime
+  const d = (by === 'ctime' ? l.ctime - r.ctime : l.mtime - r.mtime)
   if (Math.abs(d) > SAME_MTIME_MS) return d > 0 ? 'leftNewer' : 'rightNewer'
   return l.size === r.size ? 'same' : 'sizeDiff'
 }
@@ -51,14 +77,17 @@ const stateOf = (l: SyncSide, r: SyncSide): SyncState => {
 export async function compareTrees(
   left: string,
   right: string,
-  deep = false
+  deep = false,
+  opts: SyncOptions = {}
 ): Promise<{ rows: SyncRow[]; leftCount: number; rightCount: number; capped: boolean }> {
+  const by = opts.compareBy ?? (deep ? 'hash' : 'mtime')
+  const ignore = opts.ignore ?? []
   if (!path.isAbsolute(left) || !path.isAbsolute(right)) {
     return { rows: [], leftCount: 0, rightCount: 0, capped: false }
   }
   const L = await walk(left)
   const R = await walk(right)
-  const rels = [...new Set([...L.keys(), ...R.keys()])].sort()
+  const rels = [...new Set([...L.keys(), ...R.keys()])].filter((r) => !ignored(r, ignore)).sort()
   const rows: SyncRow[] = []
   for (const rel of rels) {
     if (rows.length >= MAX_ROWS) break
@@ -67,10 +96,11 @@ export async function compareTrees(
     if (l && !r) rows.push({ rel, state: 'leftOnly', left: l })
     else if (!l && r) rows.push({ rel, state: 'rightOnly', right: r })
     else if (l && r) {
-      let st = stateOf(l, r)
-      if (st === 'same' && deep && !l.dir) {
+      let st = stateOf(l, r, by)
+      if (by === 'hash' && !l.dir) {
         const [ha, hb] = await Promise.all([hashOf(path.join(left, rel)), hashOf(path.join(right, rel))])
-        if (ha !== hb) st = 'contentDiff'
+        if (ha !== hb) st = l.size === r.size ? 'contentDiff' : 'sizeDiff'
+        else st = 'same'
       }
       rows.push({ rel, state: st, left: l, right: r })
     }

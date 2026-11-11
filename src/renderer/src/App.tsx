@@ -128,6 +128,8 @@ export default function App() {
     capped: boolean
     result: string
     busy: boolean
+    compareBy: 'mtime' | 'ctime' | 'hash'
+    ignore: string
   } | null>(null)
   const [diff, setDiff] = useState<{ a: string; b: string; result: any } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
@@ -286,6 +288,17 @@ export default function App() {
     if (!p) return
     void api.statfs(p).then((r) => setFree(r?.free ?? null))
   }, [path0, path1, active])
+
+  // the OS-level hotkey follows the preference; the result is reported because it can fail
+  useEffect(() => {
+    void api
+      .registerHotkey(prefs.hotkeyEnabled ? prefs.hotkey : '')
+      .then((r) => {
+        if (prefs.hotkeyEnabled && !r.ok) {
+          setNote(`کلید ${prefs.hotkey} ثبت نشد — در تنظیمات KDE به «Add Command» بده`)
+        }
+      })
+  }, [prefs.hotkey, prefs.hotkeyEnabled])
 
   const transferOpts = () => ({
     skipExisting: prefs.transferSkipExisting,
@@ -999,6 +1012,24 @@ export default function App() {
     return orderEntries(source, sort.key, sort.asc, pane.filter)
   }
 
+  const runCompare = async (
+    left: string,
+    right: string,
+    compareBy: 'mtime' | 'ctime' | 'hash',
+    ignore: string
+  ) => {
+    setNote('در حال مقایسه…')
+    const r = await api.syncCompare(left, right, {
+      compareBy,
+      ignore: ignore
+        .split(/[,\s]+/)
+        .map((x) => x.trim())
+        .filter(Boolean)
+    })
+    setNote(`${fa(r.rows.filter((x) => x.state !== 'same').length)} تفاوت`)
+    setSync({ left, right, rows: r.rows, capped: r.capped, result: '', busy: false, compareBy, ignore })
+  }
+
   const openSync = async () => {
     const left = tabOf(panes![active])
     const right = tabOf(panes![1 - active])
@@ -1006,10 +1037,7 @@ export default function App() {
       setNote('پنجرهٔ مقابل پوشهٔ دیگری باشد')
       return
     }
-    setNote('در حال مقایسه…')
-    const r = await api.syncCompare(left, right, false)
-    setNote(`${fa(r.rows.filter((x) => x.state !== 'same').length)} تفاوت`)
-    setSync({ left, right, rows: r.rows, capped: r.capped, result: '', busy: false })
+    await runCompare(left, right, 'mtime', '')
   }
 
   const openDiff = async () => {
@@ -1516,6 +1544,9 @@ export default function App() {
           capped={sync.capped}
           busy={sync.busy}
           result={sync.result}
+          compareBy={sync.compareBy}
+          ignore={sync.ignore}
+          onRecompare={(by, ig) => void runCompare(sync.left, sync.right, by, ig)}
           onClose={() => setSync(null)}
           onApply={(mode, deleteExtra) => {
             setSync({ ...sync, busy: true })

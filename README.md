@@ -17,6 +17,10 @@ The editor takes exactly the preview's place (and can go full-window):
 
 ![editor docked](docs/screenshot-editor-docked.png)
 
+Sync can compare by modification time, creation time or content hash, with ignore patterns:
+
+![sync options](docs/screenshot-sync-options.png)
+
 Two-folder synchronisation with a direction and a trash-safe delete, and a line diff for two files:
 
 ![sync](docs/screenshot-sync.png)
@@ -95,6 +99,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **Folder sync** (`Ctrl+Shift+Y`): recursive compare, newest-wins direction, «فقط تفاوت‌ها», extras go to the trash
 - **File compare** (`Ctrl+Shift+Z` on two selected files): line diff with both line numbers, binary detection, coarse mode for huge files
 - **Gap analysis** against Directory Opus 13 and Krusader: [`docs/GAPS.md`](docs/GAPS.md)
+- **System integration** (`scripts/install-integration.sh`): installs the desktop entry, becomes the default handler for folders and `file://` — which is what Firefox's "Open Containing Folder" uses — plus an optional in-app global hotkey; single instance focuses the open window and opens the folder it was handed
 - **Desktop integration**: «ترمینال اینجا» (`Ctrl+Alt+T`, konsole/gnome-terminal/xfce4/x-terminal or `cmd`), «نمایش در فایل‌منیجر سیستم», and dragging files **out** of the app into any other program
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
 - **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default

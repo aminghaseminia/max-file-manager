@@ -509,6 +509,26 @@ export function Preferences({ prefs, onChange, onClose }: Props) {
           {page === 'launch' && (
             <>
               {row(
+                'کلید سراسری باز کردن',
+                'روی X11 کار می‌کند؛ روی Wayland باید همان کلید را در تنظیمات KDE به «Add Command» بدهی (راهنما در docs/INTEGRATION.md)',
+                check(prefs.hotkeyEnabled, 'hotkeyEnabled')
+              )}
+              {row(
+                'ترکیب کلید',
+                'مثال: Super+E یا Ctrl+Alt+M',
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  value={prefs.hotkey}
+                  onChange={(e) => onChange({ hotkey: e.target.value })}
+                />
+              )}
+            </>
+          )}
+
+          {page === 'launch' && (
+            <>
+              {row(
                 'تک‌نمونه (single instance)',
                 'اجرای دوباره، پنجرهٔ موجود را جلو می‌آورد · با راه‌اندازی بعدی اعمال می‌شود',
                 check(prefs.singleInstance, 'singleInstance')

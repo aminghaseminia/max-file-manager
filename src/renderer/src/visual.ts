@@ -7,6 +7,7 @@ import { Crepe, CrepeFeature } from '@milkdown/crepe'
 import { Plugin, PluginKey } from '@milkdown/prose/state'
 import { Decoration, DecorationSet } from '@milkdown/prose/view'
 import { $prose, replaceAll } from '@milkdown/utils'
+import { EditorView as CmView } from '@codemirror/view'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 
@@ -152,6 +153,8 @@ export async function createVisualEditor(
         inputPlaceholder: LABELS.linkPlaceholder
       },
       [CrepeFeature.CodeMirror]: {
+        // line wrapping in the code blocks, otherwise a long line forces the whole pane to scroll
+        extensions: [CmView.lineWrapping],
         previewToggleText: (previewOnly: boolean) =>
           previewOnly ? LABELS.editCode : LABELS.previewToggle,
         searchPlaceholder: LABELS.searchLanguage,

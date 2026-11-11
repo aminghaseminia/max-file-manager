@@ -17,11 +17,12 @@ contextBridge.exposeInMainWorld('api', {
   walk: (dir: string, opts: unknown) => ipcRenderer.invoke('fs:walk', dir, opts),
   dupes: (dir: string) => ipcRenderer.invoke('fs:dupes', dir),
   archive: (p: string) => ipcRenderer.invoke('fs:archive', p),
+  registerHotkey: (accel: string) => ipcRenderer.invoke('hotkey:register', accel),
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
-  syncCompare: (left: string, right: string, deep?: boolean) =>
-    ipcRenderer.invoke('sync:compare', { left, right, deep }),
+  syncCompare: (left: string, right: string, opts?: unknown) =>
+    ipcRenderer.invoke('sync:compare', { left, right, ...(opts as object) }),
   syncApply: (left: string, right: string, rows: unknown, mode: string, deleteExtra?: boolean) =>
     ipcRenderer.invoke('sync:apply', { left, right, rows, mode, deleteExtra }),
   diffFiles: (a: string, b: string) => ipcRenderer.invoke('fs:diff', { a, b }),
