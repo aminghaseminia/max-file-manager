@@ -5,6 +5,8 @@ directories:
 files:
   - out/**/*
   - package.json
+# نام ثابت و بدون فاصله برای فایل‌های ریلیز (ویندوز/مک/لینوکس)
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
 linux:
   target:
     - AppImage
@@ -14,3 +16,12 @@ linux:
 win:
   target:
     - nsis
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.utilities
+  # امضای ad-hoc (نه null) تا بیلد arm64 روی مک اصلاً اجرا شود؛ Gatekeeper هنوز هشدار می‌دهد
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false

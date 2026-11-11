@@ -40,6 +40,10 @@ export type CommandId =
   | 'searchIndex'
   | 'presets'
   | 'saveFormat'
+  | 'look'
+  | 'properties'
+  | 'compress'
+  | 'extract'
   | 'prefs'
 
 export type CommandGroup = 'transfer' | 'file' | 'view' | 'tab' | 'window'
@@ -66,6 +70,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'gallery', label: 'گالری', key: 'Space', group: 'view' },
   { id: 'flat', label: 'فهرست تخت', key: 'Ctrl+Shift+F', group: 'view' },
   { id: 'dupes', label: 'فایل‌های تکراری', key: 'Ctrl+Shift+D', group: 'view' },
+  { id: 'compress', label: 'فشرده‌سازی…', key: '', group: 'file' },
+  { id: 'extract', label: 'استخراج آرشیو…', key: '', group: 'file' },
   { id: 'filter', label: 'فیلتر نام', key: 'Ctrl+F', group: 'view' },
   { id: 'hidden', label: 'فایل‌های مخفی', key: 'Ctrl+H', group: 'view' },
   { id: 'bookmark', label: 'نشان‌کردن', key: 'Ctrl+D', group: 'view' },
@@ -83,6 +89,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'searchIndex', label: 'جست‌وجوی ایندکس‌شده', key: 'Ctrl+Shift+K', group: 'view' },
   { id: 'presets', label: 'چیدمان‌ها و فیلترها', key: 'Ctrl+Shift+P', group: 'window' },
   { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },
+  { id: 'look', label: 'رنگ و آیکون پوشه', key: '', group: 'view' },
+  { id: 'properties', label: 'ویژگی‌ها', key: 'Alt+Enter', group: 'file' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' }
 ]
 

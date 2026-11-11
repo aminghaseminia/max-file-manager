@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { hashFile } from './hash.ts'
+import { excluded } from './searchdb.ts'
 import type { Entry } from './types.ts'
 
 export type WalkOpts = {
@@ -11,7 +12,14 @@ export type WalkOpts = {
   maxSize?: number
   newerThan?: number
   includeDirs?: boolean
+  /** matched entries to stop at */
   limit?: number
+  /** names/paths to stay out of (node_modules, .git, …) */
+  exclude?: string[]
+  /** files to look at before giving up; keeps a home folder from blocking for minutes */
+  maxScan?: number
+  /** wall-clock budget; a search that would take longer stops and reports `capped` */
+  budgetMs?: number
 }
 
 /** Name test shared by flat view and search — exported so the rules are unit tested. */
@@ -63,34 +71,45 @@ export async function walk(
   o: WalkOpts = {}
 ): Promise<{ entries: Entry[]; scanned: number; capped: boolean }> {
   const limit = o.limit ?? 5000
+  const maxScan = o.maxScan ?? 200_000
+  const deadline = Date.now() + (o.budgetMs ?? 4000)
+  const skip = o.exclude ?? []
   const match = nameMatcher(o.query ?? '', !!o.regex)
   const needle = (o.content ?? '').trim().toLowerCase()
   const entries: Entry[] = []
   let scanned = 0
   let capped = false
-  const stack = [root]
+  // breadth-first: shallow files (the ones people search for) are found before the deep tail
+  const queue = [root]
+  let head = 0
 
-  while (stack.length) {
-    const dir = stack.pop()!
+  while (head < queue.length) {
+    if (Date.now() > deadline) {
+      capped = true
+      break
+    }
+    const dir = queue[head++]
     const kids = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const k of kids) {
-      if (entries.length >= limit) {
+      if (entries.length >= limit || scanned >= maxScan || Date.now() > deadline) {
         capped = true
         break
       }
       const p = path.join(dir, k.name)
       if (k.isDirectory()) {
-        stack.push(p)
+        // never descend into node_modules/.git: that is where a home-folder search used to stall
+        if (!excluded(p, skip)) queue.push(p)
         if (o.includeDirs && match(k.name)) entries.push(toEntry(root, p, true, 0, 0))
         continue
       }
       scanned++
+      // the name test is free; only a match is worth a stat (this is what made search slow)
+      if (!match(k.name)) continue
       const st = await fs.stat(p).catch(() => null)
       if (!st) continue
       if (o.minSize != null && st.size < o.minSize) continue
       if (o.maxSize != null && st.size > o.maxSize) continue
       if (o.newerThan != null && st.mtimeMs < o.newerThan) continue
-      if (!match(k.name)) continue
       if (needle && !(await fileHas(p, needle, st.size))) continue
       entries.push(toEntry(root, p, false, st.size, st.mtimeMs))
     }

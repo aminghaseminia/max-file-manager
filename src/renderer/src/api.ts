@@ -16,6 +16,10 @@ export type Entry = {
   nlink?: number
   w?: number
   h?: number
+  /** a folder marked «don't list me» in its own .mfm.json */
+  hidden?: boolean
+  /** the entry is a symbolic link (the path itself, not its target) */
+  link?: boolean
 }
 export type SearchHit = {
   path: string
@@ -60,6 +64,10 @@ export type WalkOpts = {
   maxSize?: number
   newerThan?: number
   limit?: number
+  /** names/paths to stay out of (node_modules, .git, …) */
+  exclude?: string[]
+  /** wall-clock budget in ms; the walk stops and reports `capped` */
+  budgetMs?: number
 }
 export type WalkResult = { entries: Entry[]; scanned: number; capped: boolean }
 
@@ -99,7 +107,17 @@ export type StoredState = {
 }
 
 export type Chrome = { customTitlebar: boolean; rounded: boolean }
-export type FolderMeta = { color?: string; icon?: string }
+export type FolderMeta = {
+  color?: string
+  icon?: string
+  /** hide this folder from its parent's listing (shown with hidden files) */
+  hidden?: boolean
+  pins?: string[]
+  labels?: Record<string, string>
+  ratings?: Record<string, number>
+  notes?: Record<string, string>
+  format?: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean } | null
+}
 export type PreviewKind = 'dir' | 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'office' | 'binary'
 export type Preview = {
   kind: PreviewKind
@@ -112,12 +130,44 @@ export type HashResult = { path: string; hash: string | null }
 export type IconRef = { name: string; path: string }
 export type IconTheme = { name: string; dir: string }
 
+export type FileProperties = {
+  name: string
+  path: string
+  dir: boolean
+  size: number
+  ext: string
+  mode: number
+  readable: boolean
+  writable: boolean
+  executable: boolean
+  uid: number
+  gid: number
+  user: string
+  group: string
+  nlink: number
+  inode: number
+  device: number
+  birthtime: number
+  mtime: number
+  atime: number
+  ctime: number
+  /** the entry itself is a symbolic link */
+  link: boolean
+  target: string
+  mime: string
+  /** direct children (folders only) */
+  items: number | null
+  dims: { w: number; h: number } | null
+}
+
 export type Api = {
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
   statfs(p: string): Promise<{ free: number; size: number } | null>
+  chmod(p: string, mode: number): Promise<{ ok: true } | { error: string }>
+  properties(p: string): Promise<FileProperties | { error: string }>
   imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
   saveImage(src: string, dataUrl: string, mode: 'overwrite' | 'copy'): Promise<{ path: string } | { error: string }>
-  dirs(dir: string): Promise<DirRef[]>
+  dirs(dir: string, showHidden?: boolean): Promise<DirRef[]>
   roots(): Promise<DirRef[]>
   home(): Promise<string>
   size(p: string): Promise<SizeResult>
@@ -222,9 +272,19 @@ export type Api = {
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
   iconThemes(extra: string[]): Promise<IconTheme[]>
   iconsIn(themeDir: string): Promise<IconRef[]>
+  /** kind → icon file from the preferred theme (Pure); empty when no theme is installed */
+  iconSet(): Promise<Record<string, string>>
   mkdir(dir: string, name: string): Promise<Result>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
-  open(p: string): Promise<string>
+  open(p: string): Promise<{ ok: true } | { error: string }>
+  clipboard: {
+    saveImage(dir: string, name: string, data: Uint8Array): Promise<{ path: string } | { error: string }>
+  }
+  apps: {
+    list(p: string): Promise<{ id: string; name: string; icon: string }[]>
+    default(p: string): Promise<{ id: string; name: string } | null>
+    launch(id: string, p: string): Promise<{ ok: true } | { error: string }>
+  }
   preview(p: string, maxKB?: number): Promise<Preview | null>
   hash(paths: string[], algo: string): Promise<HashResult[]>
   pathForFile(file: File): string

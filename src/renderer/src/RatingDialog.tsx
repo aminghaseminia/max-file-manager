@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { useState } from 'react'
 import { api } from './api'
-import { baseName } from './format'
+import { fa } from './format'
 import { XIcon } from './Icons'
 
 type Props = {
@@ -20,37 +20,45 @@ export function RatingDialog({ name, stars, note, onSave, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog rating-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title" dir="auto">
-          امتیاز و توضیح — {name}
+        <div className="dialog-title">
+          <span>{t('امتیاز و توضیح')}</span>
+          <span className="dialog-sub" dir="auto" title={name}>
+            {name}
+          </span>
         </div>
-        <div className="stars">
+        <div className="stars" dir="ltr">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
               className={'star' + (value >= n ? ' on' : '')}
-              title={`${n} ستاره`}
+              title={t('{n} ستاره', { n: fa(n) })}
               onClick={() => setValue(value === n ? 0 : n)}
             >
               ★
             </button>
           ))}
-          <span className="dim">{value ? `${value} از ۵` : t('بی‌امتیاز')}</span>
+          <span className={'star-value' + (value ? '' : ' dim')}>
+            {value ? t('{n} از ۵', { n: fa(value) }) : t('بی‌امتیاز')}
+          </span>
         </div>
-        <textarea
-          className="note-input"
-          dir="auto"
-          rows={4}
-          placeholder={t(t('توضیح کوتاه…'))}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={500}
-        />
+        <label className="dialog-field">
+          <span>{t('توضیح')}</span>
+          <textarea
+            className="note-input"
+            dir="auto"
+            rows={4}
+            placeholder={t(t('توضیح کوتاه…'))}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={500}
+          />
+        </label>
         <div className="dialog-actions">
-          <button className="btn" onClick={() => onSave(value, text)}>
-            ذخیره
-          </button>
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            {t('انصراف')}
+          </button>
+          <button className="btn" onClick={() => onSave(value, text)}>
+            {t('ذخیره')}
           </button>
         </div>
       </div>

@@ -51,7 +51,9 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dlg-title">تغییر نام گروهی · {fa(paths.length)} مورد</div>
+        <div className="dlg-title">
+          {t('تغییر نام گروهی')} · {t('{n} مورد', { n: fa(paths.length) })}
+        </div>
 
         <div className="seg">
           <button className={mode === 'template' ? 'on' : ''} onClick={() => setMode('template')}>
@@ -118,7 +120,9 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
               <span dir="auto" className="new">{planned[i]}</span>
             </div>
           ))}
-          {names.length > 8 && <div className="hint">و {fa(names.length - 8)} مورد دیگر…</div>}
+          {names.length > 8 && (
+            <div className="hint">{t('و {n} مورد دیگر…', { n: fa(names.length - 8) })}</div>
+          )}
         </div>
 
         {clash && <div className="warn">{t(t('دو فایل نام یکسان می‌گیرند — الگو را عوض کن.'))}</div>}

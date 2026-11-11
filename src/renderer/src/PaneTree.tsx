@@ -6,6 +6,8 @@ import { ChevronDownIcon, ChevronLeftIcon, FolderIcon } from './Icons'
 type Props = {
   /** current folder of the pane */
   path: string
+  /** the same switch the pane uses: marked-hidden folders stay out of the tree too */
+  showHidden: boolean
   onNav(dir: string): void
 }
 
@@ -13,7 +15,7 @@ const split = (p: string) => p.split('/').filter(Boolean)
 const join = (parts: string[]) => '/' + parts.join('/')
 
 /** Ancestors of the folder plus its own sub-folders, expanded lazily. */
-export function PaneTree({ path, onNav }: Props) {
+export function PaneTree({ path, showHidden, onNav }: Props) {
   const parts = split(path)
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [kids, setKids] = useState<Record<string, DirRef[]>>({})
@@ -26,7 +28,7 @@ export function PaneTree({ path, onNav }: Props) {
         .map(([dir]) => dir)
       for (const dir of targets) {
         if (kids[dir]) continue
-        const list = await api.dirs(dir)
+        const list = await api.dirs(dir, showHidden)
         if (!live) return
         setKids((k) => ({ ...k, [dir]: list }))
       }
@@ -35,7 +37,7 @@ export function PaneTree({ path, onNav }: Props) {
     return () => {
       live = false
     }
-  }, [open, kids])
+  }, [open, kids, showHidden])
 
   const toggle = (dir: string) => setOpen((o) => ({ ...o, [dir]: !o[dir] }))
 

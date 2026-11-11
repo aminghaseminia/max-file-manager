@@ -1,28 +1,39 @@
 import { setLang, t } from './i18n.ts'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
+import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
 import { DiffDialog } from './DiffDialog'
 import { Editor } from './Editor'
 import { Gallery } from './Gallery'
+import { OpenWithDialog } from './OpenWithDialog'
+import { PropertiesDialog } from './PropertiesDialog'
 import { JobsBar } from './JobsBar'
-import { Pane, type PaneState, type SearchQuery, type View } from './Pane'
+import { Pane, type FolderView, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
 import { ConvertDialog, RatingDialog, TagDialog, convertToWebp } from './RatingDialog'
 import { rowsOf } from '../../shared/export.ts'
 import { PresetsDialog } from './PresetsDialog'
 import { Preferences } from './Preferences'
-import { DEFAULTS, mergePrefs, migrateLegacy, type Prefs } from './prefs'
+import {
+  COLUMNS,
+  DEFAULTS,
+  colLabel,
+  mergePrefs,
+  migrateLegacy,
+  type ColId,
+  type Prefs
+} from './prefs'
 import { PaneTree } from './PaneTree'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
 import { WindowButtons } from './WindowButtons'
-import { CMD_ICON } from './commandIcons'
-import { COMMAND_BY_ID, COMMANDS, labelOf, type CommandId } from './commands'
-import { formatAccel, matchAccel } from './keys'
+import { CommandBar } from './CommandBar'
+import { COMMANDS, type CommandId } from './commands'
+import { matchAccel } from './keys'
 import {
   baseName,
   defaultSearchRoots,
@@ -32,15 +43,20 @@ import {
   isArchiveName,
   isImage,
   joinPath,
+  navIndex,
+  opensInEditor,
   orderEntries,
+  type NavMove,
   type SortKey
 } from './format'
+import { isHtmlPath } from './html'
 import {
   ArchiveOpenIcon,
   AudioIcon,
   ChevronLeftIcon,
   DocIcon,
   ImageIcon,
+  InfoIcon,
   PdfIcon,
   PlayIcon,
   StarIcon,
@@ -87,7 +103,8 @@ const newPane = (dir: string): PaneState => ({
   archive: null,
   preview: null,
   error: '',
-  loading: true
+  loading: true,
+  fmt: null
 })
 
 const patch = (panes: PaneState[], i: number, p: Partial<PaneState>): PaneState[] =>
@@ -103,6 +120,24 @@ const OP_LABEL: Record<string, string> = {
 }
 
 const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext']
+
+/**
+ * The OS preference, live. `theme: 'system'` follows it without a restart; an
+ * explicit dark/light choice never reads this value.
+ */
+function useSystemDark(): boolean {
+  const [dark, setDark] = useState(
+    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
+  )
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!mq) return
+    const on = (ev: MediaQueryListEvent) => setDark(ev.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return dark
+}
 
 export default function App() {
   const [panes, setPanes] = useState<PaneState[] | null>(null)
@@ -121,6 +156,7 @@ export default function App() {
   const [free, setFree] = useState<number | null>(null)
   const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [prefsOpenPage, setPrefsOpenPage] = useState<'appearance' | 'columns' | null>(null)
   const [menu, setMenu] = useState<{
     path: string | null
     tab?: number
@@ -147,6 +183,9 @@ export default function App() {
     result: string
   } | null>(null)
   const [labelFor, setLabelFor] = useState<{ dir: string; name: string } | null>(null)
+  const [archiveJob, setArchiveJob] = useState<ArchiveJob | null>(null)
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveResult, setArchiveResult] = useState('')
   const [sync, setSync] = useState<{
     left: string
     right: string
@@ -160,11 +199,30 @@ export default function App() {
   const [diff, setDiff] = useState<{ a: string; b: string; result: any } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
-  const [folderLook, setFolderLook] = useState<{ dir: string; name: string; meta: FolderMeta | null } | null>(
+  const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null)
+  const [openWith, setOpenWith] = useState<string | null>(null)
+  const [propsFor, setPropsFor] = useState<string | null>(null)
+  const [folderLook, setFolderLook] = useState<{ dirs: string[]; name: string; meta: FolderMeta | null } | null>(
     null
   )
   const [booted, setBooted] = useState(false)
+  /** kind → icon file of the desktop icon theme (Pure first); empty means line glyphs */
+  const [iconSet, setIconSet] = useState<Record<string, string>>({})
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
+  /** per-pane counter: the «filter» command opens that pane's floating input */
+  const [filterTicks, setFilterTicks] = useState([0, 0])
+  /** what each pane currently shows, reported by Pane; drives page/grid steps */
+  const metrics = useRef([
+    { cols: 1, rows: 20 },
+    { cols: 1, rows: 20 }
+  ])
+  /** the row a shift-range starts from; keyboard navigation owns it */
+  const navAnchor = useRef('')
+  const [reveal, setReveal] = useState<{ pane: number; path: string; tick: number }>({
+    pane: -1,
+    path: '',
+    tick: 0
+  })
 
   const updatePrefs = (patch: Partial<Prefs>) => {
     setPrefs((p) => ({ ...p, ...patch }))
@@ -177,15 +235,25 @@ export default function App() {
     }
   }
 
-  const theme = prefs.theme
+  const systemDark = useSystemDark()
+  const theme: 'dark' | 'light' =
+    prefs.theme === 'system' ? (systemDark ? 'dark' : 'light') : prefs.theme
   const setTheme = (t: Prefs['theme'] | ((cur: Prefs['theme']) => Prefs['theme'])) =>
     updatePrefs({ theme: typeof t === 'function' ? t(prefs.theme) : t })
   const view = prefs.view
-  const setView = (v: View | ((cur: View) => View)) =>
-    updatePrefs({ view: typeof v === 'function' ? v(prefs.view) : v })
+  const setView = (v: View | ((cur: View) => View)) => {
+    const next = typeof v === 'function' ? v(prefs.view) : v
+    updatePrefs({ view: next })
+    // a folder with its own format must follow the click instead of snapping back on the next load
+    setPanes((p) => (p && p[active]?.fmt ? patch(p, active, { fmt: { ...p[active].fmt!, view: next } }) : p))
+  }
   const hidden = prefs.showHidden
   const setHidden = (f: boolean | ((h: boolean) => boolean)) =>
     updatePrefs({ showHidden: typeof f === 'function' ? f(prefs.showHidden) : f })
+  const setSortFor = (i: number, next: { key: SortKey; asc: boolean }) => {
+    setSort(next)
+    setPanes((p) => (p && p[i]?.fmt ? patch(p, i, { fmt: { ...p[i].fmt!, ...next } }) : p))
+  }
   const chrome = { customTitlebar: prefs.titlebar === 'app', rounded: prefs.rounded }
   const ui = {
     sidebar: prefs.sidebar,
@@ -210,9 +278,10 @@ export default function App() {
 
   // boot: restore the last session, fall back to home
   useEffect(() => {
-    Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
+    Promise.all([api.roots(), api.home(), api.state.get(), api.iconSet()]).then(([r, home, st, icons]) => {
       setRoots(r)
       setHome(home)
+      setIconSet(icons ?? {})
       void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
       setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
@@ -233,18 +302,54 @@ export default function App() {
     })
   }, [])
 
-  // transfers report progress from the main process; a finished job refreshes both panes
+  // a path handed over by the shell ("open with…") or by a second launch
   useEffect(() => {
     return api.app.onOpenPath((p) => {
-      const dir = p
       void api
-        .list(dir, prefs.showHidden, prefs.columns.includes('dims'))
+        .list(p, prefs.showHidden, prefs.columns.includes('dims'))
         .then((l) => go(active, l.path))
         .catch(() => {
+          // it was a file: show its folder and select it, the way a file manager should
           const parent = dirOf(p)
-          if (parent) go(active, parent)
+          if (!parent) return
+          go(active, parent)
+          setTimeout(() => {
+            setPanes((cur) => (cur ? patch(cur, active, { sel: [p] }) : cur))
+            if (prefs.doubleClick === 'preview') setPreviewPath(p)
+          }, 350)
         })
     })
+  })
+
+  // an image in the clipboard becomes a real file in the active folder
+  useEffect(() => {
+    if (!panes) return
+    const onPaste = async (ev: ClipboardEvent) => {
+      const el = ev.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (menu || columnMenu || settingsOpen || openWith) return
+      const items = ev.clipboardData?.items
+      if (!items) return
+      const file = [...items]
+        .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+        ?.getAsFile()
+      if (!file) return
+      ev.preventDefault()
+      const dir = tabOf(panes[active])
+      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'png'
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const saved = await api.clipboard.saveImage(dir, `clipboard-${stamp}.${ext}`, bytes)
+      if ('error' in saved) {
+        setNote(t('تصویر کلیپ‌بورد ذخیره نشد'))
+        return
+      }
+      await load(active, dir)
+      setPanes((p) => p && patch(p, active, { sel: [saved.path] }))
+      setNote(`${t('ذخیره شد')}: ${baseName(saved.path)}`)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
   })
 
   // a stray file dropped outside a pane must not navigate the window away
@@ -292,11 +397,40 @@ export default function App() {
   const path0 = panes ? tabOf(panes[0]) : ''
   const path1 = panes ? tabOf(panes[1]) : ''
 
+  /** A folder format overrides the app default only while that folder is loaded. */
+  const viewOf = (i: number): View => (panes?.[i]?.fmt?.view ?? view) as View
+  const sortOf = (i: number) => {
+    const f = panes?.[i]?.fmt
+    return { key: (f?.sortKey ?? sort.key) as SortKey, asc: f?.sortAsc ?? sort.asc }
+  }
+  const columnsOf = (i: number): ColId[] =>
+    (panes?.[i]?.fmt?.columns as ColId[] | undefined) ?? prefs.columns
+
+  /** Drag the divider: the preview keeps the share the user last chose. */
+  const startSideResize = (ev: React.PointerEvent) => {
+    ev.preventDefault()
+    const body = ev.currentTarget.parentElement
+    if (!body) return
+    const rect = body.getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+    const move = (e: PointerEvent) => {
+      const share = rtl ? (e.clientX - rect.left) / rect.width : (rect.right - e.clientX) / rect.width
+      updatePrefs({ sideWidth: Math.min(0.8, Math.max(0.25, share)) })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const load = async (i: number, dir: string) => {
     setPanes((p) => p && patch(p, i, { loading: true }))
     try {
       const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
-      setPanes((p) => p && patch(p, i, { listing, error: '', loading: false }))
+      const fmt = (listing.format as FolderView | null) ?? null
+      setPanes((p) => p && patch(p, i, { listing, fmt, error: '', loading: false }))
     } catch (e: any) {
       setPanes((p) => p && patch(p, i, { listing: null, error: String(e?.message ?? e), loading: false }))
     }
@@ -346,21 +480,8 @@ export default function App() {
       })
   }, [prefs.hotkey, prefs.hotkeyEnabled])
 
-  // a folder can carry its own view/columns/sort (Opus «Folder Format»)
-  useEffect(() => {
-    const fmt = panes?.[active]?.listing?.format
-    if (!fmt) return
-    if (fmt.view && fmt.view !== view) setView(fmt.view as typeof view)
-    if (Array.isArray(fmt.columns) && fmt.columns.join(',') !== prefs.columns.join(',')) {
-      updatePrefs({ columns: fmt.columns as typeof prefs.columns })
-    }
-    if (fmt.sortKey && (fmt.sortKey !== sort.key || fmt.sortAsc !== sort.asc)) {
-      setSort({ key: fmt.sortKey as typeof sort.key, asc: fmt.sortAsc !== false })
-    }
-    // keyed on the listing object so a reload of the folder re-applies its format,
-    // while the inner comparisons keep it from fighting the user's own changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panes?.[active]?.listing])
+  // a folder's format is applied at load time by `load()` above; it never rewrites the
+  // global defaults, otherwise leaving the folder would drag its view onto every other one
 
   useEffect(() => {
     setLang(prefs.lang)
@@ -450,7 +571,7 @@ export default function App() {
     setNote(
       res.errors.length
         ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
-        : `${OP_LABEL[kind]}: ${fa(res.done)} مورد`
+        : t('{op}: {n} مورد', { op: OP_LABEL[kind], n: fa(res.done) })
     )
     setPanes((p) => p && patch(p, i, { sel: [] }))
     reloadAll()
@@ -461,7 +582,7 @@ export default function App() {
     setNote(
       res.errors.length
         ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
-        : `${OP_LABEL[kind]}: ${fa(res.done)} مورد`
+        : t('{op}: {n} مورد', { op: OP_LABEL[kind], n: fa(res.done) })
     )
     setPanes((p) => p && p.map((x, j) => ({ ...x, sel: [] })))
     reloadAll()
@@ -519,6 +640,85 @@ export default function App() {
     )
   }
 
+  /** Compress the selection into a zip; the dialog decides name, level and destination. */
+  const openCompress = (i: number) => {
+    if (!panes) return
+    const me = panes[i]
+    if (!me.sel.length) {
+      setNote(t('چیزی انتخاب نشده'))
+      return
+    }
+    const name =
+      me.sel.length === 1 ? baseName(me.sel[0]).replace(/\.[^.]+$/, '') : baseName(tabOf(me))
+    setArchiveResult('')
+    setArchiveJob({
+      mode: 'compress',
+      files: me.sel,
+      path: '',
+      name,
+      here: tabOf(me),
+      other: tabOf(panes[1 - i]),
+      level: prefs.zipLevel
+    })
+  }
+
+  const openExtract = (i: number, path?: string) => {
+    if (!panes) return
+    const p = path ?? panes[i].sel[0]
+    if (!p || !isArchiveName(baseName(p))) {
+      setNote(t('یک فایل فشرده انتخاب کن'))
+      return
+    }
+    setArchiveResult('')
+    setArchiveJob({
+      mode: 'extract',
+      files: [],
+      path: p,
+      name: baseName(p),
+      here: tabOf(panes[i]),
+      other: tabOf(panes[1 - i]),
+      level: 0
+    })
+  }
+
+  const runArchive = async (opts: { name: string; level: number; dest: string }) => {
+    if (!archiveJob || !panes) return
+    setArchiveBusy(true)
+    if (archiveJob.mode === 'compress') {
+      setNote(t('در حال ساخت آرشیو…'))
+      const r = await api.createArchive(opts.dest, opts.name, archiveJob.files, opts.level)
+      setArchiveBusy(false)
+      setArchiveResult(
+        'error' in r
+          ? `${t('آرشیو ساخته نشد')} — ${r.error}`
+          : `${baseName(r.path)} · ${t('{n} فایل', { n: fa(r.files) })} · ${fmtSize(r.bytes, false, prefs.sizeFormat)}`
+      )
+      if (!('error' in r)) setNote(`${t('آرشیو ساخته شد')}: ${baseName(r.path)}`)
+    } else {
+      setNote(t('در حال استخراج…'))
+      const r = await api.extract(archiveJob.path, [], opts.dest)
+      setArchiveBusy(false)
+      setArchiveResult(
+        r.errors.length
+          ? `${t('{n} فایل', { n: fa(r.done) })} · ${t('{n} خطا', { n: fa(r.errors.length) })} — ${r.errors[0]}`
+          : `${t('{n} فایل', { n: fa(r.done) })} → ${baseName(opts.dest)}`
+      )
+    }
+    await Promise.all([load(0, tabOf(panes[0])), load(1, tabOf(panes[1]))])
+  }
+
+  /** The editor and the gallery are both full-window modes: entering one leaves the other. */
+  const openEditor = (p: string) => {
+    setGallery(null)
+    setEditor(p)
+  }
+
+  /** The global side preview (works in single and dual layout). */
+  const openPreview = (p: string) => {
+    setPreviewPath(p)
+    setPreviewOn(true)
+  }
+
   const openEntry = (i: number, p: string) => {
     const e =
       panes?.[i].listing?.entries.find((x) => x.path === p) ??
@@ -527,15 +727,59 @@ export default function App() {
     if (e.dir) go(i, e.path)
     else if (isArchiveName(e.name)) void openArchive(i, e.path)
     else if (prefs.doubleClick === 'preview') {
-      setPanes((p) => p && patch(p, 1 - i, { preview: { entry: e, from: i } }))
+      openPreview(e.path)
+    } else if (isHtmlPath(e.path) && !panes?.[i].archive) {
+      // an HTML file is a document: show the sandboxed preview, never hand it to the desktop
+      openPreview(e.path)
     } else if (isImage(e.ext) && prefs.doubleClick === 'gallery') openGallery(i, e.path)
-    else void api.open(e.path)
+    // text files belong in the built-in editor; an archive listing is virtual, so nothing to read
+    else if (opensInEditor(e) && !panes?.[i].archive) openEditor(e.path)
+    else {
+      void api.open(e.path).then((r) => {
+        if ('error' in r) {
+          setNote(t('برنامهٔ پیش‌فرض این فایل را باز نکرد'))
+          setOpenWith(e.path)
+        }
+      })
+    }
   }
 
-  const toggleMark = (i: number) => {
-    const cur = panes?.[i] ? tabOf(panes[i]) : ''
-    if (!cur) return
-    setMarks((m) => (m.includes(cur) ? m.filter((x) => x !== cur) : [...m, cur]))
+  /** A starred folder is the selected one when a single folder is selected, else the open folder. */
+  const bookmarkTarget = (i: number): string => {
+    const me = panes?.[i]
+    if (!me) return ''
+    const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
+    const picked = me.sel
+      .map((p) => source.find((e) => e.path === p))
+      .find((e) => e?.dir)
+    return picked?.path ?? tabOf(me)
+  }
+
+  const toggleMark = (i: number, path?: string) => {
+    const target = path ?? bookmarkTarget(i)
+    if (!target) return
+    setMarks((m) => (m.includes(target) ? m.filter((x) => x !== target) : [...m, target]))
+  }
+
+  /** A folder dropped on the sidebar becomes a bookmark; a plain file is refused with a note. */
+  const addMarks = (paths: string[]) => {
+    const isDir = new Map<string, boolean>()
+    for (const pane of panes ?? []) {
+      for (const e of pane.listing?.entries ?? []) isDir.set(e.path, e.dir)
+      for (const e of pane.results ?? []) isDir.set(e.path, e.dir)
+    }
+    const dirs = paths.filter((p) => isDir.get(p) === true)
+    if (!dirs.length) {
+      setNote(t('فقط پوشه نشان می‌شود'))
+      return
+    }
+    const added = dirs.filter((d) => !marks.includes(d))
+    if (!added.length) {
+      setNote(t('این پوشه از قبل نشان شده است'))
+      return
+    }
+    setMarks((m) => [...m, ...added.filter((d) => !m.includes(d))])
+    setNote(t('{n} پوشه نشان شد', { n: fa(added.length) }))
   }
 
   const setVirtual = (i: number, kind: 'flat' | 'search' | 'dupes', label: string, results: Entry[]) =>
@@ -551,14 +795,27 @@ export default function App() {
   const runSearch = async (i: number, q: SearchQuery) => {
     if (!panes) return
     setPanes((p) => p && patch(p, i, { loading: true }))
-    const r = await api.walk(tabOf(panes[i]), {
-      query: q.query,
-      content: q.content,
-      regex: q.regex,
-      limit: 5000
-    })
-    setVirtual(i, 'search', `جست‌وجو · ${fa(r.entries.length)}${r.capped ? '+' : ''}`, r.entries)
-    if (r.capped) setNote(t('نتیجه به ۵۰۰۰ مورد بریده شد'))
+    setNote(t('در حال جست‌وجو…'))
+    try {
+      const r = await api.walk(tabOf(panes[i]), {
+        query: q.query,
+        content: q.content,
+        regex: q.regex,
+        limit: 5000,
+        // without a budget and the ignore list, searching a home folder walked node_modules for minutes
+        exclude: prefs.showHidden ? prefs.searchExclude : [...prefs.searchExclude, '.*'],
+        budgetMs: 2500
+      })
+      setVirtual(i, 'search', `جست‌وجو · ${fa(r.entries.length)}${r.capped ? '+' : ''}`, r.entries)
+      setNote(
+        r.capped
+          ? t('جست‌وجو به سقف زمان رسید؛ نتیجه‌های نزدیک‌تر اول آمده‌اند')
+          : t('{n} نتیجه', { n: fa(r.entries.length) })
+      )
+    } catch {
+      setPanes((p) => p && patch(p, i, { loading: false }))
+      setNote(t('جست‌وجو انجام نشد'))
+    }
   }
 
   const runDupes = async (i: number) => {
@@ -571,20 +828,39 @@ export default function App() {
     setNote(r.entries.length ? `${fa(r.entries.length)} فایل تکراری در ${fa(groups)} گروه` : t('فایل تکراری پیدا نشد'))
   }
 
-  const openFolderLook = async (i: number) => {
+  /**
+   * Colour/icon belong to the folders the user selected, never to the folder they
+   * happen to be standing in. `path` is the row the context menu was opened on.
+   */
+  const openFolderLook = async (i: number, path?: string) => {
     if (!panes) return
     const me = panes[i]
     const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
-    const picked = source.find((e) => e.path === me.sel[0])
-    const dir = picked?.dir ? picked.path : tabOf(me)
+    const dirs = path
+      ? [path]
+      : me.sel.filter((p) => source.find((e) => e.path === p)?.dir)
+    if (!dirs.length) {
+      setNote(t('اول پوشه‌ای را انتخاب کن'))
+      return
+    }
+    const meta = await api.getMeta(dirs[0])
+    setFolderLook({
+      dirs,
+      name: dirs.length > 1 ? t('{n} پوشه', { n: fa(dirs.length) }) : baseName(dirs[0]),
+      meta
+    })
+  }
+
+  /** The blank-area menu means the folder that is open right now. */
+  const openFolderLookAt = async (dir: string) => {
     const meta = await api.getMeta(dir)
-    setFolderLook({ dir, name: baseName(dir), meta })
+    setFolderLook({ dirs: [dir], name: baseName(dir), meta })
   }
 
   const saveFolderLook = async (patch: FolderMeta) => {
     if (!folderLook) return
-    const meta = await api.setMeta(folderLook.dir, patch)
-    setFolderLook({ ...folderLook, meta })
+    const metas = await Promise.all(folderLook.dirs.map((d) => api.setMeta(d, patch)))
+    setFolderLook({ ...folderLook, meta: metas[0] ?? null })
     reloadAll()
   }
 
@@ -626,7 +902,13 @@ export default function App() {
   const dropInternal = async (paths: string[], dest: string, copy: boolean) => {
     if (!paths.length) return
     await api.jobs.start(copy ? 'copy' : 'move', paths, dest, transferOpts())
-    setNote(`${copy ? t('کپی') : t('انتقال')} ${fa(paths.length)} مورد به ${baseName(dest)}`)
+    setNote(
+      t('{op} {n} مورد به {dest}', {
+        op: copy ? t('کپی') : t('انتقال'),
+        n: fa(paths.length),
+        dest: baseName(dest)
+      })
+    )
   }
 
   const dropFiles = async (files: File[], dest: string) => {
@@ -804,22 +1086,12 @@ export default function App() {
         })()
         break
       }
-      case 'zipCreate': {
-        if (!me.sel.length) break
-        void (async () => {
-        const dest = tabOf(panes![1 - active])
-        const name = baseName(me.sel[0]).replace(/\.[^.]+$/, '')
-        setNote(t('در حال ساخت آرشیو…'))
-        const r = await api.createArchive(dest, name, me.sel, prefs.zipLevel)
-        setNote(
-          'error' in r
-            ? `آرشیو ساخته نشد — ${r.error}`
-            : `آرشیو ساخته شد: ${baseName(r.path)} · ${fa(r.files)} فایل`
-        )
-        if (!('error' in r)) await Promise.all([load(1 - active, dest), load(active, tabOf(panes![active]))])
-        })()
+      case 'compress':
+        openCompress(active)
         break
-      }
+      case 'extract':
+        openExtract(active, path ?? undefined)
+        break
       case 'copy':
         void runSel(active, 'copy')
         break
@@ -847,8 +1119,21 @@ export default function App() {
       case 'size':
         void computeSizes(active)
         break
+      case 'bookmarkDir':
+        if (path) toggleMark(active, path)
+        break
+      case 'columns':
+        if (menu) setColumnMenu({ x: menu.x, y: menu.y })
+        break
       case 'look':
-        void openFolderLook(active)
+        if (path) void openFolderLook(active, path)
+        else void openFolderLookAt(tabOf(panes[active]))
+        break
+      case 'hideEntry':
+        if (path) {
+          const hidden = !entryOf(active, path)?.hidden
+          void api.setMeta(path, { hidden }).then(() => load(active, tabOf(panes[active])))
+        }
         break
       case 'tabHere':
         if (path) addTab(active, path)
@@ -880,9 +1165,17 @@ export default function App() {
         setPresetsOpen(true)
         break
       case 'saveFormat': {
+        const current = sortOf(active)
+        const fmt: FolderView = {
+          view: viewOf(active),
+          columns: columnsOf(active),
+          sortKey: current.key,
+          sortAsc: current.asc
+        }
         void api
-          .setFormat(tabOf(me), { view, columns: prefs.columns, sortKey: sort.key, sortAsc: sort.asc })
-          .then(() => setNote(t('قالب این پوشه ذخیره شد')))
+          .setFormat(tabOf(me), fmt)
+          .then(() => setPanes((p) => p && patch(p, active, { fmt })))
+          .then(() => setNote(t('قالب این پوشه ذخیره شده')))
         break
       }
       case 'rate': {
@@ -931,7 +1224,7 @@ export default function App() {
         break
       }
       case 'edit': {
-        if (path && !entryOf(active, path)?.dir) setEditor(path)
+        if (path && !entryOf(active, path)?.dir) openEditor(path)
         break
       }
       case 'pinFile': {
@@ -945,6 +1238,12 @@ export default function App() {
       }
       case 'tabNew':
         addTab(active, tabOf(me))
+        break
+      case 'openWith':
+        if (path) setOpenWith(path)
+        break
+      case 'properties':
+        if (path) setPropsFor(path)
         break
       case 'preview':
         if (path) {
@@ -970,6 +1269,51 @@ export default function App() {
       case 'dupes':
         void runDupes(active)
         break
+    }
+  }
+
+  /** Columns and the small captions under a grid tile: toggles live where the user is looking. */
+  const columnItems = (): MenuItem[] => [
+    { head: true, label: t('ستون‌ها') },
+    ...COLUMNS.map((c) => ({
+      id: 'col:' + c.id,
+      label: colLabel(c.id),
+      checked: prefs.columns.includes(c.id)
+    })),
+    { sep: true },
+    { head: true, label: t('زیرنویس بندانگشتی') },
+    ...COLUMNS.map((c) => ({
+      id: 'meta:' + c.id,
+      label: colLabel(c.id),
+      checked: prefs.gridMeta.includes(c.id)
+    })),
+    { sep: true },
+    { id: 'columnsPrefs', label: t('تنظیمات ستون‌ها…'), icon: <LayersIcon /> }
+  ]
+
+  const pickColumn = (id: string) => {
+    if (id === 'columnsPrefs') {
+      setColumnMenu(null)
+      setPrefsOpenPage('columns')
+      setSettingsOpen(true)
+      return
+    }
+    if (id.startsWith('col:')) {
+      const col = id.slice(4) as ColId
+      const on = prefs.columns.includes(col)
+      const next = COLUMNS.map((c) => c.id).filter((x) =>
+        on ? prefs.columns.includes(x) && x !== col : prefs.columns.includes(x) || x === col
+      )
+      if (next.length) updatePrefs({ columns: next })
+      return
+    }
+    if (id.startsWith('meta:')) {
+      const col = id.slice(5) as ColId
+      const on = prefs.gridMeta.includes(col)
+      const next = on
+        ? prefs.gridMeta.filter((x) => x !== col)
+        : [...prefs.gridMeta, col].slice(0, 4)
+      updatePrefs({ gridMeta: next })
     }
   }
 
@@ -1006,94 +1350,171 @@ export default function App() {
         { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
         { id: 'look', label: t('رنگ و آیکون این پوشه'), icon: <PaletteIcon /> },
+        { id: 'columns', label: t('ستون‌ها و اطلاعات…'), icon: <LayersIcon /> },
         { sep: true },
         { id: 'tabNew', label: t('تب نو'), icon: <PlusIcon /> }
       ]
     }
-    const items: MenuItem[] = [
-      { id: 'open', label: entry?.dir ? t('باز کردن') : t('اجرا کردن'), icon: <PlayIcon /> }
-    ]
-    if (entry && !entry.dir && isArchiveName(entry.name)) {
-      items.push({ id: 'archive', label: t('مرور آرشیو'), icon: <ArchiveOpenIcon /> })
-    items.push({
-      id: 'extractOther',
-      label: t('استخراج به پنجرهٔ مقابل'),
-      key: 'F5',
-      icon: <ArchiveOpenIcon />
-    })
-    }
-    items.push(
+    const entryMenu: MenuItem[] = [
+      { id: 'open', label: entry?.dir ? t('باز کردن') : t('اجرا کردن'), icon: <PlayIcon /> },
+      { id: 'openWith', label: t('باز کردن با…'), icon: <PlayIcon /> },
       { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
       { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
-      ...(entry && isImage(entry.ext) ? [{ id: 'gallery', label: t('گالری تصاویر'), key: 'Space', icon: <GridIcon /> } as MenuItem] : []),
-      { sep: true },
+      { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
+      ...(entry && isImage(entry.ext)
+        ? [
+            {
+              id: 'gallery',
+              label: t('گالری تصاویر'),
+              key: 'Space',
+              icon: <GridIcon />
+            } as MenuItem
+          ]
+        : []),
+      { sep: true }
+    ]
+
+    const archiveItems: MenuItem[] =
+      entry && !entry.dir && isArchiveName(entry.name)
+        ? [
+            { id: 'archive', label: t('مرور آرشیو'), icon: <ArchiveOpenIcon /> },
+            { id: 'extract', label: t('استخراج…'), icon: <ArchiveOpenIcon /> },
+            {
+              id: 'extractOther',
+              label: t('استخراج به پنجرهٔ مقابل'),
+              key: 'F5',
+              icon: <ArchiveOpenIcon />
+            }
+          ]
+        : []
+
+    const operations: MenuItem[] = [
       { id: 'copy', label: t('کپی به پنجرهٔ مقابل'), key: 'F5', icon: <CopyIcon /> },
       { id: 'move', label: t('انتقال به پنجرهٔ مقابل'), key: 'F6', icon: <MoveIcon /> },
-      { sep: true },
-      { id: 'rename', label: t('تغییر نام'), key: 'F2', icon: <RenameIcon /> }
-    )
-    if (me.sel.length > 1) {
-      items.push({ id: 'batch', label: t('تغییر نام گروهی…'), icon: <RenameIcon /> })
-    }
-    items.push(
-      { id: 'trash', label: t('سطل بازیافت'), key: 'F8', icon: <TrashIcon /> },
-      { id: 'delete', label: t('حذف قطعی'), key: 'Shift+F8', icon: <TrashIcon />, danger: true },
-      { sep: true },
-      { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
-      { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
-      ...(me.sel.length === 2
-        ? [{ id: 'diff', label: t('مقایسهٔ دو فایل انتخاب‌شده'), key: 'Ctrl+Shift+Z', icon: <DupeIcon /> }]
+      ...archiveItems,
+      { id: 'rename', label: t('تغییر نام'), key: 'F2', icon: <RenameIcon /> },
+      ...(me.sel.length > 1
+        ? [{ id: 'batch', label: t('تغییر نام گروهی…'), icon: <RenameIcon /> } as MenuItem]
         : []),
-      ...Object.keys(prefs.scripts).map((name) => ({
-        id: 'script:' + name,
-        label: `اجرای «${name}»`,
-        icon: <PlayIcon />
-      })),
-      { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
-      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
-      { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> }
-    )
-    const pinDir = path ? dirOf(path) : ''
+      { id: 'compress', label: t('فشرده‌سازی…'), icon: <ArchiveOpenIcon /> },
+      { sep: true },
+      { id: 'trash', label: t('سطل بازیافت'), key: 'F8', icon: <TrashIcon /> },
+      { id: 'delete', label: t('حذف قطعی'), key: 'Shift+F8', icon: <TrashIcon />, danger: true }
+    ]
+
     const pinName = path ? baseName(path) : ''
     const isPinned = !!pinName && (panes[active].listing?.pins ?? []).includes(pinName)
-    if (path) {
-      items.push(
-        { id: 'edit', label: t('ویرایش متن'), key: 'F4', icon: <RenameIcon /> },
-        { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> },
-        { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> },
-        ...(path && /\.(mp3|m4a)$/i.test(path)
-          ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> }]
-          : []),
-        { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> },
-        { id: 'saveFormat', label: t('ذخیرهٔ قالب نمایش این پوشه'), icon: <LayersIcon /> },
-      { id: 'exportCsv', label: t('صدور فهرست (CSV)'), icon: <DocIcon /> },
-        { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> },
-        { id: 'zipCreate', label: t('ساخت آرشیو در پنجرهٔ مقابل'), icon: <ArchiveOpenIcon /> },
-        {
+    const folderItems: MenuItem[] = [
+      ...(entry?.dir
+        ? [
+            { id: 'openTab', label: t('باز کردن در تب نو'), icon: <PlusIcon /> },
+            { id: 'tabHere', label: t('تب نو در این پوشه'), icon: <PlusIcon /> },
+            { id: 'size', label: t('محاسبهٔ اندازه'), key: 'F9', icon: <GaugeIcon /> },
+            { id: 'look', label: t('رنگ و آیکون پوشه'), icon: <PaletteIcon /> },
+            {
+              id: 'bookmarkDir',
+              label:
+                path && marks.includes(path) ? t('برداشتن نشان') : t('نشان‌کردن در سایدبار'),
+              icon: <StarIcon filled={!!path && marks.includes(path)} />
+            },
+            {
+              id: 'hideEntry',
+              label: entry.hidden ? t('نمایش دوباره در فهرست') : t('پنهان‌کردن از فهرست'),
+              icon: entry.hidden ? <EyeIcon /> : <EyeOffIcon />
+            }
+          ]
+        : []),
+      { id: 'saveFormat', label: t('ذخیرهٔ قالب نمایش این پوشه'), icon: <LayersIcon /> },
+      {
         id: 'pinFile',
         label: isPinned ? t('برداشتن سنجاق') : t('سنجاق به بالای پوشه'),
         icon: <PinIcon filled={isPinned} />
-        }
+      }
+    ]
+
+    const systemItems: MenuItem[] = [
+      { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
+      { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
+      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
+      { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> },
+      { sep: true },
+      { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
+      ...(me.sel.length === 2
+        ? [
+            {
+              id: 'diff',
+              label: t('مقایسهٔ دو فایل انتخاب‌شده'),
+              key: 'Ctrl+Shift+Z',
+              icon: <DupeIcon />
+            } as MenuItem
+          ]
+        : []),
+      ...Object.keys(prefs.scripts).map(
+        (name) =>
+          ({
+            id: 'script:' + name,
+            label: `اجرای «${name}»`,
+            icon: <PlayIcon />
+          }) as MenuItem
       )
-    }
-    if (entry?.dir) {
-      items.push(
-        { id: 'openTab', label: t('باز کردن در تب نو'), icon: <PlusIcon /> },
-        { id: 'size', label: t('محاسبهٔ اندازه'), key: 'F9', icon: <GaugeIcon /> },
-        { id: 'look', label: t('رنگ و آیکون پوشه'), icon: <PaletteIcon /> },
-        { id: 'tabHere', label: t('تب نو در این پوشه'), icon: <PlusIcon /> }
-      )
-    }
-    return items
+    ]
+
+    const detailItems: MenuItem[] = [
+      { id: 'edit', label: t('ویرایش متن'), key: 'F4', icon: <RenameIcon /> },
+      { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> },
+      { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> },
+      ...(/\.(mp3|m4a)$/i.test(path)
+        ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> } as MenuItem]
+        : []),
+      { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> }
+    ]
+
+    return [
+      ...entryMenu,
+      {
+        id: 'group-operations',
+        label: t('عملیات فایل'),
+        icon: <CopyIcon />,
+        children: operations
+      },
+      {
+        id: 'group-folder',
+        label: t('پوشه و نمایش'),
+        icon: <FolderIcon />,
+        children: folderItems
+      },
+      {
+        id: 'group-system',
+        label: t('مسیر و سیستم'),
+        icon: <DriveIcon />,
+        children: systemItems
+      },
+      {
+        id: 'group-details',
+        label: t('برچسب و جزئیات'),
+        icon: <StarIcon />,
+        children: detailItems
+      },
+      {
+        id: 'group-export',
+        label: t('خروجی فهرست'),
+        icon: <DocIcon />,
+        children: [
+          { id: 'exportCsv', label: t('صدور فهرست (CSV)'), icon: <DocIcon /> },
+          { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> }
+        ]
+      }
+    ]
   }
 
   const sourceOf = (i: number) => {
     const me = panes?.[i]
     if (!me) return []
+    const s = sortOf(i)
     return orderEntries(
       me.virtual && me.results ? me.results : (me.listing?.entries ?? []),
-      sort.key,
-      sort.asc,
+      s.key,
+      s.asc,
       me.filter,
       prefs.foldersFirst
     )
@@ -1160,7 +1581,50 @@ export default function App() {
     const pane = panes?.[i]
     if (!pane) return []
     const source = pane.virtual && pane.results ? pane.results : (pane.listing?.entries ?? [])
-    return orderEntries(source, sort.key, sort.asc, pane.filter)
+    // must match Pane exactly (pins, labels, ratings): the keyboard cursor indexes into this list
+    const s = sortOf(i)
+    return orderEntries(
+      source,
+      s.key,
+      s.asc,
+      pane.filter,
+      prefs.foldersFirst,
+      new Set(pane.listing?.pins ?? []),
+      pane.listing?.labels ?? {},
+      pane.listing?.ratings ?? {}
+    )
+  }
+
+  /** Arrow keys move the selection; shift keeps the range from `navAnchor`. */
+  const moveSel = (move: NavMove, extend: boolean) => {
+    if (!panes) return
+    const list = visibleOf(active)
+    if (!list.length) return
+    const paths = list.map((e) => e.path)
+    const me = panes[active]
+    const here = me.sel.length ? paths.indexOf(me.sel[me.sel.length - 1]) : -1
+    const m = metrics.current[active] ?? { cols: 1, rows: 20 }
+    const next = navIndex(here, move, paths.length, viewOf(active) === 'grid' ? m.cols : 1, m.rows)
+    if (next < 0) return
+    const path = paths[next]
+    if (extend) {
+      // after a mouse click the anchor is gone; extend from the focused row instead of the target
+      const last = me.sel[me.sel.length - 1] ?? ''
+      const from = navAnchor.current && paths.includes(navAnchor.current)
+        ? navAnchor.current
+        : last && paths.includes(last)
+          ? last
+          : path
+      const at = paths.indexOf(from)
+      const lo = Math.min(at, next)
+      const hi = Math.max(at, next)
+      setPanes((p) => p && patch(p, active, { sel: paths.slice(lo, hi + 1) }))
+    } else {
+      navAnchor.current = path
+      setPanes((p) => p && patch(p, active, { sel: [path] }))
+    }
+    if (previewOn) setPreviewPath(path)
+    setReveal((r) => ({ pane: active, path, tick: r.tick + 1 }))
   }
 
   const runCompare = async (
@@ -1209,12 +1673,14 @@ export default function App() {
     move: () => void runSel(active, 'move'),
     edit: () => {
       const p = panes![active].sel[0]
-      if (p) setEditor(p)
+      if (p) openEditor(p)
       else setNote(t('چیزی انتخاب نشده'))
     },
     rename: () => openRename(active),
     batchRename: () => openRename(active),
     mkdir: () => setPrompt({ kind: 'mkdir', value: '' }),
+    compress: () => openCompress(active),
+    extract: () => openExtract(active),
     trash: () => void runSel(active, prefs.trashByDefault ? 'trash' : 'delete'),
     hardDelete: () => void runSel(active, 'delete'),
     size: () => void computeSizes(active),
@@ -1227,7 +1693,7 @@ export default function App() {
     undo: () => void doUndo(),
     selectAll: () =>
       setPanes((p) => p && patch(p, active, { sel: visibleOf(active).map((e) => e.path) })),
-    filter: () => filterEls.current[active]?.focus(),
+    filter: () => setFilterTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n))),
     hidden: () => setHidden((h) => !h),
     bookmark: () => toggleMark(active),
     newTab: () => addTab(active, tabOf(panes![active])),
@@ -1293,6 +1759,11 @@ export default function App() {
         })
         .then(() => setNote(t('قالب این پوشه ذخیره شد')))
     },
+    look: () => void openFolderLook(active),
+    properties: () => {
+      const p = panes![active].sel[0]
+      if (p) setPropsFor(p)
+    },
     prefs: () => setSettingsOpen(true)
   }
 
@@ -1301,7 +1772,8 @@ export default function App() {
       const el = ev.target as HTMLElement | null
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
       if (!panes) return
-      if (editor) return
+      // a modal owns the keyboard: deleting behind the properties sheet would be invisible
+      if (editor || gallery || menu || columnMenu || settingsOpen || openWith || propsFor) return
       const me = panes[active]
 
       if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
@@ -1311,13 +1783,57 @@ export default function App() {
       }
       if (typing) return
 
+      // the keyboard menu key (and Shift+F10) opens the same menu as right-click
+      if (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10')) {
+        ev.preventDefault()
+        const selected = me.sel[me.sel.length - 1] ?? null
+        const row = document.querySelector(
+          '.pane.active .row.on, .pane.active .tile.on'
+        ) as HTMLElement | null
+        const rect = row?.getBoundingClientRect()
+        setMenu({
+          path: selected,
+          x: rect ? Math.round(rect.left + Math.min(48, rect.width / 2)) : Math.round(window.innerWidth / 2),
+          y: rect ? Math.round(rect.bottom - 2) : Math.round(window.innerHeight / 2)
+        })
+        return
+      }
+
+      // list/grid cursor first: these are navigation, not commands, and they never scroll the pane
+      const NAV: Record<string, NavMove> = {
+        ArrowUp: 'up',
+        ArrowDown: 'down',
+        PageUp: 'pageUp',
+        PageDown: 'pageDown',
+        Home: 'first',
+        End: 'last'
+      }
+      const move = NAV[ev.key]
+      if (move) {
+        ev.preventDefault()
+        moveSel(move, ev.shiftKey)
+        return
+      }
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+        // in a grid the arrows walk the cells; in a list they do what Krusader does: up / open
+        if (viewOf(active) === 'grid') {
+          ev.preventDefault()
+          moveSel(ev.key === 'ArrowLeft' ? 'left' : 'right', ev.shiftKey)
+          return
+        }
+        ev.preventDefault()
+        if (ev.key === 'ArrowLeft') up(active)
+        else if (me.sel[0]) openEntry(active, me.sel[0])
+        return
+      }
+
       // keys that stay hard: they are navigation inside the selection, not commands
       if (ev.key === 'Tab' && !ev.ctrlKey) {
         ev.preventDefault()
         setActive((a) => 1 - a)
         return
       }
-      if (ev.key === 'Enter') {
+      if (ev.key === 'Enter' && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault()
         if (me.sel[0]) openEntry(active, me.sel[0])
         return
@@ -1392,7 +1908,7 @@ export default function App() {
   ) : null
 
   return (
-    <div className="app">
+    <div className="app" data-layout={prefs.layout}>
       {editor && editorMax && (
         <Editor
           key={editor + ':max'}
@@ -1432,7 +1948,7 @@ export default function App() {
         <span className="spacer" />
         <span className="note">{note}</span>
         <button
-          className={'tb' + (prefs.layout === 'single' ? ' on' : '')}
+          className={'tb' + (prefs.layout === 'dual' ? ' on' : '')}
           title={prefs.layout === 'dual' ? t('تک‌پنجره') : t('دوپنجره')}
           onClick={() => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' })}
         >
@@ -1450,10 +1966,10 @@ export default function App() {
         </button>
         <button
           className="tb"
-          title={view === 'list' ? t('نمای شبکه') : t('نمای فهرست')}
+          title={viewOf(active) === 'list' ? t('نمای شبکه') : t('نمای فهرست')}
           onClick={() => setView((v) => (v === 'list' ? 'grid' : 'list'))}
         >
-          {view === 'list' ? <GridIcon /> : <ListIcon />}
+          {viewOf(active) === 'list' ? <GridIcon /> : <ListIcon />}
         </button>
         <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
           <GaugeIcon />
@@ -1476,31 +1992,24 @@ export default function App() {
       </header>
 
       {prefs.toolbar.length > 0 && (
-        <div className="cmdbar">
-          {(prefs.toolbar as CommandId[]).map((id) => {
-            const c = COMMAND_BY_ID[id]
-            if (!c) return null
-            return (
-              <button
-                key={id}
-                className="cmdb"
-                title={`${labelOf(c)} (${formatAccel(prefs.shortcuts[id] ?? c.key)})`}
-                onClick={() => RUN[id]?.()}
-              >
-                {CMD_ICON[id]}
-                <span>{labelOf(c)}</span>
-              </button>
-            )
-          })}
-        </div>
+        <CommandBar
+          items={prefs.toolbar as CommandId[]}
+          mode={prefs.toolbarMode}
+          shortcuts={prefs.shortcuts}
+          onRun={(id) => RUN[id]?.()}
+        />
       )}
 
       {settingsOpen && (
         <Preferences
           prefs={prefs}
           palette={palette}
+          openPage={prefsOpenPage ?? undefined}
           onChange={updatePrefs}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false)
+            setPrefsOpenPage(null)
+          }}
         />
       )}
 
@@ -1535,8 +2044,12 @@ export default function App() {
             roots={roots}
             marks={marks}
             activePath={curPath}
+            showHidden={hidden}
+            floating={prefs.sidebar === 'float'}
+            onToggleFloat={() => updatePrefs({ sidebar: prefs.sidebar === 'float' ? 'docked' : 'float' })}
             onNav={(d) => go(active, d)}
             onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+            onMarkDrop={addMarks}
           />
         )}
 
@@ -1545,9 +2058,21 @@ export default function App() {
           // the preview/editor sits exactly where the opposite pane is
           if (sideOpen && prefs.layout === 'dual' && i === 1 - active) {
             return (
-              <div className="side-slot" key="side">
-                {sideContent}
-              </div>
+              <Fragment key="side">
+                <div
+                  className="vsplit"
+                  role="separator"
+                  aria-orientation="vertical"
+                  title={t('تغییر عرض پیش‌نمایش')}
+                  onPointerDown={startSideResize}
+                />
+                <div
+                  className="side-slot"
+                  style={{ flex: `0 0 ${Math.round(prefs.sideWidth * 100)}%`, minWidth: 240 }}
+                >
+                  {sideContent}
+                </div>
+              </Fragment>
             )
           }
           const paneEl = (
@@ -1556,15 +2081,18 @@ export default function App() {
             index={i}
             pane={pane}
             active={i === active}
-            sort={sort}
-            view={view}
+            sort={sortOf(i)}
+            view={viewOf(i)}
             sizes={sizes}
-            marked={marks.includes(tabOf(pane))}
+            marked={marks.includes(bookmarkTarget(i))}
             filterRef={(el) => {
               filterEls.current[i] = el
             }}
+            filterTick={filterTicks[i] ?? 0}
             onActivate={() => setActive(i)}
-            onSort={(key) => setSort((s) => ({ key, asc: s.key === key ? !s.asc : true }))}
+            onSort={(key) =>
+              setSortFor(i, { key, asc: sortOf(i).key === key ? !sortOf(i).asc : true })
+            }
             onNav={(dir) => go(i, dir)}
             onBack={() => jump(i, -1)}
             onForward={() => jump(i, 1)}
@@ -1572,6 +2100,8 @@ export default function App() {
             onRefresh={() => void load(i, tabOf(pane))}
             onOpen={(path) => openEntry(i, path)}
             onSel={(paths, mode) => {
+              // a single click becomes the anchor for a following shift+arrow
+              if (mode === 'set' && paths.length === 1) navAnchor.current = paths[0]
               if (previewOn) setPreviewPath(paths[0] ?? null)
               setPanes((p) => {
                 if (!p) return p
@@ -1615,6 +2145,15 @@ export default function App() {
             onSearch={(q) => void runSearch(i, q)}
             onExitVirtual={() => exitVirtual(i)}
             onFolderLook={() => openFolderLook(i)}
+            colWidths={prefs.colWidths}
+            gridMeta={prefs.gridMeta}
+            onColumnWidth={(id, px) =>
+              updatePrefs({ colWidths: { ...prefs.colWidths, [id]: px } })
+            }
+            onHeaderMenu={(x, y) => setColumnMenu({ x, y })}
+            onZoom={(delta) =>
+              updatePrefs({ tileSize: Math.min(240, Math.max(80, prefs.tileSize + delta)) })
+            }
             previewIndex={
               pane.preview
                 ? (() => {
@@ -1627,7 +2166,11 @@ export default function App() {
             onPreviewNav={(delta) => navPreviewImage(i, delta)}
             onPreviewClose={() => setPanes((p) => p && patch(p, i, { preview: null }))}
             foldersFirst={prefs.foldersFirst}
-            columns={prefs.columns}
+            columns={columnsOf(i)}
+            nameLines={prefs.gridNameLines}
+            tileSize={prefs.tileSize}
+            hideSingleTab={prefs.hideSingleTab}
+            iconSet={prefs.fileIcons === 'theme' ? iconSet : undefined}
             sizeFormat={prefs.sizeFormat}
             dateFormat={prefs.dateFormat}
             showSeconds={prefs.showSeconds}
@@ -1635,11 +2178,15 @@ export default function App() {
             onContext={(path, x, y) => setMenu({ path, x, y })}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
             onDropFiles={(files, dest) => void dropFiles(files, dest)}
+            onMetrics={(m) => {
+              metrics.current[i] = m
+            }}
+            reveal={reveal.pane === i ? reveal : null}
           />
           )
           return prefs.paneTree && prefs.layout === 'dual' ? (
             <div className="pane-with-tree" key={'wrap' + i}>
-              <PaneTree path={tabOf(pane)} onNav={(d) => go(i, d)} />
+              <PaneTree path={tabOf(pane)} showHidden={hidden} onNav={(d) => go(i, d)} />
               {paneEl}
             </div>
           ) : (
@@ -1647,7 +2194,23 @@ export default function App() {
           )
         })}
 
-        {sideOpen && prefs.layout === 'single' && <div className="side-slot">{sideContent}</div>}
+        {sideOpen && prefs.layout === 'single' && (
+          <>
+            <div
+              className="vsplit"
+              role="separator"
+              aria-orientation="vertical"
+              title={t('تغییر عرض پیش‌نمایش')}
+              onPointerDown={startSideResize}
+            />
+            <div
+              className="side-slot"
+              style={{ flex: `0 0 ${Math.round(prefs.sideWidth * 100)}%`, minWidth: 240 }}
+            >
+              {sideContent}
+            </div>
+          </>
+        )}
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
@@ -1658,11 +2221,17 @@ export default function App() {
                 roots={roots}
                 marks={marks}
                 activePath={curPath}
+                showHidden={hidden}
+                floating={prefs.sidebar === 'float'}
+                onToggleFloat={() =>
+                  updatePrefs({ sidebar: prefs.sidebar === 'float' ? 'docked' : 'float' })
+                }
                 onNav={(d) => {
                   go(active, d)
                   setUi((u) => ({ ...u, sidebarOpen: false }))
                 }}
                 onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+                onMarkDrop={addMarks}
               />
             </div>
             <div
@@ -1711,44 +2280,10 @@ export default function App() {
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         {prefs.layout === 'single' && (
           <span title={t(t('مقصد کپی/انتقال در حالت تک‌پنجره'))}>
-            مقصد: {baseName(tabOf(panes[1 - active]))}
+            {t('مقصد:')} {baseName(tabOf(panes[1 - active]))}
           </span>
         )}
         <span className="spacer" />
-        <div className="status-actions">
-          <button className="sbtn" title={t(t('کپی (F5)'))} onClick={() => void runSel(active, 'copy')}>
-            <CopyIcon />
-            <span>{t(t('کپی'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('انتقال (F6)'))} onClick={() => void runSel(active, 'move')}>
-            <MoveIcon />
-            <span>{t(t('انتقال'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('تغییر نام (F2)'))} onClick={() => openRename(active)}>
-            <RenameIcon />
-            <span>{t(t('نام'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('پوشهٔ نو (F7)'))} onClick={() => setPrompt({ kind: 'mkdir', value: '' })}>
-            <FolderPlusIcon />
-            <span>{t(t('پوشه'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('سطل بازیافت (F8)'))} onClick={() => void runSel(active, 'trash')}>
-            <TrashIcon />
-            <span>{t(t('سطل'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
-            <GaugeIcon />
-            <span>{t(t('اندازه'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('پیش‌نمایش در پنجرهٔ مقابل (F3)'))} onClick={() => previewInOther(active)}>
-            <PreviewIcon />
-            <span>{t(t('پیش‌نمایش'))}</span>
-          </button>
-          <button className="sbtn" title={t(t('بازگردانی (Ctrl+Z)'))} onClick={() => void doUndo()}>
-            <UndoIcon />
-            <span>{t(t('بازگردانی'))}</span>
-          </button>
-        </div>
       </footer>
 
       {searchOpen && (
@@ -1795,8 +2330,8 @@ export default function App() {
                   layout: prefs.layout,
                   sidebar: prefs.sidebar,
                   sidebarOpen: prefs.sidebarOpen,
-                  view,
-                  columns: prefs.columns,
+                  view: viewOf(active),
+                  columns: columnsOf(active),
                   toolbar: prefs.toolbar
                 }
               }
@@ -1980,7 +2515,8 @@ export default function App() {
               {confirmAsk.kind === 'trash' ? t('به سطل بازیافت برود؟') : t('برای همیشه حذف شود؟')}
             </div>
             <div className="hint" dir="auto">
-              {fa(confirmAsk.paths.length)} مورد · {confirmAsk.paths.slice(0, 3).map(baseName).join(t('، '))}
+              {t('{n} مورد', { n: fa(confirmAsk.paths.length) })} ·{' '}
+              {confirmAsk.paths.slice(0, 3).map(baseName).join(t('، '))}
               {confirmAsk.paths.length > 3 ? ' …' : ''}
             </div>
             <div className="dlg-actions">
@@ -2017,6 +2553,16 @@ export default function App() {
         />
       )}
 
+      {archiveJob && (
+        <ArchiveDialog
+          job={archiveJob}
+          busy={archiveBusy}
+          result={archiveResult}
+          onRun={(o) => void runArchive(o)}
+          onClose={() => setArchiveJob(null)}
+        />
+      )}
+
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -2027,9 +2573,38 @@ export default function App() {
         />
       )}
 
+      {openWith && (
+        <OpenWithDialog path={openWith} onClose={() => setOpenWith(null)} onNote={setNote} />
+      )}
+
+      {propsFor && (
+        <PropertiesDialog
+          path={propsFor}
+          onClose={() => setPropsFor(null)}
+          onNote={setNote}
+          onPathChange={(next) => {
+            setPropsFor(next)
+            if (panes) void load(active, tabOf(panes[active]))
+          }}
+          onUpdate={() => {
+            if (panes) void load(active, tabOf(panes[active]))
+          }}
+        />
+      )}
+
+      {columnMenu && (
+        <ContextMenu
+          x={columnMenu.x}
+          y={columnMenu.y}
+          items={columnItems()}
+          onPick={pickColumn}
+          onClose={() => setColumnMenu(null)}
+        />
+      )}
+
       {folderLook && (
         <FolderDialog
-          dir={folderLook.dir}
+          dirs={folderLook.dirs}
           name={folderLook.name}
           meta={folderLook.meta}
           iconDirs={ui.iconDirs ?? []}

@@ -10,8 +10,10 @@ export const DEFAULT_TOOLBAR = [
   'mkdir',
   'trash',
   'size',
+  'look',
   'previewPane',
   'undo',
+  'newTab',
   'flat',
   'dupes',
   'terminal'
@@ -48,14 +50,27 @@ export type Prefs = {
   /** UI language; English is the default */
   lang: Lang
   // appearance
-  theme: 'dark' | 'light'
+  /** 'system' follows the OS light/dark preference live */
+  theme: 'dark' | 'light' | 'system'
   view: View
   foldersFirst: boolean
   showHidden: boolean
+  /** share of the window width the side preview/editor takes in single layout (0.25–0.8) */
+  sideWidth: number
   columns: ColId[]
+  /** pixel width per optional column; a missing entry uses the built-in width */
+  colWidths: Record<string, number>
+  /** fields shown small under a grid tile's name (same ids as the columns) */
+  gridMeta: ColId[]
   sizeFormat: 'human' | 'bytes'
   dateFormat: 'iso' | 'jalali' | 'short'
   showSeconds: boolean
+  /** lines a grid tile may use for its name (1..4); the tile grows with it */
+  gridNameLines: number
+  /** grid tile width in px (80..240); thumbnail and name box scale with it */
+  tileSize: number
+  /** file/folder icons: the desktop icon theme (Pure) or our own line glyphs */
+  fileIcons: 'theme' | 'line'
   // window
   titlebar: 'app' | 'system'
   rounded: boolean
@@ -66,9 +81,13 @@ export type Prefs = {
   shortcuts: Record<string, string>
   /** command ids shown as buttons in the toolbar, in order */
   toolbar: string[]
+  /** toolbar button look: icon only, icon with its label, or the label alone */
+  toolbarMode: 'icon' | 'icon-text' | 'text'
   // tabs
   newTabPos: 'end' | 'next'
   middleClickClosesTab: boolean
+  /** a pane with a single tab needs no tab strip */
+  hideSingleTab: boolean
   // archives, gallery and preview
   zipLevel: number
   imageFormat: 'png' | 'jpeg' | 'webp'
@@ -117,10 +136,16 @@ export const DEFAULTS: Prefs = {
   view: 'list',
   foldersFirst: true,
   showHidden: false,
+  sideWidth: 0.5,
   columns: ['type', 'size', 'date'],
+  colWidths: {},
+  gridMeta: ['size'],
   sizeFormat: 'human',
   dateFormat: 'iso',
   showSeconds: false,
+  gridNameLines: 2,
+  tileSize: 108,
+  fileIcons: 'theme',
   titlebar: 'app',
   rounded: true,
   layout: 'dual',
@@ -128,8 +153,10 @@ export const DEFAULTS: Prefs = {
   sidebarOpen: true,
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
+  toolbarMode: 'icon-text',
   newTabPos: 'next',
   middleClickClosesTab: true,
+  hideSingleTab: true,
   doubleClick: 'gallery',
   zipLevel: 6,
   imageFormat: 'png',
@@ -215,6 +242,17 @@ function normalFileTypes(raw: unknown): Record<string, string> {
   return out
 }
 
+/** Only known commands survive; a missing or garbage value falls back to the default toolbar. */
+function normalToolbar(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return DEFAULT_TOOLBAR
+  const ids = raw.filter((id): id is string => typeof id === 'string' && !!COMMAND_BY_ID[id])
+  // the shipped toolbar before "New tab" existed: upgrade it once instead of leaving the button out
+  if (ids.length === DEFAULT_TOOLBAR.length - 1 && ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newTab')[i])) {
+    return DEFAULT_TOOLBAR
+  }
+  return ids
+}
+
 /** Only known commands survive; a missing or garbage value falls back to the default key. */
 function normalShortcuts(raw: unknown): Record<string, string> {
   const out: Record<string, string> = { ...DEFAULT_SHORTCUTS }
@@ -232,25 +270,41 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
   const p = { ...DEFAULTS, ...(raw ?? {}) }
   return {
     lang: p.lang === 'fa' ? 'fa' : 'en',
-    theme: p.theme === 'light' ? 'light' : 'dark',
+    theme: p.theme === 'light' || p.theme === 'system' ? p.theme : 'dark',
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,
     showHidden: p.showHidden === true,
+    sideWidth:
+      typeof p.sideWidth === 'number' && Number.isFinite(p.sideWidth)
+        ? Math.min(0.8, Math.max(0.25, p.sideWidth))
+        : 0.5,
     columns: normalColumns(p.columns, p.showTypeColumn),
+    colWidths: normalWidths(p.colWidths),
+    gridMeta: normalGridMeta(p.gridMeta),
     sizeFormat: p.sizeFormat === 'bytes' ? 'bytes' : 'human',
     dateFormat: p.dateFormat === 'jalali' || p.dateFormat === 'short' ? p.dateFormat : 'iso',
     showSeconds: p.showSeconds === true,
+    gridNameLines:
+      typeof p.gridNameLines === 'number' && p.gridNameLines >= 1 && p.gridNameLines <= 4
+        ? Math.round(p.gridNameLines)
+        : 2,
+    tileSize:
+      typeof p.tileSize === 'number' && p.tileSize >= 80 && p.tileSize <= 240
+        ? Math.round(p.tileSize)
+        : 108,
+    fileIcons: p.fileIcons === 'line' ? 'line' : 'theme',
     titlebar: p.titlebar === 'system' ? 'system' : 'app',
     rounded: p.rounded !== false,
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
     sidebarOpen: p.sidebarOpen !== false,
     shortcuts: normalShortcuts(p.shortcuts),
-    toolbar: Array.isArray(p.toolbar)
-      ? p.toolbar.filter((id) => typeof id === 'string' && COMMAND_BY_ID[id])
-      : DEFAULTS.toolbar,
+    toolbar: normalToolbar(p.toolbar),
+    toolbarMode:
+      p.toolbarMode === 'icon' || p.toolbarMode === 'text' ? p.toolbarMode : 'icon-text',
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
+    hideSingleTab: p.hideSingleTab !== false,
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
     zipLevel:
       typeof p.zipLevel === 'number' && p.zipLevel >= 0 && p.zipLevel <= 9 ? Math.floor(p.zipLevel) : 6,
@@ -300,7 +354,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
 /** Old state files kept theme/view/hidden/chrome/ui at the top level; fold them into prefs. */
 export function migrateLegacy(s: any): Partial<Prefs> {
   const p: Partial<Prefs> = {}
-  if (s?.theme === 'light' || s?.theme === 'dark') p.theme = s.theme
+  if (s?.theme === 'light' || s?.theme === 'dark' || s?.theme === 'system') p.theme = s.theme
   if (s?.view === 'grid' || s?.view === 'list') p.view = s.view
   if (typeof s?.hidden === 'boolean') p.showHidden = s.hidden
   if (s?.chrome) {
@@ -314,6 +368,26 @@ export function migrateLegacy(s: any): Partial<Prefs> {
     if (typeof s.ui.iconTheme === 'string') p.iconTheme = s.ui.iconTheme
   }
   return p
+}
+
+/** Unknown ids are dropped and widths are clamped, so a junk state file cannot break the grid. */
+const knownColumn = (id: unknown): id is ColId =>
+  typeof id === 'string' && COLUMNS.some((c) => c.id === id)
+
+function normalWidths(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (knownColumn(id) && typeof value === 'number' && Number.isFinite(value)) {
+      out[id] = Math.round(Math.min(420, Math.max(48, value)))
+    }
+  }
+  return out
+}
+
+function normalGridMeta(raw: unknown): ColId[] {
+  if (!Array.isArray(raw)) return ['size']
+  return [...new Set(raw.filter(knownColumn))].slice(0, 4)
 }
 
 function normalColumns(raw: unknown, legacyShowType: unknown): ColId[] {

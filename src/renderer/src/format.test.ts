@@ -13,7 +13,11 @@ import {
   kindOf,
   mediaUrl,
   modeString,
+  navIndex,
+  opensInEditor,
   orderEntries,
+  permLevel,
+  permMode,
   planRename,
   sortEntries,
   toJalali,
@@ -232,4 +236,53 @@ test('the #token in the filter matches labels, not names', () => {
     1,
     'without # it stays a name filter'
   )
+})
+
+test('navIndex: list steps one row, clamps at both ends', () => {
+  assert.equal(navIndex(-1, 'down', 5), 0, 'nothing selected starts at the top')
+  assert.equal(navIndex(0, 'up', 5), 0, 'up from the top stays put')
+  assert.equal(navIndex(2, 'down', 5), 3)
+  assert.equal(navIndex(4, 'down', 5), 4)
+  assert.equal(navIndex(2, 'first', 5), 0)
+  assert.equal(navIndex(2, 'last', 5), 4)
+  assert.equal(navIndex(-1, 'last', 5), 4)
+  assert.equal(navIndex(0, 'down', 0), -1, 'an empty list has no cursor')
+})
+
+test('navIndex: grid steps a whole row and a whole page', () => {
+  // 10 columns, 3 visible rows: 30 items
+  assert.equal(navIndex(2, 'down', 30, 10, 3), 12)
+  assert.equal(navIndex(12, 'up', 30, 10, 3), 2)
+  assert.equal(navIndex(2, 'right', 30, 10, 3), 3)
+  assert.equal(navIndex(2, 'left', 30, 10, 3), 1)
+  assert.equal(navIndex(2, 'pageDown', 30, 10, 3), 29, 'clamped to the last item')
+  assert.equal(navIndex(22, 'pageUp', 30, 10, 3), 0, 'a page up from row 3 lands on the first row')
+  assert.equal(navIndex(24, 'pageUp', 30, 10, 3), 0, 'clamped to the first item')
+})
+
+test('opensInEditor: text and extensionless files, never folders or binaries', () => {
+  assert.equal(opensInEditor(e('notes.txt', false, 10, 0, 'txt')), true)
+  assert.equal(opensInEditor(e('README', false, 10, 0, '')), true)
+  assert.equal(opensInEditor(e('post.md', false, 10, 0, 'md')), true)
+  assert.equal(opensInEditor(e('photo.png', false, 10, 0, 'png')), false)
+  assert.equal(opensInEditor(e('archive.zip', false, 10, 0, 'zip')), false)
+  assert.equal(opensInEditor(e('folder', true, 0, 0, '')), false)
+})
+
+test('permLevel: reads the three classes out of a mode', () => {
+  assert.equal(permLevel(0o644, 0), 'rw')
+  assert.equal(permLevel(0o644, 1), 'r')
+  assert.equal(permLevel(0o644, 2), 'r')
+  assert.equal(permLevel(0o600, 2), 'none')
+  assert.equal(permLevel(0o777, 1), 'rw')
+})
+
+test('permMode: files keep their execute bit, folders follow read with x', () => {
+  assert.equal(permMode(0o644, 2, 'rw', false), 0o646)
+  assert.equal(permMode(0o644, 0, 'r', false), 0o444)
+  assert.equal(permMode(0o755, 0, 'rw', false), 0o755, 'write does not clear x on a file')
+  assert.equal(permMode(0o644, 1, 'rw', false), 0o664)
+  assert.equal(permMode(0o755, 0, 'r', true), 0o555, 'a folder keeps x with read')
+  assert.equal(permMode(0o755, 1, 'rw', true), 0o775)
+  assert.equal(permMode(0o755, 2, 'none', true), 0o750)
 })

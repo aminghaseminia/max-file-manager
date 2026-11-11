@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 export type MenuItem =
   | { sep: true }
+  | { head: true; label: string }
   | {
       id: string
       label: string
@@ -10,6 +11,10 @@ export type MenuItem =
       key?: string
       danger?: boolean
       disabled?: boolean
+      /** a toggle item: a check mark in the icon slot */
+      checked?: boolean
+      /** a grouped item: hovering (or clicking) opens a nested panel */
+      children?: MenuItem[]
       sep?: false
     }
 
@@ -21,8 +26,44 @@ type Props = {
   onClose(): void
 }
 
+function CheckMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+      <path d="M5 12.5l4.2 4.2L19 7" />
+    </svg>
+  )
+}
+
+/** Keep a panel inside the content area, below the header and above the window edge. */
+function clampPanel(el: HTMLElement, x: number, y: number): void {
+  const bodyTop = document.querySelector('.app .body')?.getBoundingClientRect().top ?? 8
+  const minTop = Math.max(8, Math.round(bodyTop + 4))
+  const maxHeight = Math.max(120, window.innerHeight - minTop - 8)
+  el.style.maxHeight = `${maxHeight}px`
+  const height = Math.min(el.scrollHeight, maxHeight)
+  el.style.top = `${Math.max(minTop, Math.min(y, window.innerHeight - height - 8))}px`
+  el.style.left = `${Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8))}px`
+}
+
 export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const nestedRef = useRef<HTMLDivElement>(null)
+  const [sub, setSub] = useState<{ key: string; items: MenuItem[]; x: number; y: number } | null>(null)
+  const closeTimer = useRef<number | null>(null)
+
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+  }
+  /** Moving to the nested panel must not close it, so closing waits for a beat. */
+  const scheduleClose = () => {
+    cancelClose()
+    closeTimer.current = window.setTimeout(() => setSub(null), 160)
+  }
+
+  useEffect(() => () => cancelClose(), [])
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -39,32 +80,85 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
     }
   }, [onClose])
 
-  // keep the menu inside the window
-  const width = 236
-  const height = items.length * 30 + 12
-  const left = Math.min(x, window.innerWidth - width - 8)
-  const top = Math.min(y, window.innerHeight - height - 8)
+  useLayoutEffect(() => {
+    if (ref.current) clampPanel(ref.current, x, y)
+  }, [x, y, items.length])
+
+  useLayoutEffect(() => {
+    if (nestedRef.current && sub) clampPanel(nestedRef.current, sub.x, sub.y)
+  }, [sub])
+
+  const openSub = (ev: React.MouseEvent, child: MenuItem[], key: string) => {
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+    const width = 248
+    const x2 = rtl ? rect.left - width - 4 : rect.right + 4
+    setSub({ key, items: child, x: x2, y: rect.top - 4 })
+  }
+
+  const rows = (list: MenuItem[], inSub = false) =>
+    list.map((it, i) => {
+      if ('sep' in it && it.sep) return <div key={'s' + i} className="ctx-sep" />
+      if ('head' in it && it.head) return <div key={'h' + i} className="ctx-head">{it.label}</div>
+      const item = it as Extract<MenuItem, { id: string }>
+      const child = item.children
+      return (
+        <button
+          key={item.id + i}
+          className={
+            'ctx-item' +
+            (item.danger ? ' danger' : '') +
+            (child && sub?.key === item.id ? ' is-open' : '')
+          }
+          disabled={item.disabled}
+          onMouseEnter={(ev) => {
+            cancelClose()
+            if (child) openSub(ev, child, item.id)
+            // hovering a plain row of the root closes an open submenu, but never itself
+            else if (sub && !inSub) setSub(null)
+          }}
+          onClick={(ev) => {
+            if (child) {
+              openSub(ev, child, item.id)
+              return
+            }
+            onPick(item.id)
+            onClose()
+          }}
+        >
+          <span className="ctx-icon">{item.checked ? <CheckMark /> : item.icon}</span>
+          <span className="ctx-label">{item.label}</span>
+          {child ? (
+            <span className="ctx-caret" aria-hidden="true">
+              {document.documentElement.dir === 'rtl' ? '‹' : '›'}
+            </span>
+          ) : null}
+          {!child && item.key && <span className="ctx-key">{item.key}</span>}
+        </button>
+      )
+    })
 
   return (
-    <div className="ctx" ref={ref} style={{ left, top, width }} role="menu">
-      {items.map((it, i) =>
-        'sep' in it && it.sep ? (
-          <div key={'s' + i} className="ctx-sep" />
-        ) : (
-          <button
-            key={(it as any).id}
-            className={'ctx-item' + ((it as any).danger ? ' danger' : '')}
-            disabled={(it as any).disabled}
-            onClick={() => {
-              onPick((it as any).id)
-              onClose()
-            }}
-          >
-            <span className="ctx-icon">{(it as any).icon}</span>
-            <span className="ctx-label">{(it as any).label}</span>
-            {(it as any).key && <span className="ctx-key">{(it as any).key}</span>}
-          </button>
-        )
+    <div
+      className="ctx"
+      ref={ref}
+      style={{ left: x, top: y, minWidth: 248, maxWidth: 'min(440px, 92vw)', maxHeight: 'calc(100vh - 16px)' }}
+      role="menu"
+      tabIndex={-1}
+      onMouseLeave={scheduleClose}
+    >
+      {rows(items)}
+      {sub && (
+        <div
+          className="ctx ctx-nested"
+          ref={nestedRef}
+          role="menu"
+          style={{ left: sub.x, top: sub.y, minWidth: 248, maxWidth: 'min(440px, 92vw)' }}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          {rows(sub.items, true)}
+        </div>
       )}
     </div>
   )

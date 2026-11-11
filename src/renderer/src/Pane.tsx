@@ -1,5 +1,5 @@
 import { t } from './i18n.ts'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Entry, Listing } from './api'
 import type { ColId } from './prefs'
 import {
@@ -17,7 +17,7 @@ import {
   type SortKey
 } from './format'
 import { PreviewPanel } from './PreviewPanel'
-import { FolderGlyph } from './Icons'
+import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon } from './Icons'
 import {
   ArrowUpIcon,
   ChevronLeftIcon,
@@ -36,13 +36,15 @@ import {
   SearchIcon,
   StarIcon,
   TrashIcon,
-  TypeIcon,
   XIcon
 } from './Icons'
 
 export type View = 'list' | 'grid'
 
 export type Virtual = { kind: 'flat' | 'search' | 'dupes' | 'archive'; label: string }
+
+/** A folder's own view format (Opus «Folder Format»), applied while its pane is there. */
+export type FolderView = { view?: View; columns?: string[]; sortKey?: string; sortAsc?: boolean }
 
 export type PaneState = {
   tabs: string[]
@@ -63,6 +65,8 @@ export type PaneState = {
   preview: { entry: Entry; from: number } | null
   error: string
   loading: boolean
+  /** the loaded folder's own format; null means «use the app defaults» */
+  fmt: FolderView | null
 }
 
 export type SearchQuery = { query: string; content: string; regex: boolean }
@@ -75,11 +79,29 @@ type Props = {
   view: View
   foldersFirst: boolean
   columns: ColId[]
+  /** per-column pixel width (a missing key uses the built-in width) */
+  colWidths: Record<string, number>
+  /** fields shown under a grid tile name */
+  gridMeta: ColId[]
+  onColumnWidth(id: ColId, px: number): void
+  onHeaderMenu(x: number, y: number): void
+  /** max lines a grid tile name may use */
+  nameLines: number
+  /** grid tile width in px; the thumbnail and the name box scale from it */
+  tileSize: number
+  /** a pane with one tab shows no tab strip */
+  hideSingleTab: boolean
+  /** kind → icon file of the preferred desktop theme; empty means our line glyphs */
+  iconSet?: Record<string, string>
   sizeFormat: 'human' | 'bytes'
   dateFormat: 'iso' | 'jalali' | 'short'
   showSeconds: boolean
   sizes: Record<string, string>
   marked: boolean
+  /** Ctrl+wheel in the grid resizes the tiles (icons and thumbnails alike) */
+  onZoom(delta: number): void
+  /** the command bar's «filter» bumps this to open the floating input */
+  filterTick: number
   filterRef(el: HTMLInputElement | null): void
   onActivate(): void
   onSort(key: SortKey): void
@@ -114,11 +136,25 @@ type Props = {
   onContext(path: string | null, x: number, y: number): void
   onDropInternal(paths: string[], dest: string, copy: boolean): void
   onDropFiles(files: File[], dest: string): void
+  /** visible columns/rows, so the app can move the selection by a page or a grid row */
+  onMetrics?(m: { cols: number; rows: number }): void
+  /** bump `tick` to scroll this entry into view */
+  reveal?: { path: string; tick: number } | null
 }
 
 const ROW = 28
-const TILE_W = 108
-const TILE_H = 112
+/** a tile grows with its width: bigger thumbnail, same number of name lines underneath */
+const tileGeo = (width: number, nameLines: number, metaLines = 0) => {
+  const w = Math.max(80, Math.min(240, Math.round(width) || 108))
+  const thumb = Math.round(w * 0.66)
+  return {
+    w,
+    thumb,
+    glyph: Math.round(w * 0.52),
+    h: thumb + 24 + Math.max(1, nameLines) * 17 + metaLines * 14,
+    font: w >= 170 ? 13 : w >= 130 ? 12 : 11.5
+  }
+}
 
 const isImageName = (n: string) => /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(n)
 
@@ -127,6 +163,14 @@ export function Pane(props: Props) {
   const [scrollTop, setScrollTop] = useState(0)
   const [box, setBox] = useState({ w: 600, h: 600 })
   const [searchOpen, setSearchOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  /** rubber-band rectangle, in the scroll content's coordinates */
+  const [band, setBand] = useState<{ left: number; top: number; width: number; height: number } | null>(
+    null
+  )
+  const marquee = useRef<{ x: number; y: number; base: Set<string> } | null>(null)
+  const filterInput = useRef<HTMLInputElement | null>(null)
+  const lastFilterTick = useRef(props.filterTick)
   const [query, setQuery] = useState('')
   const [content, setContent] = useState('')
   const [regex, setRegex] = useState(false)
@@ -134,10 +178,77 @@ export function Pane(props: Props) {
   const headRef = useRef<HTMLDivElement>(null)
   const anchor = useRef(0)
 
+  // a ref callback, not a mount effect: the rows element is unmounted while this pane shows a
+  // preview, and a `[]` effect would leave the fresh element unmeasured (stale 600px → 5 columns)
+  // Escape closes the floating filter even when the caret is elsewhere
   useEffect(() => {
+    if (!filterOpen) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setFilterOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [filterOpen])
+
+  useEffect(() => {
+    if (props.filterTick === lastFilterTick.current) return
+    lastFilterTick.current = props.filterTick
+    setFilterOpen(true)
+    setTimeout(() => filterInput.current?.focus(), 0)
+  }, [props.filterTick])
+
+  /** Drag on empty space to select everything the rectangle touches. */
+  const startMarquee = (ev: React.PointerEvent) => {
+    if (ev.button !== 0) return
+    const target = ev.target as HTMLElement
+    if (target.closest('.row,.tile')) return
     const el = listRef.current
     if (!el) return
+    const rect = el.getBoundingClientRect()
+    marquee.current = {
+      x: ev.clientX,
+      y: ev.clientY,
+      base: new Set(ev.ctrlKey ? pane.sel : [])
+    }
+    const move = (e: PointerEvent) => {
+      const start = marquee.current
+      if (!start) return
+      const left = Math.min(start.x, e.clientX)
+      const top = Math.min(start.y, e.clientY)
+      const width = Math.abs(e.clientX - start.x)
+      const height = Math.abs(e.clientY - start.y)
+      setBand({
+        left: left - rect.left + el.scrollLeft,
+        top: top - rect.top + el.scrollTop,
+        width,
+        height
+      })
+      if (width < 4 && height < 4) return
+      const hits: string[] = []
+      for (const node of el.querySelectorAll<HTMLElement>('.row,.tile')) {
+        const r = node.getBoundingClientRect()
+        if (r.left < left + width && left < r.right && r.top < top + height && top < r.bottom) {
+          const p = node.dataset['path']
+          if (p) hits.push(p)
+        }
+      }
+      props.onSel([...new Set([...start.base, ...hits])], 'set')
+    }
+    const up = () => {
+      marquee.current = null
+      setBand(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const attachList = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el
+    if (!el) return
     const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight })
+    measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
@@ -166,7 +277,19 @@ export function Pane(props: Props) {
   )
 
   const cur = pane.tabs[pane.ti]
+  // a single tab needs no strip; the + then lives in the path row so a new tab is still one click away
+  const showTabs = pane.tabs.length > 1 || !props.hideSingleTab
+  const TILE = tileGeo(props.tileSize, props.nameLines, props.gridMeta.length)
+  const TILE_W = TILE.w
+  const TILE_H = TILE.h
   const cols = Math.max(1, Math.floor(box.w / TILE_W))
+  const rows = view === 'list' ? Math.max(1, Math.floor(box.h / ROW)) : Math.max(1, Math.floor(box.h / TILE_H))
+
+  // the app needs these to step by a page or by one grid row
+  useEffect(() => {
+    props.onMetrics?.({ cols, rows })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cols, rows])
 
   // windowing: only the visible slice is mounted, so 100k-entry folders stay cheap
   const start = view === 'list'
@@ -176,8 +299,25 @@ export function Pane(props: Props) {
     ? Math.min(entries.length, Math.ceil((scrollTop + box.h) / ROW) + 8)
     : Math.min(entries.length, (Math.ceil((scrollTop + box.h) / TILE_H) + 2) * cols)
 
+  // keyboard navigation asks for the focused row to be visible; the windowing above only mounts
+  // what is on screen, so this has to work from the index rather than scrollIntoView
+  useEffect(() => {
+    const el = listRef.current
+    const t = props.reveal
+    if (!el || !t) return
+    const idx = entries.findIndex((e) => e.path === t.path)
+    if (idx < 0) return
+    const top = view === 'list' ? idx * ROW : Math.floor(idx / cols) * TILE_H
+    const h = view === 'list' ? ROW : TILE_H
+    if (top < el.scrollTop) el.scrollTop = top
+    else if (top + h > el.scrollTop + el.clientHeight) el.scrollTop = top + h - el.clientHeight
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.reveal?.tick])
+
   const click = (idx: number, ev: React.MouseEvent) => {
     const path = entries[idx].path
+    // clicking a row hands the keyboard back to the list; otherwise arrows keep editing the filter
+    if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
     // toggle is resolved against the newest selection in App, so fast ctrl-clicks accumulate
     if (ev.ctrlKey || ev.metaKey) {
       props.onSel([path], 'toggle')
@@ -245,12 +385,31 @@ export function Pane(props: Props) {
     rating: { label: t('امتیاز'), width: 74, end: true }
   }
 
+  const widthOf = (c: ColId) => props.colWidths[c] ?? COL_META[c].width
   const gridTemplate =
-    'minmax(0, 1fr) ' + props.columns.map((c) => `${COL_META[c].width}px`).join(' ')
+    'minmax(0, 1fr) ' + props.columns.map((c) => `${widthOf(c)}px`).join(' ')
 
   // with many columns a narrow pane has to scroll sideways instead of clipping them
-  const minWidth =
-    200 + props.columns.reduce((n, c) => n + COL_META[c].width + 8, 0)
+  const minWidth = 200 + props.columns.reduce((n, c) => n + widthOf(c) + 8, 0)
+
+  /** Drag the edge of a header cell; pointer maths flips in RTL so the edge follows the cursor. */
+  const startResize = (ev: React.PointerEvent, id: ColId) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const startX = ev.clientX
+    const startWidth = widthOf(id)
+    const dir = document.documentElement.dir === 'rtl' ? -1 : 1
+    const move = (e: PointerEvent) => {
+      const next = Math.round(Math.min(420, Math.max(48, startWidth + (e.clientX - startX) * dir)))
+      props.onColumnWidth(id, next)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
 
   const sortMark = (k: SortKey) => (sort.key === k ? (sort.asc ? ' ▲' : ' ▼') : '')
 
@@ -259,7 +418,8 @@ export function Pane(props: Props) {
 
   const startDrag = (ev: React.DragEvent, path: string) => {
     ev.dataTransfer.setData('application/x-mfm', JSON.stringify(dragPaths(path)))
-    ev.dataTransfer.effectAllowed = 'copyMove'
+    // the sidebar asks for `link` when bookmarking; `copyMove` would cancel that drop
+    ev.dataTransfer.effectAllowed = 'all'
   }
 
   const allowDrop = (ev: React.DragEvent) => {
@@ -302,6 +462,7 @@ export function Pane(props: Props) {
       className={'pane' + (active ? ' active' : '')}
       onMouseDown={props.onActivate}
     >
+      {showTabs && (
       <div className="tabs">
         <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? t('مبدأ') : t('مقصد')}</span>
         {pane.tabs.map((tabPath, i) => {
@@ -360,8 +521,21 @@ export function Pane(props: Props) {
           <PlusIcon size={13} />
         </button>
       </div>
+      )}
 
       <div className="path">
+        <button className="tb" title={t(t('بازگشت (Alt+←)'))} onClick={props.onBack}>
+          <ChevronRightIcon />
+        </button>
+        <button className="tb" title={t(t('جلو (Alt+→)'))} onClick={props.onForward}>
+          <ChevronLeftIcon />
+        </button>
+        <button className="tb" title={t(t('بالا (Backspace)'))} onClick={props.onUp}>
+          <ArrowUpIcon />
+        </button>
+        <button className="tb" title={t(t('نوسازی (Ctrl+R)'))} onClick={props.onRefresh}>
+          <RefreshIcon />
+        </button>
         <div className="crumbs">
           {crumbs(cur).map((c) => (
             <span key={c.path} className="crumb-wrap">
@@ -381,74 +555,23 @@ export function Pane(props: Props) {
           </span>
         )}
         <span className="spacer" />
-        <label className="filter">
-          <SearchIcon />
-          <input
-            ref={props.filterRef}
-            dir="auto"
-            placeholder={t(t('فیلتر نام'))}
-            value={pane.filter}
-            onChange={(e) => props.onFilter(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                props.onFilter('')
-                e.currentTarget.blur()
-              }
-              if (e.key === 'Enter' && entries[0]) props.onOpen(entries[0].path)
-            }}
-          />
-        </label>
-      </div>
-
-      <div className="actions">
-        <button className="tb" title={t(t('بازگشت (Alt+←)'))} onClick={props.onBack}>
-          <ChevronRightIcon />
-        </button>
-        <button className="tb" title={t(t('جلو (Alt+→)'))} onClick={props.onForward}>
-          <ChevronLeftIcon />
-        </button>
-        <button className="tb" title={t(t('بالا (Backspace)'))} onClick={props.onUp}>
-          <ArrowUpIcon />
-        </button>
-        <button className="tb" title={t(t('نوسازی (Ctrl+R)'))} onClick={props.onRefresh}>
-          <RefreshIcon />
-        </button>
-        <span className="divider" />
-        <button className="tb" title={t(t('کپی (F5)'))} onClick={() => props.onOp('copy')}>
-          <CopyIcon />
-        </button>
-        <button className="tb" title={t(t('انتقال (F6)'))} onClick={() => props.onOp('move')}>
-          <MoveIcon />
-        </button>
-        <button className="tb" title={t(t('تغییر نام (F2)'))} onClick={() => props.onOp('rename')}>
-          <RenameIcon />
-        </button>
-        <button className="tb" title={t(t('پوشهٔ نو (F7)'))} onClick={() => props.onOp('mkdir')}>
-          <FolderPlusIcon />
-        </button>
-        <button className="tb" title={t(t('سطل بازیافت (F8)'))} onClick={() => props.onOp('trash')}>
-          <TrashIcon />
-        </button>
-        <span className="divider" />
-        <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={props.onSize}>
-          <GaugeIcon />
-        </button>
-        <button className="tb" title={t(t('رنگ و آیکون پوشه'))} onClick={props.onFolderLook}>
-          <PaletteIcon />
-        </button>
+        {!showTabs && (
+          <button className="tb" title={t(t('تب نو (Ctrl+T)'))} onClick={props.onTabNew}>
+            <PlusIcon size={13} />
+          </button>
+        )}
         <button
-          className={'tb' + (pane.virtual?.kind === 'flat' ? ' on' : '')}
-          title={t(t('نمای تخت (Ctrl+Shift+F)'))}
-          onClick={props.onFlat}
+          className={'tb' + (pane.filter || filterOpen ? ' on' : '')}
+          title={t(t('فیلتر نام (Ctrl+F)'))}
+          aria-pressed={!!pane.filter || filterOpen}
+          onClick={() => {
+            setFilterOpen((open) => {
+              if (!open) setTimeout(() => filterInput.current?.focus(), 0)
+              return !open
+            })
+          }}
         >
-          <LayersIcon />
-        </button>
-        <button
-          className={'tb' + (pane.virtual?.kind === 'dupes' ? ' on' : '')}
-          title={t(t('یافتن فایل‌های تکراری'))}
-          onClick={props.onDupes}
-        >
-          <DupeIcon />
+          <FilterIcon />
         </button>
         <button
           className={'tb' + (searchOpen ? ' on' : '')}
@@ -457,7 +580,6 @@ export function Pane(props: Props) {
         >
           <SearchIcon />
         </button>
-        <span className="spacer" />
         <button
           className={'tb' + (props.marked ? ' on' : '')}
           title={t(t('نشان‌کردن این پوشه (Ctrl+D)'))}
@@ -466,6 +588,48 @@ export function Pane(props: Props) {
           <StarIcon filled={props.marked} />
         </button>
       </div>
+
+      {(filterOpen || pane.filter.length > 0) && (
+        <div className="filter-float">
+          <label className="filter">
+            <FilterIcon />
+            <input
+              ref={(el) => {
+                filterInput.current = el
+                props.filterRef(el)
+              }}
+              dir="auto"
+              placeholder={t(t('فیلتر نام'))}
+              value={pane.filter}
+              onChange={(e) => props.onFilter(e.target.value)}
+              onBlur={() => {
+                if (!pane.filter) setFilterOpen(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  props.onFilter('')
+                  setFilterOpen(false)
+                  e.currentTarget.blur()
+                }
+                if (e.key === 'Enter' && entries[0]) props.onOpen(entries[0].path)
+              }}
+            />
+            {pane.filter && (
+              <button
+                type="button"
+                className="x"
+                title={t(t('پاک کردن فیلتر'))}
+                onClick={() => {
+                  props.onFilter('')
+                  filterInput.current?.focus()
+                }}
+              >
+                <XIcon size={11} />
+              </button>
+            )}
+          </label>
+        </div>
+      )}
 
       {searchOpen && (
         <div className="searchbar">
@@ -498,7 +662,14 @@ export function Pane(props: Props) {
 
       {view === 'list' && (
         <div className="headwrap" ref={headRef}>
-        <div className="head" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
+        <div
+          className="head"
+          style={{ gridTemplateColumns: gridTemplate, minWidth }}
+          onContextMenu={(ev) => {
+            ev.preventDefault()
+            props.onHeaderMenu(ev.clientX, ev.clientY)
+          }}
+        >
           <button className="col" onClick={() => props.onSort('name')}>
             {t('نام')}{sortMark('name')}
           </button>
@@ -512,6 +683,14 @@ export function Pane(props: Props) {
               >
                 {meta.label}
                 {meta.sort ? sortMark(meta.sort) : ''}
+                <span
+                  className="col-resize"
+                  role="separator"
+                  aria-orientation="vertical"
+                  title={t('تغییر عرض ستون')}
+                  onPointerDown={(ev) => startResize(ev, c)}
+                  onClick={(ev) => ev.stopPropagation()}
+                />
               </button>
             )
           })}
@@ -521,7 +700,13 @@ export function Pane(props: Props) {
 
       <div
         className="rows"
-        ref={listRef}
+        ref={attachList}
+        onPointerDown={startMarquee}
+        onWheel={(ev) => {
+          if (view !== 'grid' || !ev.ctrlKey) return
+          ev.preventDefault()
+          props.onZoom(ev.deltaY < 0 ? 8 : -8)
+        }}
         onScroll={(e) => {
           setScrollTop(e.currentTarget.scrollTop)
           if (headRef.current) headRef.current.scrollLeft = e.currentTarget.scrollLeft
@@ -530,6 +715,13 @@ export function Pane(props: Props) {
         onDrop={(e) => dropOn(e, cur)}
         onContextMenu={(e) => menu(e, null)}
       >
+        {band && (
+          <div
+            className="marquee"
+            style={{ left: band.left, top: band.top, width: band.width, height: band.height }}
+            aria-hidden="true"
+          />
+        )}
         {pane.error ? (
           <div className="error">{pane.error}</div>
         ) : entries.length === 0 ? (
@@ -547,8 +739,12 @@ export function Pane(props: Props) {
             {entries.slice(start, end).map((e, k) => (
               <div
                 key={e.path}
+                data-path={e.path}
                 className={
-                  'row' + (pane.sel.includes(e.path) ? ' on' : '') + (pinSet.has(e.name) ? ' pinned' : '')
+                  'row' +
+                  (pane.sel.includes(e.path) ? ' on' : '') +
+                  (pinSet.has(e.name) ? ' pinned' : '') +
+                  (e.hidden ? ' meta-hidden' : '')
                 }
                 style={{ top: (start + k) * ROW, gridTemplateColumns: gridTemplate }}
                 title={e.path}
@@ -576,8 +772,18 @@ export function Pane(props: Props) {
                       <PinIcon filled />
                     </span>
                   )}
-                  {e.dir ? <FolderGlyph entry={e} /> : e.icon ? <img className="ic-img" src={mediaUrl(e.icon)} alt="" /> : <TypeIcon entry={e} />}
+                  {e.hidden && (
+                    <span className="hidmark" title={t('پنهان از فهرست')}>
+                      <EyeOffIcon />
+                    </span>
+                  )}
+                  <EntryIcon entry={e} iconSet={props.iconSet} />
                   <span dir="auto" className="trunc">{e.name}</span>
+                  {e.link && (
+                    <span className="symmark" title={t('پیوند نمادین')}>
+                      <LinkIcon />
+                    </span>
+                  )}
                 </span>
                 {props.columns.map((c) => (
                   <span key={c} className={COL_META[c].sort === 'mtime' || !COL_META[c].sort ? 'dim' : 'kind'}>
@@ -593,11 +799,17 @@ export function Pane(props: Props) {
               const idx = start + k
               const r = Math.floor(idx / cols)
               const c = idx % cols
+              // a real picture fills the tile; anything else is an icon and gets no box behind it
+              const pic = !e.dir && isImage(e.ext) && e.size < 8_000_000
+              const metaParts = props.gridMeta.map((c) => cell(c, e)).filter(Boolean)
               return (
                 <div
                   key={e.path}
-                  className={'tile' + (pane.sel.includes(e.path) ? ' on' : '')}
-                  style={{ top: r * TILE_H, insetInlineStart: c * TILE_W, width: TILE_W - 6 }}
+                  data-path={e.path}
+                  className={
+                    'tile' + (pane.sel.includes(e.path) ? ' on' : '') + (e.hidden ? ' meta-hidden' : '')
+                  }
+                  style={{ top: r * TILE_H, insetInlineStart: c * TILE_W, width: TILE_W - 6, height: TILE_H - 6 }}
                   draggable
                   onDragStart={(ev) => startDrag(ev, e.path)}
                   onDragOver={allowDrop}
@@ -607,23 +819,47 @@ export function Pane(props: Props) {
                   onDoubleClick={() => props.onOpen(e.path)}
                   title={e.path}
                 >
-                  <span className="thumb">
-                    {!e.dir && isImage(e.ext) && e.size < 8_000_000 ? (
+                  <span
+                    className={'thumb' + (pic ? ' pic' : ' flat')}
+                    style={{ width: TILE.thumb, height: TILE.thumb }}
+                  >
+                    {pic ? (
                       <img
                         src={isImageName(e.name) ? thumbUrl(e.path, 256) : mediaUrl(e.path)}
                         alt=""
                         loading="lazy"
                         draggable={false}
                       />
-                    ) : e.dir ? (
-                      <FolderGlyph entry={e} size={34} />
-                    ) : e.icon ? (
-                      <img src={mediaUrl(e.icon)} alt="" />
                     ) : (
-                      <TypeIcon entry={e} size={34} />
+                      <EntryIcon entry={e} size={TILE.glyph} iconSet={props.iconSet} />
+                    )}
+                    {labelColor(e.name) && (
+                      <span
+                        className="lbl tile-lbl"
+                        style={{ background: labelColor(e.name) }}
+                        title={t(t('برچسب'))}
+                      />
+                    )}
+                    {e.link && (
+                      <span className="symmark symmark-tile" title={t('پیوند نمادین')}>
+                        <LinkIcon />
+                      </span>
                     )}
                   </span>
-                  <span className="tile-name" dir="auto">{e.name}</span>
+                  <span
+                    className="tile-name"
+                    dir="auto"
+                    style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
+                  >{e.name}</span>
+                  {metaParts.length > 0 && (
+                    <span className="tile-meta" dir="auto">
+                      {metaParts.map((part, mi) => (
+                        <span className="tile-meta-line" key={mi}>
+                          {part}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
               )
             })}

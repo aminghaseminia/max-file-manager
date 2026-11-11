@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import {
+  ArchiveIcon,
   ArchiveOpenIcon,
   ChevronLeftIcon,
   DriveIcon,
@@ -13,6 +14,8 @@ import {
   LayersIcon,
   ListIcon,
   MoveIcon,
+  InfoIcon,
+  PaletteIcon,
   PinIcon,
   PlusIcon,
   PreviewIcon,
@@ -66,5 +69,9 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   searchIndex: <SearchIcon />,
   presets: <LayersIcon />,
   saveFormat: <ListIcon />,
+  look: <PaletteIcon />,
+  properties: <InfoIcon />,
+  compress: <ArchiveOpenIcon />,
+  extract: <ArchiveIcon />,
   prefs: <SettingsIcon />
 }

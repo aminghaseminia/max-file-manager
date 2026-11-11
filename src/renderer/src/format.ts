@@ -70,6 +70,29 @@ export function fmtDate(ms: number, format: DateFormat = 'iso', seconds = false)
   return fa(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${time}`)
 }
 
+export type PermLevel = 'rw' | 'r' | 'none'
+
+const PERM_SHIFT = [6, 3, 0]
+
+/** One permission class (0 owner, 1 group, 2 others) as the permissions table shows it. */
+export function permLevel(mode: number, cls: 0 | 1 | 2): PermLevel {
+  const shift = PERM_SHIFT[cls]
+  const read = (mode >> shift) & 4
+  const write = (mode >> shift) & 2
+  return read && write ? 'rw' : read ? 'r' : 'none'
+}
+
+/**
+ * New mode for one class. Folders need x to be entered, so it follows read; on files the
+ * existing execute bit is kept (the dialog has a separate «Is executable» switch).
+ */
+export function permMode(mode: number, cls: 0 | 1 | 2, level: PermLevel, dir: boolean): number {
+  const shift = PERM_SHIFT[cls]
+  const base = level === 'rw' ? 6 : level === 'r' ? 4 : 0
+  const exec = level === 'none' ? 0 : dir ? 1 : (mode >> shift) & 1
+  return (mode & ~(7 << shift)) | ((base | exec) << shift)
+}
+
 /** Unix mode bits → rwxr-xr-x */
 export function modeString(mode: number): string {
   const bits = ['r', 'w', 'x']
@@ -199,6 +222,37 @@ export function typeLabel(e: Entry): string {
 }
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
+
+/** Files the built-in editor is the right default app for; no extension counts as text. */
+const EDITOR_EXT = new Set(['txt', 'text', 'log', 'md', 'markdown', 'mdx', 'rst'])
+
+export const opensInEditor = (e: Entry): boolean =>
+  !e.dir && (e.ext === '' || EDITOR_EXT.has(e.ext.toLowerCase()))
+
+/** One keystroke of list/grid navigation. */
+export type NavMove = 'up' | 'down' | 'left' | 'right' | 'pageUp' | 'pageDown' | 'first' | 'last'
+
+/**
+ * Next focused entry: in a grid `cols` rows step sideways, a page is one viewport.
+ * Always clamped, so End/PgDn on the last row never runs past the list.
+ */
+export function navIndex(cur: number, move: NavMove, count: number, cols = 1, pageRows = 1): number {
+  if (count <= 0) return -1
+  if (cur < 0) return move === 'last' ? count - 1 : 0
+  const step = Math.max(1, Math.min(cols, count))
+  const page = Math.max(1, pageRows) * step
+  const target: Record<NavMove, number> = {
+    up: cur - step,
+    down: cur + step,
+    left: cur - 1,
+    right: cur + 1,
+    pageUp: cur - page,
+    pageDown: cur + page,
+    first: 0,
+    last: count - 1
+  }
+  return Math.max(0, Math.min(count - 1, target[move]))
+}
 
 /** Formats the archive reader understands (zip + tar family). */
 export const isArchiveName = (name: string): boolean =>

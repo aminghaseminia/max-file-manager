@@ -1,6 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
+import { fa } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
@@ -42,14 +43,16 @@ const PAGES: { id: Page; label: string }[] = [
 type Props = {
   prefs: Prefs
   palette: { id: string; name: string; color: string }[]
+  /** jump straight to a page (the column menu opens «columns») */
+  openPage?: Page
   onChange(patch: Partial<Prefs>): void
   onClose(): void
 }
 
-export function Preferences({ prefs, palette, onChange, onClose }: Props) {
+export function Preferences({ prefs, palette, openPage, onChange, onClose }: Props) {
   const [extInput, setExtInput] = useState('')
   const [newRoot, setNewRoot] = useState('')
-  const [page, setPage] = useState<Page>('appearance')
+  const [page, setPage] = useState<Page>(openPage ?? 'appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
 
   // while capturing, the next keydown becomes the accelerator for that command
@@ -128,7 +131,19 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
         <section className="prefs-body">
           {page === 'appearance' && (
             <>
-              {row(t('تم'), null, seg(prefs.theme, [{ v: 'dark', label: t('تیره') }, { v: 'light', label: t('روشن') }], 'theme'))}
+              {row(
+                t('تم'),
+                t('«سیستم» روشن/تیرهٔ سیستم‌عامل را زنده دنبال می‌کند'),
+                seg(
+                  prefs.theme,
+                  [
+                    { v: 'dark', label: t('تیره') },
+                    { v: 'light', label: t('روشن') },
+                    { v: 'system', label: t('سیستم') }
+                  ],
+                  'theme'
+                )
+              )}
               {row(
                 t('تایتل‌بار'),
                 t('سیستم = قاب سیستم‌عامل، برنامه = نوار خود اپ'),
@@ -152,8 +167,58 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
           {page === 'display' && (
             <>
               {row(t('نمای پیش‌فرض'), null, seg(prefs.view, [{ v: 'list', label: t('فهرست') }, { v: 'grid', label: t('شبکه') }], 'view'))}
+              {row(
+                t('اندازهٔ کاشی'),
+                t('بندانگشتی و آیکون با کاشی بزرگ می‌شوند'),
+                <div className="seg">
+                  {[
+                    { v: 88, label: t('کاشی کوچک') },
+                    { v: 112, label: t('کاشی متوسط') },
+                    { v: 148, label: t('کاشی بزرگ') },
+                    { v: 196, label: t('کاشی بزرگ‌تر') }
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      className={prefs.tileSize === o.v ? 'on' : ''}
+                      onClick={() => onChange({ tileSize: o.v })}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {row(
+                t('خطوط نام در نمای شبکه'),
+                t('نام بلند در همین تعداد خط بریده می‌شود'),
+                <div className="seg">
+                  {[1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      className={prefs.gridNameLines === n ? 'on' : ''}
+                      onClick={() => onChange({ gridNameLines: n })}
+                    >
+                      {fa(n)}
+                    </button>
+                  ))}
+                </div>
+              )}
               {row(t('پوشه‌ها اول فهرست'), t('مانند Directory Opus و FreeCommander'), check(prefs.foldersFirst, 'foldersFirst'))}
-              {row(t('نمایش فایل‌های مخفی'), t('پیش‌فرضِ آغاز به کار'), check(prefs.showHidden, 'showHidden'))}
+              {row(
+                t('آیکون فایل‌ها و پوشه‌ها'),
+                t('آیکونست سیستم (Pure) یا گلیف‌های خطی خود برنامه'),
+                seg(
+                  prefs.fileIcons,
+                  [
+                    { v: 'theme', label: t('آیکونست سیستم') },
+                    { v: 'line', label: t('خطی') }
+                  ],
+                  'fileIcons'
+                )
+              )}              {row(
+                t('نمایش فایل‌های مخفی'),
+                t('پوشه‌هایی که از فهرست پنهان شده‌اند هم با این گزینه دیده می‌شوند'),
+                check(prefs.showHidden, 'showHidden')
+              )}
               {row(
                 t('قالب اندازه'),
                 null,
@@ -232,12 +297,55 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 )
               })}
               <div className="hint">{t('ستون «نام» همیشه اول است. ترتیب انتخاب‌شده در فهرست اعمال می‌شود.')}</div>
+
+              <div className="pref-group">{t('زیرنویس بندانگشتی')}</div>
+              <div className="hint">
+                {t('زیر نام فایل در نمای بندانگشتی، کوچک و کم‌رنگ؛ حداکثر چهار مورد.')}
+              </div>
+              {COLUMNS.map((c) => {
+                const on = prefs.gridMeta.includes(c.id)
+                return (
+                  <div className="pref-row" key={'meta-' + c.id}>
+                    <div className="pref-label">
+                      <span>{labelOf(c)}</span>
+                    </div>
+                    <div className="pref-control">
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) =>
+                            onChange({
+                              gridMeta: e.target.checked
+                                ? [...prefs.gridMeta, c.id].slice(0, 4)
+                                : prefs.gridMeta.filter((x) => x !== c.id)
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )
+              })}
             </>
           )}
 
           {page === 'toolbar' && (
             <>
               <div className="hint">{t('دکمه‌های نوار فرمان را انتخاب و مرتب کن. نوار خالی یعنی نوار پنهان.')}</div>
+              {row(
+                t('ظاهر دکمه‌ها'),
+                t('فقط آیکون جا بیشتری می‌دهد؛ فقط متن ساده‌تر است'),
+                seg(
+                  prefs.toolbarMode,
+                  [
+                    { v: 'icon', label: t('فقط آیکون') },
+                    { v: 'icon-text', label: t('آیکون و متن') },
+                    { v: 'text', label: t('فقط متن') }
+                  ],
+                  'toolbarMode'
+                )
+              )}
               {COMMANDS.map((c) => {
                 const on = prefs.toolbar.includes(c.id)
                 const move = (delta: number) => {
@@ -297,7 +405,7 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                   به چند فرمان داده شده؛ اولی در فهرست اجرا می‌شود.|is bound to several commands; the first one in the list wins.
                 </div>
               )}
-              {(Object.keys(GROUP_ORDER) as CommandGroup[]).map((g) => (
+              {GROUP_ORDER.map((g) => (
                 <div key={g}>
                   <div className="pref-group">{groupLabelOf(g)}</div>
                   {COMMANDS.filter((c) => c.group === g).map((c) => {
@@ -365,6 +473,11 @@ export function Preferences({ prefs, palette, onChange, onClose }: Props) {
                 seg(prefs.sidebar, [{ v: 'docked', label: t('چسبیده') }, { v: 'float', label: t('شناور') }], 'sidebar')
               )}
               {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+              {row(
+                t('پنهان‌کردن نوار تب با یک تب'),
+                t('وقتی پنجره فقط یک تب دارد، نوار بالای فهرست حذف می‌شود'),
+                check(prefs.hideSingleTab, 'hideSingleTab')
+              )}
             </>
           )}
 

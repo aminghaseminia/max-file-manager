@@ -1,12 +1,23 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, net, protocol, shell } from 'electron'
-import { readFileSync, promises as fs } from 'node:fs'
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  nativeImage,
+  net,
+  protocol,
+  screen,
+  shell
+} from 'electron'
+import { constants as fsConstants, readFileSync, writeFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
 import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
-import { iconsIn, themeDirs } from './icons.ts'
+import { iconSetPaths, iconsIn, themeDirs } from './icons.ts'
+import { readNativeFolderLook } from './folderlook.ts'
 import { preview } from './preview.ts'
 import {
   LABELS,
@@ -21,6 +32,8 @@ import {
   type FolderMeta
 } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
+import { fitWindow } from './window-bounds.ts'
+import { defaultApp, launchApp, listApps, mimeForPath, openWithDefault } from './apps.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
@@ -49,7 +62,7 @@ import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
-import { remove } from './ops.ts'
+import { freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import type { DirRef, Entry } from './types.ts'
 
@@ -60,6 +73,30 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 type Chrome = { customTitlebar: boolean; rounded: boolean }
+
+const idCache = new Map<string, string>()
+
+/** Resolve a uid/gid to a name with `getent`; a missing entry keeps the number. */
+function ownerName(kind: 'passwd' | 'group', id: number): Promise<string> {
+  const key = `${kind}:${id}`
+  const cached = idCache.get(key)
+  if (cached !== undefined) return Promise.resolve(cached)
+  return new Promise((resolve) => {
+    const done = (name: string) => {
+      idCache.set(key, name)
+      resolve(name)
+    }
+    try {
+      const child = execFile('getent', [kind, String(id)], { timeout: 1000 }, (err, out) => {
+        const name = err ? '' : String(out).split(':')[0].trim()
+        done(name || String(id))
+      })
+      child.on('error', () => done(String(id)))
+    } catch {
+      done(String(id))
+    }
+  })
+}
 
 const statePath = () => path.join(app.getPath('userData'), 'state.json')
 
@@ -123,7 +160,7 @@ const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'])
 
 async function list(dir: string, showHidden: boolean, dims = false) {
   const dirents = await fs.readdir(dir, { withFileTypes: true })
-  const entries: Entry[] = dirents
+  let entries: Entry[] = dirents
     .filter((d) => showHidden || !d.name.startsWith('.'))
     .map((d) => ({
       name: d.name,
@@ -131,7 +168,8 @@ async function list(dir: string, showHidden: boolean, dims = false) {
       dir: d.isDirectory(),
       size: 0,
       mtime: 0,
-      ext: path.extname(d.name).slice(1).toLowerCase()
+      ext: path.extname(d.name).slice(1).toLowerCase(),
+      link: d.isSymbolicLink() || undefined
     }))
   await fillStats(entries)
   // folder look comes from the folder's own marker file; capped so a 5k-folder directory stays quick
@@ -140,11 +178,22 @@ async function list(dir: string, showHidden: boolean, dims = false) {
     await Promise.all(
       folders.slice(i, i + 64).map(async (e) => {
         const m = await readMeta(e.path)
+        if (m?.hidden) e.hidden = true
         if (m?.color) e.color = m.color
-        if (m?.icon) e.icon = m.icon
+        if (m?.icon) {
+          e.icon = m.icon
+          return
+        }
+        // a colour picked in this app is an explicit choice: keep our tinted glyph, not the theme's
+        if (m?.color) return
+        // Dolphin's `.directory` and Windows' desktop.ini already carry an icon: honour it
+        const native = await readNativeFolderLook(e.path)
+        if (native.icon) e.icon = native.icon
       })
     )
   }
+  // «don't list me» follows the hidden-files switch, exactly like Dolphin's hidden attribute
+  if (!showHidden) entries = entries.filter((e) => !e.hidden)
   // pixel size needs a decoder, so it is opt-in and capped
   if (dims) {
     const images = entries.filter((e) => !e.dir && IMAGE_EXT.has(e.ext) && e.size < 20_000_000).slice(0, 400)
@@ -161,11 +210,22 @@ async function list(dir: string, showHidden: boolean, dims = false) {
 }
 
 /** Subfolders only, no stat: what the sidebar tree needs. */
-async function dirs(dir: string): Promise<DirRef[]> {
-  const kids = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
-  return kids
-    .filter((k) => k.isDirectory() && !k.name.startsWith('.'))
-    .map((k) => ({ name: k.name, path: path.join(dir, k.name) }))
+async function dirs(dir: string, showHidden = false): Promise<DirRef[]> {
+  const kids = (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
+    .filter((k) => k.isDirectory() && (showHidden || !k.name.startsWith('.')))
+    .slice(0, 1000)
+  const out: DirRef[] = []
+  for (let i = 0; i < kids.length; i += 64) {
+    const slice = await Promise.all(
+      kids.slice(i, i + 64).map(async (k) => {
+        const p = path.join(dir, k.name)
+        if (!showHidden && (await readMeta(p))?.hidden) return null
+        return { name: k.name, path: p }
+      })
+    )
+    for (const item of slice) if (item) out.push(item)
+  }
+  return out
 }
 
 const isDir = (p: string) => fs.stat(p).then((s) => s.isDirectory(), () => false)
@@ -220,6 +280,7 @@ async function dirSize(root: string): Promise<{ bytes: number; files: number; ca
 
 const stateFile = () => path.join(app.getPath('userData'), 'state.json')
 
+
 async function readState(): Promise<any> {
   const raw = await fs.readFile(stateFile(), 'utf8').catch(() => '')
   try {
@@ -237,18 +298,58 @@ async function saveChrome(next: Chrome): Promise<void> {
   await fs.writeFile(stateFile(), JSON.stringify(st, null, 2))
 }
 
+/** Size/position of the window; separate from state.json because main owns it alone. */
+const boundsPath = () => path.join(app.getPath('userData'), 'window.json')
+
+type SavedBounds = { x: number; y: number; width: number; height: number; maximized?: boolean }
+
+function readBounds(): SavedBounds | null {
+  try {
+    const b = JSON.parse(readFileSync(boundsPath(), 'utf8'))
+    const ok = ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(b?.[k]))
+    return ok ? (b as SavedBounds) : null
+  } catch {
+    return null
+  }
+}
+
+/** Persist the *normal* bounds, so un-maximizing later still restores the last free size. */
+function saveBounds(w: BrowserWindow | null): void {
+  if (!w || w.isDestroyed()) return
+  try {
+    const b = w.getNormalBounds()
+    writeFileSync(boundsPath(), JSON.stringify({ ...b, maximized: w.isMaximized() }))
+  } catch {
+    // a read-only config dir must not take the window down
+  }
+}
+
+/**
+ * The saved rectangle when it is still on a connected display, otherwise a centred
+ * default on the primary screen. The decision itself is pure and unit-tested.
+ */
+function windowBounds(): { x: number; y: number; width: number; height: number } {
+  const areas = screen.getAllDisplays().map((d) => d.workArea)
+  return fitWindow(readBounds(), areas, screen.getPrimaryDisplay().workArea, {
+    width: 1320,
+    height: 860,
+    minWidth: 780,
+    minHeight: 480
+  })
+}
+
 function createWindow(): BrowserWindow {
   const frameless = chrome.customTitlebar
   const transparent = frameless && chrome.rounded
+  const saved = readBounds()
   const w = new BrowserWindow({
-    width: 1320,
-    height: 860,
+    ...windowBounds(),
     minWidth: 780,
     minHeight: 480,
     frame: !frameless,
     transparent,
     backgroundColor: transparent ? '#00000000' : '#16181d',
-    hasShadow: true,
+    hasShadow: false,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -258,7 +359,20 @@ function createWindow(): BrowserWindow {
       sandbox: false
     }
   })
-  w.on('ready-to-show', () => w.show())
+  w.on('ready-to-show', () => {
+    w.show()
+    if (saved?.maximized) w.maximize()
+  })
+  let boundsTimer: NodeJS.Timeout | null = null
+  const remember = () => {
+    if (boundsTimer) clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(() => saveBounds(w), 400)
+  }
+  w.on('resize', remember)
+  w.on('move', remember)
+  w.on('maximize', remember)
+  w.on('unmaximize', remember)
+  w.on('close', () => saveBounds(w))
   w.on('maximize', () => w.webContents.send('window:maximized', true))
   w.on('unmaximize', () => w.webContents.send('window:maximized', false))
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -315,6 +429,73 @@ app.whenReady().then(async () => {
       format: meta?.format ?? null
     }
   })
+  /** Everything the properties dialog shows, in one stat round-trip. */
+  ipcMain.handle('fs:properties', async (_e, p: string) => {
+    if (!path.isAbsolute(p)) return { error: 'bad_path' }
+    const link = await fs.lstat(p).catch(() => null)
+    if (!link) return { error: 'not_found' }
+    const symbolic = link.isSymbolicLink()
+    const target = symbolic ? await fs.readlink(p).catch(() => '') : ''
+    const st = symbolic ? await fs.stat(p).catch(() => null) : link
+    if (!st) return { error: 'not_found' }
+    const [readable, writable, executable, user, group] = await Promise.all([
+      fs.access(p, fsConstants.R_OK).then(() => true, () => false),
+      fs.access(p, fsConstants.W_OK).then(() => true, () => false),
+      fs.access(p, fsConstants.X_OK).then(() => true, () => false),
+      ownerName('passwd', st.uid),
+      ownerName('group', st.gid)
+    ])
+    const ext = path.extname(p).slice(1).toLowerCase()
+    const isDir = st.isDirectory()
+    let items: number | null = null
+    if (isDir) items = (await fs.readdir(p).catch(() => [])).length
+    let dims: { w: number; h: number } | null = null
+    if (!isDir && IMAGE_EXT.has(ext)) {
+      const size = nativeImage.createFromPath(p).getSize()
+      if (size.width) dims = { w: size.width, h: size.height }
+    }
+    return {
+      name: path.basename(p) || p,
+      path: p,
+      dir: isDir,
+      size: st.size,
+      ext,
+      mode: st.mode & 0o777,
+      readable,
+      writable,
+      executable,
+      uid: st.uid,
+      gid: st.gid,
+      user,
+      group,
+      nlink: st.nlink,
+      inode: Number(st.ino),
+      device: Number(st.dev),
+      birthtime: st.birthtimeMs,
+      mtime: st.mtimeMs,
+      atime: st.atimeMs,
+      ctime: st.ctimeMs,
+      link: symbolic,
+      target,
+      mime: mimeForPath(p),
+      items,
+      dims
+    }
+  })
+
+  /** chmod from the permissions tab; only the permission bits are accepted. */
+  ipcMain.handle('fs:chmod', async (_e, a: { path?: string; mode?: number }) => {
+    if (!path.isAbsolute(a?.path ?? '')) return { error: 'bad_path' }
+    const mode = Number(a?.mode)
+    if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) return { error: 'bad_mode' }
+    try {
+      await fs.chmod(a.path!, mode)
+      return { ok: true }
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle('fs:statfs', async (_e, p: string) => {
     if (!path.isAbsolute(p)) return null
     const s = await fs.statfs(p).catch(() => null)
@@ -333,7 +514,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('image:save', (_e, a: { src: string; dataUrl: string; mode: 'overwrite' | 'copy' }) =>
     saveImage(a.src, a.dataUrl, a.mode)
   )
-  ipcMain.handle('fs:dirs', (_e, dir: string) => dirs(dir))
+  ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false) => dirs(dir, !!showHidden))
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
   ipcMain.handle('fs:size', (_e, p: string) =>
@@ -639,6 +820,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:labels', () => LABELS)
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
+  ipcMain.handle('icons:set', () => iconSetPaths())
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
@@ -655,9 +837,37 @@ app.whenReady().then(async () => {
   ipcMain.handle('job:clear', () => engine.clear())
   ipcMain.handle('undo:run', () => engine.undo())
   ipcMain.handle('undo:depth', () => engine.undoDepth())
-  ipcMain.handle('shell:open', (_e, p: string) =>
-    path.isAbsolute(p) ? shell.openPath(p) : Promise.resolve('bad path')
-  )
+  /**
+   * `shell.openPath` resolves to '' even when the hand-off failed, so the default app is
+   * looked up and spawned directly — the same path «Open with» proves works.
+   */
+  ipcMain.handle('shell:open', async (_e, p: string) => {
+    if (!path.isAbsolute(p)) return { error: 'bad_path' }
+    return openWithDefault(p)
+  })
+
+  /** Save an image from the renderer's clipboard as a normal file in the target folder. */
+  ipcMain.handle('clipboard:saveImage', async (_e, a: { dir: string; name: string; data: Uint8Array }) => {
+    const dir = a?.dir ?? ''
+    if (!path.isAbsolute(dir)) return { error: 'bad_dir' }
+    const stat = await fs.stat(dir).catch(() => null)
+    if (!stat?.isDirectory()) return { error: 'bad_dir' }
+    const data = Buffer.from(a?.data ?? [])
+    if (!data.length || data.length > 50 * 1024 * 1024) return { error: 'bad_image' }
+    const safe = /^[\w.-]{1,80}$/.test(a?.name ?? '') ? a.name : 'clipboard.png'
+    const target = await freeName(path.join(dir, safe))
+    const partial = target + '.part'
+    await fs.writeFile(partial, data)
+    await fs.rename(partial, target)
+    return { path: target }
+  })
+
+  ipcMain.handle('apps:list', (_e, p: string) => (path.isAbsolute(p) ? listApps(p) : []))
+  ipcMain.handle('apps:default', (_e, p: string) => (path.isAbsolute(p) ? defaultApp(p) : null))
+  ipcMain.handle('apps:launch', (_e, id: string, p: string) => {
+    if (!path.isAbsolute(id) || !path.isAbsolute(p)) return { error: 'bad_path' }
+    return launchApp(id, p)
+  })
   ipcMain.handle('window:control', (_e, action: 'minimize' | 'maximize' | 'close') => {
     if (!win) return
     if (action === 'minimize') win.minimize()

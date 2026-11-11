@@ -5,6 +5,7 @@ import { fa, fmtDate, fmtSize, mediaUrl } from './format'
 import { ChevronLeftIcon, ChevronRightIcon, FileIcon, GridIcon, XIcon } from './Icons'
 import { renderMarkdown } from './md'
 import { cleanHtml, isHtmlPath } from './html'
+import { highlightCode, langFor } from './highlight'
 
 type Props = {
   entry: Entry | null
@@ -54,6 +55,7 @@ export function PreviewPanel({
   }, [entry, maxKB])
 
   const lines = (data?.text ?? '').split(/\r?\n/)
+  const lang = entry ? langFor(entry.path) : null
 
   useEffect(() => {
     if (!entry || !/\.pdf$/i.test(entry.path)) return
@@ -149,7 +151,10 @@ export function PreviewPanel({
                 {(data.text ?? '').split('\n').slice(0, 4000).map((ln, n) => (
                   <div className="pline" key={n}>
                     <span className="pln">{n + 1}</span>
-                    <span className="ptext">{ln || ' '}</span>
+                    <span
+                      className="ptext"
+                      dangerouslySetInnerHTML={{ __html: ln ? highlightCode(ln, 'xml') : ' ' }}
+                    />
                   </div>
                 ))}
               </div>
@@ -172,7 +177,10 @@ export function PreviewPanel({
                 {(data.text ?? '').split('\n').slice(0, 4000).map((ln, n) => (
                   <div className="pline" key={n}>
                     <span className="pln">{n + 1}</span>
-                    <span className="ptext">{ln || ' '}</span>
+                    <span
+                      className="ptext"
+                      dangerouslySetInnerHTML={{ __html: ln ? highlightCode(ln, 'xml') : ' ' }}
+                    />
                   </div>
                 ))}
               </div>
@@ -189,7 +197,11 @@ export function PreviewPanel({
                 {lines.slice(0, 4000).map((ln, n) => (
                   <div className="pline" key={n}>
                     <span className="pln">{n + 1}</span>
-                    <span className="ptext">{ln || ' '}</span>
+                    <span
+                      className="ptext"
+                      // highlight.js escapes first, so the markup is safe to inject
+                      dangerouslySetInnerHTML={{ __html: ln ? highlightCode(ln, lang) : ' ' }}
+                    />
                   </div>
                 ))}
                 {lines.length > 4000 && (

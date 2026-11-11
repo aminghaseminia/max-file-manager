@@ -75,10 +75,22 @@ export function Gallery({
   const [resize, setResize] = useState<{ w: number; h: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
+  const activeThumb = useRef<HTMLButtonElement | null>(null)
 
   const total = images.length
   const cur = images[Math.min(at, total - 1)]
-  const strip = useMemo(() => images.slice(0, 60), [images])
+  // every image is reachable; a huge folder keeps a 2000-thumb window around the active one
+  const STRIP_CAP = 2000
+  const stripFrom = total > STRIP_CAP ? Math.min(Math.max(at - STRIP_CAP / 2, 0), total - STRIP_CAP) : 0
+  const strip = useMemo(
+    () => images.slice(stripFrom, stripFrom + STRIP_CAP),
+    [images, stripFrom]
+  )
+
+  useEffect(() => {
+    // `scrollIntoView` handles the RTL strip correctly (scrollLeft is negative there)
+    activeThumb.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' })
+  }, [at, strip.length])
 
   const resetView = () => {
     setZoom(1)
@@ -548,10 +560,11 @@ export function Gallery({
           {strip.map((img, i) => (
             <button
               key={img.path}
-              className={'thumb-btn' + (i === at ? ' on' : '')}
+              ref={stripFrom + i === at ? activeThumb : undefined}
+              className={'thumb-btn' + (stripFrom + i === at ? ' on' : '')}
               title={img.name}
               onClick={() => {
-                setAt(i)
+                setAt(stripFrom + i)
                 setEdit(null)
                 setCrop(null)
                 setCropping(false)
@@ -562,7 +575,12 @@ export function Gallery({
             </button>
           ))}
           {total > strip.length && (
-            <span className="hint">و {fa(total - strip.length)} تصویر دیگر…</span>
+            <span className="hint">
+              {stripFrom > 0 ? `${fa(stripFrom)} تصویر قبل… · ` : ''}
+              {total - stripFrom - strip.length > 0
+                ? `و ${fa(total - stripFrom - strip.length)} تصویر دیگر…`
+                : ''}
+            </span>
           )}
         </div>
       )}

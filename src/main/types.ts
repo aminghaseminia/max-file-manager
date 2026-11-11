@@ -18,6 +18,10 @@ export type Entry = {
   /** image pixel size, only when the caller asked for it */
   w?: number
   h?: number
+  /** a folder marked «don't list me» in its own .mfm.json (shown only with hidden files) */
+  hidden?: boolean
+  /** the entry is a symbolic link (the path itself, not its target) */
+  link?: boolean
 }
 export type DirRef = { name: string; path: string }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }

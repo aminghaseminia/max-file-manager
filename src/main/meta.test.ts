@@ -111,3 +111,19 @@ test('a rating and a note written at the same time both survive', async () => {
   assert.deepEqual(meta?.ratings, { 'x.png': 4 }, 'the rating is not lost to the note write')
   assert.deepEqual(meta?.notes, { 'x.png': 'همزمان' })
 })
+
+test('a folder can hide itself from the parent listing and nothing else is touched', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-hide-'))
+
+  await setMeta(dir, { hidden: true })
+  assert.deepEqual(await readMeta(dir), { hidden: true }, 'the folder stays plain on disk')
+
+  await setMeta(dir, { color: '#4c8dff' })
+  assert.deepEqual(await readMeta(dir), { hidden: true, color: '#4c8dff' }, 'merge keeps the flag')
+
+  await setMeta(dir, { hidden: false })
+  assert.deepEqual(await readMeta(dir), { color: '#4c8dff' }, 'unhiding drops only the flag')
+
+  await setMeta(dir, { color: '' })
+  assert.equal(await readMeta(dir), null, 'and the marker disappears when it holds nothing')
+})

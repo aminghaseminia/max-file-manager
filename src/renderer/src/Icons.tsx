@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import type { Entry } from './api'
-import { kindOf, type Kind } from './format'
+import { kindOf, mediaUrl, type Kind } from './format'
 
 /** One stroke style for every icon: flat, 1.7px, inherits the text colour. */
 const S = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
@@ -19,13 +19,13 @@ const S = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
   </svg>
 )
 
-export const FolderIcon = () => (
-  <S>
+export const FolderIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M3 8a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.5 8H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
   </S>
 )
-export const FolderPlusIcon = () => (
-  <S>
+export const FolderPlusIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M3 8a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.5 8H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     <path d="M12 12v5M9.5 14.5h5" />
   </S>
@@ -36,63 +36,63 @@ const FileBase = () => (
     <path d="M14 3v5h5" />
   </>
 )
-export const FileIcon = () => (
-  <S>
+export const FileIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <FileBase />
   </S>
 )
-export const ImageIcon = () => (
-  <S>
+export const ImageIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="4" width="18" height="16" rx="2" />
     <circle cx="9" cy="10" r="1.6" />
     <path d="M4 18l5-5 3.5 3.5L16 13l4 4" />
   </S>
 )
-export const VideoIcon = () => (
-  <S>
+export const VideoIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="5" width="18" height="14" rx="2" />
     <path d="M10.5 9.5l4.5 2.5-4.5 2.5z" />
   </S>
 )
-export const AudioIcon = () => (
-  <S>
+export const AudioIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M9 16.5V6l9-2v10.5" />
     <circle cx="6.5" cy="17.5" r="2.5" />
     <circle cx="15.5" cy="15.5" r="2.5" />
   </S>
 )
-export const ArchiveIcon = () => (
-  <S>
+export const ArchiveIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <FileBase />
     <path d="M12 8v2M12 12v2M12 16v1" />
   </S>
 )
-export const CodeIcon = () => (
-  <S>
+export const CodeIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <FileBase />
     <path d="M10.5 12.5l-2 2 2 2M13.5 12.5l2 2-2 2" />
   </S>
 )
-export const DocIcon = () => (
-  <S>
+export const DocIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <FileBase />
     <path d="M9 12.5h6M9 16h4" />
   </S>
 )
-export const PdfIcon = () => (
-  <S>
+export const PdfIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <FileBase />
     <path d="M9.5 12.5h5v4h-5z" />
   </S>
 )
-export const SheetIcon = () => (
-  <S>
+export const SheetIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="4" width="18" height="16" rx="2" />
     <path d="M3 10h18M10 10v10M15 10v10" />
   </S>
 )
-export const SlidesIcon = () => (
-  <S>
+export const SlidesIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="4" width="18" height="13" rx="2" />
     <path d="M12 17v3M8.5 20h7" />
   </S>
@@ -174,6 +174,15 @@ export const SearchIcon = () => (
     <path d="M15.5 15.5L20 20" />
   </S>
 )
+/** A symbolic link: a thin chain, never a badge. */
+export const LinkIcon = () => (
+  <S>
+    <path d="M9.5 14.5l5-5" />
+    <path d="M11 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1" />
+    <path d="M13 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1" />
+  </S>
+)
+
 export const EyeIcon = () => (
   <S>
     <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
@@ -300,10 +309,29 @@ export const MenuIcon = () => (
     <path d="M4 6.5h16M4 12h16M4 17.5h10" />
   </S>
 )
+/** Properties: an information mark. */
+export const InfoIcon = () => (
+  <S>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5" />
+    <path d="M12 7.8h.01" />
+  </S>
+)
+
+/** The filter: a funnel, so the button reads as «narrow the list». */
+export const FilterIcon = () => (
+  <S>
+    <path d="M4 5h16l-6.2 7.2v6.4l-3.6 1.8v-8.2L4 5z" />
+  </S>
+)
+
+/** Sliders read as «settings» at 16 px; a many-toothed gear looked like a sun. */
 export const SettingsIcon = () => (
   <S>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M12 4v2M12 18v2M4.5 7.5l1.7 1.7M17.8 14.8l1.7 1.7M4.5 16.5l1.7-1.7M17.8 9.2l1.7-1.7" />
+    <path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h9M17 17h3" />
+    <circle cx="13" cy="7" r="2" />
+    <circle cx="9" cy="12" r="2" />
+    <circle cx="15" cy="17" r="2" />
   </S>
 )
 export const MinusIcon = () => (
@@ -354,6 +382,47 @@ export function FolderGlyph({ entry, size = 15 }: { entry: Entry; size?: number 
         </span>
       )
     }
+  }
+  if (entry.icon && !entry.icon.startsWith('g:')) {
+    return (
+      <img
+        className="ic-img"
+        src={mediaUrl(entry.icon)}
+        alt=""
+        style={{ width: size, height: size }}
+        draggable={false}
+      />
+    )
+  }
+  return <TypeIcon entry={entry} size={size} color={entry.color} />
+}
+
+/**
+ * What one entry shows in a row or a tile: the folder's own icon first, then the desktop theme's
+ * file icon (Pure unless the user switched back to line icons), then our own glyph.
+ */
+export function EntryIcon({
+  entry,
+  size = 15,
+  iconSet
+}: {
+  entry: Entry
+  size?: number
+  iconSet?: Record<string, string>
+}) {
+  if (entry.icon) return <FolderGlyph entry={entry} size={size} />
+  // a colour from .mfm.json only exists on our own glyph, so it wins over the theme icon
+  const src = entry.color ? '' : (iconSet?.[kindOf(entry)] ?? '')
+  if (src) {
+    return (
+      <img
+        className="ic-img"
+        src={mediaUrl(src)}
+        alt=""
+        style={{ width: size, height: size }}
+        draggable={false}
+      />
+    )
   }
   return <TypeIcon entry={entry} size={size} color={entry.color} />
 }

@@ -105,5 +105,7 @@ export async function readTextFile(p: string): Promise<{ text: string; size: num
   if (st.size > 8_000_000) return { error: 'فایل بزرگ‌تر از ۸ مگابایت است؛ با ویرایشگر باز نمی‌شود' }
   const buf = await fs.readFile(p).catch(() => null)
   if (!buf) return { error: 'خواندن فایل ممکن نشد' }
+  // a NUL in the head means binary; the editor would only show broken characters
+  if (buf.subarray(0, 4096).includes(0)) return { error: 'این فایل متنی نیست' }
   return { text: buf.toString('utf8'), size: st.size }
 }

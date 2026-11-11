@@ -5,10 +5,12 @@ contextBridge.exposeInMainWorld('api', {
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
+  chmod: (p: string, mode: number) => ipcRenderer.invoke('fs:chmod', { path: p, mode }),
+  properties: (p: string) => ipcRenderer.invoke('fs:properties', p),
   imageData: (p: string) => ipcRenderer.invoke('fs:imageData', p),
   saveImage: (src: string, dataUrl: string, mode: string) =>
     ipcRenderer.invoke('image:save', { src, dataUrl, mode }),
-  dirs: (dir: string) => ipcRenderer.invoke('fs:dirs', dir),
+  dirs: (dir: string, showHidden = false) => ipcRenderer.invoke('fs:dirs', dir, showHidden),
   roots: () => ipcRenderer.invoke('fs:roots'),
   home: () => ipcRenderer.invoke('fs:home'),
   size: (p: string) => ipcRenderer.invoke('fs:size', p),
@@ -79,9 +81,19 @@ contextBridge.exposeInMainWorld('api', {
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),
   iconThemes: (extra: string[]) => ipcRenderer.invoke('icons:themes', extra),
   iconsIn: (themeDir: string) => ipcRenderer.invoke('icons:in', themeDir),
+  iconSet: () => ipcRenderer.invoke('icons:set'),
   mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
+  clipboard: {
+    saveImage: (dir: string, name: string, data: Uint8Array) =>
+      ipcRenderer.invoke('clipboard:saveImage', { dir, name, data })
+  },
+  apps: {
+    list: (p: string) => ipcRenderer.invoke('apps:list', p),
+    default: (p: string) => ipcRenderer.invoke('apps:default', p),
+    launch: (id: string, p: string) => ipcRenderer.invoke('apps:launch', id, p)
+  },
   preview: (p: string) => ipcRenderer.invoke('fs:preview', p),
   hash: (paths: string[], algo: string) => ipcRenderer.invoke('fs:hash', paths, algo),
   // a dropped File only becomes a path here, in preload

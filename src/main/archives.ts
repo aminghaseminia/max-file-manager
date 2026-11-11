@@ -191,13 +191,15 @@ export async function extract(
     const wanted = names.length ? new Set(names.map((n) => n.replace(/\/$/, ''))) : null
     for (const item of items) {
       if (wanted && !wanted.has(item.name.replace(/\/$/, ''))) continue
-      const target = path.join(dest, item.name)
+      const raw = path.join(dest, item.name)
       try {
-        if (!path.resolve(target).startsWith(path.resolve(dest))) throw new Error('مسیر بیرون از مقصد')
+        if (!path.resolve(raw).startsWith(path.resolve(dest))) throw new Error('مسیر بیرون از مقصد')
         if (item.dir) {
-          await fs.mkdir(target, { recursive: true })
+          await fs.mkdir(raw, { recursive: true })
           continue
         }
+        // extraction never overwrites: an existing file gets a "name (2)" sibling
+        const target = await freeName(raw)
         await fs.mkdir(path.dirname(target), { recursive: true })
         await fs.writeFile(target, item.data ?? new Uint8Array())
         done++

@@ -19,6 +19,12 @@ export type FolderMeta = {
   notes?: Record<string, string>
   /** view/sort/columns this folder wants (Opus «Folder Format») */
   format?: FolderFormat
+  /**
+   * Hide this folder from its parent's listing without renaming it to a dot-file.
+   * Dolphin's «hidden» attribute has no cross-platform API, so the flag travels in
+   * the folder's own marker and the listing honours it unless hidden files are shown.
+   */
+  hidden?: boolean
 }
 
 export type FolderFormat = {
@@ -107,7 +113,17 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
     if (Object.keys(notes).length) out.notes = notes
     const fmt = cleanFormat(m.format)
     if (fmt) out.format = fmt
-    return out.color || out.icon || out.pins || out.labels || out.ratings || out.notes || out.format
+    if (m.hidden === true) out.hidden = true
+    return (
+      out.color ||
+      out.icon ||
+      out.pins ||
+      out.labels ||
+      out.ratings ||
+      out.notes ||
+      out.format ||
+      out.hidden
+    )
       ? out
       : null
   } catch {
@@ -156,6 +172,8 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
   const fmt = cleanFormat(next.format)
   if (fmt) next.format = fmt
   else delete next.format
+  if (next.hidden === true) next.hidden = true
+  else delete next.hidden
   const file = path.join(dir, META_FILE)
   if (
     !next.color &&
@@ -164,7 +182,8 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
     !next.labels &&
     !next.ratings &&
     !next.notes &&
-    !next.format
+    !next.format &&
+    !next.hidden
   ) {
     await fs.rm(file, { force: true })
     return null

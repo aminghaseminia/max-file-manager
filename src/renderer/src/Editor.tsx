@@ -160,7 +160,7 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
   const dir = isMd ? dirOfText(value) : 'ltr'
 
   return (
-    <div className={'editor' + (docked ? ' docked' : '')}>
+    <div className={'ed-shell' + (docked ? ' docked' : '')}>
       <header className="ed-head">
         <span className="ed-name" dir="auto" title={path}>
           {baseName(path)}

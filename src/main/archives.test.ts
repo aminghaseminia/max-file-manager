@@ -128,3 +128,16 @@ test('createZip never overwrites an existing archive and is empty-safe', async (
   const empty = await createZip(dir, 'empty', [])
   assert.deepEqual(empty, { error: 'چیزی برای آرشیو کردن نیست' })
 })
+
+test('extract never overwrites: an existing file becomes "name (2)"', async () => {
+  const root = await tmp()
+  const zip = await makeZip(root)
+  const dest = path.join(root, 'out')
+  await fs.mkdir(dest)
+  await fs.writeFile(path.join(dest, 'a.txt'), 'mine')
+
+  const r = await extract(zip, ['a.txt'], dest)
+  assert.deepEqual(r, { done: 1, errors: [] })
+  assert.equal(await fs.readFile(path.join(dest, 'a.txt'), 'utf8'), 'mine', 'the original is untouched')
+  assert.equal(await fs.readFile(path.join(dest, 'a (2).txt'), 'utf8'), 'alpha')
+})
