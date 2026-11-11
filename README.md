@@ -124,6 +124,7 @@ Grid view with real image thumbnails (light theme), flat view, and batch rename 
 - **HTML preview** rendered in a sandboxed frame (scripts stripped, `sandbox=""`), with a «نمایش/کد» switch
 - **MCP plan** for agent access lives in [`docs/MCP.md`](docs/MCP.md) — it is the last phase — loopback API + stdio bridge, read-only by default
 - **PDF preview** through Chromium's viewer, **Office preview** (docx/xlsx/pptx) by extracting text from zip+XML, and **ID3/EXIF tags** shown in the preview and usable in batch rename (`{title} {artist} {album} {year} {date} {camera}`)
+- **Update check** against GitHub releases (status-bar chip when a newer tag exists) and **instant folder sizes from the search index**
 - **Indexed search**: a SQLite FTS5 database of your chosen folders (OS defaults when unset) with exclusion patterns, an incremental re-index and an overlay that jumps to the containing folder with the file selected; Persian queries work
 - **Thumbnail cache**: 256px PNGs keyed by path+mtime+size, served over `thumb://`, pruned LRU (4000 files / 300 MB); a 2400×1600 JPEG becomes a 532-byte tile
 - **Per-pane folder tree** (dual tree) with lazy expansion, and **user scripts** (shell lines with `{path}` / `{dir}`) in the context menu with their output reported

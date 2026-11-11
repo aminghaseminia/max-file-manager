@@ -24,10 +24,15 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
+  update: {
+    check: (force?: boolean) => ipcRenderer.invoke('update:check', force),
+    open: (url: string) => ipcRenderer.invoke('update:open', url)
+  },
   search: {
     index: (cfg: unknown) => ipcRenderer.invoke('search:index', cfg),
     query: (query: string, limit?: number) => ipcRenderer.invoke('search:query', { query, limit }),
     stats: () => ipcRenderer.invoke('search:stats'),
+    sizes: (dirs: string[]) => ipcRenderer.invoke('search:sizes', dirs),
     clear: () => ipcRenderer.invoke('search:clear'),
     onProgress: (cb: (p: unknown) => void) => {
       const fn = (_e: unknown, p: unknown) => cb(p)

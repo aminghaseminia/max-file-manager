@@ -34,6 +34,8 @@ export type CommandId =
   | 'toggleLayout'
   | 'terminal'
   | 'reveal'
+  | 'checkUpdate'
+  | 'indexSizes'
   | 'searchIndex'
   | 'presets'
   | 'saveFormat'
@@ -75,6 +77,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'addressBar', label: 'نوار آدرس', key: 'Ctrl+L', group: 'window' },
   { id: 'terminal', label: 'ترمینال اینجا', key: 'Ctrl+Alt+T', group: 'window' },
   { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', key: '', group: 'window' },
+  { id: 'checkUpdate', label: 'بررسی به‌روزرسانی', key: '', group: 'window' },
+  { id: 'indexSizes', label: 'اندازه از ایندکس (سریع)', key: '', group: 'file' },
   { id: 'searchIndex', label: 'جست‌وجوی ایندکس‌شده', key: 'Ctrl+Shift+K', group: 'view' },
   { id: 'presets', label: 'چیدمان‌ها و فیلترها', key: 'Ctrl+Shift+P', group: 'window' },
   { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },

@@ -216,6 +216,29 @@ export function indexStats(file: string): { files: number; dirs: number; lastInd
   return { files: Number(n?.n ?? 0), dirs: Number(dirCount?.n ?? 0), lastIndex: Number(last?.v ?? 0) }
 }
 
+/**
+ * Folder sizes straight out of the index — instant, at the cost of being as fresh as the index.
+ */
+export function indexSizes(file: string, dirs: string[]): Record<string, { bytes: number; files: number }> {
+  const d = openDb(file)
+  const out: Record<string, { bytes: number; files: number }> = {}
+  const stmt = d.prepare(
+    "SELECT COUNT(*) AS files, COALESCE(SUM(size),0) AS bytes FROM files WHERE dir = 0 AND path LIKE ? ESCAPE '\\'"
+  )
+  for (const dir of dirs) {
+    const like = dir.replace(/[%_\\]/g, (m) => '\\' + m) + '/%'
+    try {
+      const r = stmt.get(like) as { files: number; bytes: number } | undefined
+      if (r && Number(r.files) > 0) {
+        out[dir] = { files: Number(r.files), bytes: Number(r.bytes) }
+      }
+    } catch {
+      /* a bad pattern must not break the caller */
+    }
+  }
+  return out
+}
+
 export function clearIndex(file: string): void {
   const d = openDb(file)
   d.exec('DELETE FROM files; DELETE FROM fts; DELETE FROM dirs; DELETE FROM meta;')

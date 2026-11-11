@@ -132,6 +132,7 @@ export default function App() {
   const [editorMax, setEditorMax] = useState(false)
   const [palette, setPalette] = useState<{ id: string; name: string; color: string }[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
+  const [update, setUpdate] = useState<{ current: string; latest: string | null; url: string | null; newer: boolean } | null>(null)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [tagFor, setTagFor] = useState<{
     path: string
@@ -312,6 +313,14 @@ export default function App() {
     if (!p) return
     void api.statfs(p).then((r) => setFree(r?.free ?? null))
   }, [path0, path1, active])
+
+  // one update check per session; a failure stays silent because it is not the user's problem
+  useEffect(() => {
+    if (!booted) return
+    void api.update.check().then((u) => {
+      if (!u.error) setUpdate(u)
+    })
+  }, [booted])
 
   // keep the index warm: refresh it in the background when it is older than an hour
   useEffect(() => {
@@ -1237,6 +1246,36 @@ export default function App() {
       void api.reveal(p)
     },
     searchIndex: () => setSearchOpen(true),
+    checkUpdate: () => {
+      setNote('بررسی به‌روزرسانی…')
+      void api.update.check(true).then((u) => {
+        setUpdate(u)
+        setNote(
+          u.error
+            ? `بررسی نشد — ${u.error}`
+            : u.newer
+              ? `نسخهٔ تازه ${u.latest} موجود است`
+              : `نسخهٔ ${u.current} به‌روز است`
+        )
+      })
+    },
+    indexSizes: () => {
+      const dirs = visibleOf(active).filter((e) => e.dir).map((e) => e.path)
+      if (!dirs.length) {
+        setNote('پوشه‌ای در فهرست نیست')
+        return
+      }
+      setNote('اندازه از ایندکس…')
+      void api.search.sizes(dirs).then((sizes) => {
+        const found = Object.keys(sizes).length
+        setSizes((prev) => {
+          const next = { ...prev }
+          for (const [dir, v] of Object.entries(sizes)) next[dir] = fmtSize(v.bytes, false, prefs.sizeFormat)
+          return next
+        })
+        setNote(found ? `${found} پوشه از ایندکس پر شد` : 'این پوشه‌ها در ایندکس نیستند')
+      })
+    },
     presets: () => setPresetsOpen(true),
     saveFormat: () => {
       const dir = tabOf(panes![active])
@@ -1655,6 +1694,15 @@ export default function App() {
             : ''}
         </span>
         {free != null && <span>آزاد: {fmtSize(free, false, prefs.sizeFormat)}</span>}
+        {update?.newer && (
+          <button
+            className="update-chip"
+            title="یادداشت‌های نسخه"
+            onClick={() => update.url && void api.update.open(update.url)}
+          >
+            نسخهٔ تازه {update.latest}
+          </button>
+        )}
         <span>{running ? `${fa(running)} عملیات در جریان` : ''}</span>
         {prefs.layout === 'single' && (
           <span title="مقصد کپی/انتقال در حالت تک‌پنجره">

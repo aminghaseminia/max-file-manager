@@ -25,7 +25,15 @@ import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
 import { clearThumbs, thumbFor } from './thumbs.ts'
-import { clearIndex, indexRoots, indexStats, searchIndex, type IndexConfig } from './searchdb.ts'
+import {
+  clearIndex,
+  indexRoots,
+  indexSizes,
+  indexStats,
+  searchIndex,
+  type IndexConfig
+} from './searchdb.ts'
+import { checkUpdate, openRelease } from './updates.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -386,6 +394,8 @@ app.whenReady().then(async () => {
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
   })
+  ipcMain.handle('update:check', (_e, force?: boolean) => checkUpdate(!!force))
+  ipcMain.handle('update:open', (_e, url: string) => openRelease(String(url ?? '')))
   const searchDbFile = () => path.join(app.getPath('userData'), 'search.db')
   ipcMain.handle('search:index', async (e, cfg: IndexConfig) => {
     const r = await indexRoots(searchDbFile(), cfg ?? { roots: [], exclude: [] }, (p) =>
@@ -397,6 +407,9 @@ app.whenReady().then(async () => {
     searchIndex(searchDbFile(), String(a?.query ?? ''), a?.limit ?? 200)
   )
   ipcMain.handle('search:stats', () => indexStats(searchDbFile()))
+  ipcMain.handle('search:sizes', (_e, dirs: string[]) =>
+    indexSizes(searchDbFile(), (dirs ?? []).filter((d) => path.isAbsolute(d)).slice(0, 500))
+  )
   ipcMain.handle('search:clear', () => {
     clearIndex(searchDbFile())
     return indexStats(searchDbFile())

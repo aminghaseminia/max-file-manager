@@ -2592,3 +2592,15 @@ html[data-rounded='1'] .app {
   border-top: 1px solid var(--line);
   font-size: 10.5px;
 }
+
+/* newer-version chip in the status bar */
+.update-chip {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 20px;
+  padding: 1px 9px;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}

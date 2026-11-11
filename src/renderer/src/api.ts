@@ -136,6 +136,18 @@ export type Api = {
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>
+  update: {
+    check(force?: boolean): Promise<{
+      current: string
+      latest: string | null
+      url: string | null
+      notes: string | null
+      newer: boolean
+      checkedAt: number
+      error?: string
+    }>
+    open(url: string): Promise<{ ok: true } | { error: string }>
+  }
   search: {
     index(config: { roots: string[]; exclude: string[] }): Promise<{
       files: number
@@ -145,6 +157,7 @@ export type Api = {
     }>
     query(query: string, limit?: number): Promise<SearchHit[]>
     stats(): Promise<{ files: number; dirs: number; lastIndex: number }>
+    sizes(dirs: string[]): Promise<Record<string, { bytes: number; files: number }>>
     clear(): Promise<{ files: number; dirs: number; lastIndex: number }>
     onProgress(cb: (p: { scanned: number; added: number; done: number; total: number; root: string }) => void): () => void
   }
