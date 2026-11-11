@@ -3,11 +3,12 @@ import type { Entry } from './api'
 import { kindOf, mediaUrl, type Kind } from './format'
 
 /** One stroke style for every icon: flat, 1.7px, inherits the text colour. */
-const S = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
+const S = ({ children, size = 15, className }: { children: ReactNode; size?: number; className?: string }) => (
   <svg
     width={size}
     height={size}
     viewBox="0 0 24 24"
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={1.7}
@@ -138,12 +139,12 @@ export const ArrowUpIcon = () => (
   </S>
 )
 export const ChevronLeftIcon = ({ size = 15 }: { size?: number }) => (
-  <S size={size}>
+  <S size={size} className="dir-arrow">
     <path d="M14.5 6l-6 6 6 6" />
   </S>
 )
 export const ChevronRightIcon = ({ size = 15 }: { size?: number }) => (
-  <S size={size}>
+  <S size={size} className="dir-arrow">
     <path d="M9.5 6l6 6-6 6" />
   </S>
 )
@@ -411,13 +412,15 @@ export function EntryIcon({
   iconSet?: Record<string, string>
 }) {
   if (entry.icon) return <FolderGlyph entry={entry} size={size} />
-  // a colour from .mfm.json only exists on our own glyph, so it wins over the theme icon
-  const src = entry.color ? '' : (iconSet?.[kindOf(entry)] ?? '')
+  // a coloured folder uses the theme's own colour variant when it has one (Pure does); otherwise
+  // the colour only exists on our line glyph
+  const colored = entry.color ? (iconSet?.['dir:' + entry.color.toLowerCase()] ?? '') : ''
+  const src = colored || (entry.color ? '' : (iconSet?.[kindOf(entry)] ?? ''))
   if (src) {
     return (
       <img
         className="ic-img"
-        src={mediaUrl(src)}
+        src={src.startsWith('data:') ? src : mediaUrl(src)}
         alt=""
         style={{ width: size, height: size }}
         draggable={false}

@@ -1,5 +1,5 @@
-import { setLang, t } from './i18n.ts'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { getLang, setLang, subscribeLang, t } from './i18n.ts'
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
@@ -9,6 +9,7 @@ import { Editor } from './Editor'
 import { Gallery } from './Gallery'
 import { OpenWithDialog } from './OpenWithDialog'
 import { PropertiesDialog } from './PropertiesDialog'
+import { dragLog } from './draglog'
 import { JobsBar } from './JobsBar'
 import { Pane, type FolderView, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
@@ -21,11 +22,13 @@ import {
   COLUMNS,
   DEFAULTS,
   colLabel,
+  fontStack,
   mergePrefs,
   migrateLegacy,
   type ColId,
   type Prefs
 } from './prefs'
+import { PURE_ICON_SET } from './pure-icons'
 import { PaneTree } from './PaneTree'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
@@ -113,10 +116,10 @@ const patch = (panes: PaneState[], i: number, p: Partial<PaneState>): PaneState[
 const tabOf = (s: PaneState) => s.tabs[s.ti]
 
 const OP_LABEL: Record<string, string> = {
-  copy: t('کپی'),
-  move: t('انتقال'),
-  trash: t('سطل بازیافت'),
-  delete: t('حذف')
+  copy: 'کپی',
+  move: 'انتقال',
+  trash: 'سطل بازیافت',
+  delete: 'حذف'
 }
 
 const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext']
@@ -151,7 +154,6 @@ export default function App() {
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
-  const [addr, setAddr] = useState<string | null>(null)
   const [home, setHome] = useState('')
   const [free, setFree] = useState<number | null>(null)
   const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
@@ -200,6 +202,7 @@ export default function App() {
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null)
+  const [marksMenu, setMarksMenu] = useState<{ x: number; y: number; pane: number } | null>(null)
   const [openWith, setOpenWith] = useState<string | null>(null)
   const [propsFor, setPropsFor] = useState<string | null>(null)
   const [folderLook, setFolderLook] = useState<{ dirs: string[]; name: string; meta: FolderMeta | null } | null>(
@@ -211,6 +214,8 @@ export default function App() {
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
   /** per-pane counter: the «filter» command opens that pane's floating input */
   const [filterTicks, setFilterTicks] = useState([0, 0])
+  /** per-pane counter: Ctrl+L turns that pane's breadcrumbs into an address field */
+  const [addrTicks, setAddrTicks] = useState([0, 0])
   /** what each pane currently shows, reported by Pane; drives page/grid steps */
   const metrics = useRef([
     { cols: 1, rows: 20 },
@@ -278,10 +283,9 @@ export default function App() {
 
   // boot: restore the last session, fall back to home
   useEffect(() => {
-    Promise.all([api.roots(), api.home(), api.state.get(), api.iconSet()]).then(([r, home, st, icons]) => {
+    Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
       setRoots(r)
       setHome(home)
-      setIconSet(icons ?? {})
       void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
       setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
@@ -425,6 +429,33 @@ export default function App() {
     window.addEventListener('pointerup', up)
   }
 
+  /** Drag the divider between the two panes in dual layout: pane 0 gets the share chosen. */
+  const startDualResize = (ev: React.PointerEvent) => {
+    ev.preventDefault()
+    const divider = ev.currentTarget as HTMLElement
+    const prevEl = divider.previousElementSibling as HTMLElement | null
+    const nextEl = divider.nextElementSibling as HTMLElement | null
+    if (!prevEl || !nextEl) return
+    const prevRect = prevEl.getBoundingClientRect()
+    const nextRect = nextEl.getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+    const start = rtl ? nextRect.left : prevRect.left
+    const totalW = (rtl ? prevRect.right : nextRect.right) - start
+    if (totalW <= 0) return
+
+    const move = (e: PointerEvent) => {
+      const p0Width = rtl ? prevRect.right - e.clientX : e.clientX - prevRect.left
+      const share = p0Width / totalW
+      updatePrefs({ dualSplit: Math.min(0.8, Math.max(0.2, share)) })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const load = async (i: number, dir: string) => {
     setPanes((p) => p && patch(p, i, { loading: true }))
     try {
@@ -483,9 +514,29 @@ export default function App() {
   // a folder's format is applied at load time by `load()` above; it never rewrites the
   // global defaults, otherwise leaving the folder would drag its view onto every other one
 
+  // the catalogue lives outside React; subscribing here repaints the whole UI the moment it changes
+  useSyncExternalStore(subscribeLang, getLang)
   useEffect(() => {
     setLang(prefs.lang)
   }, [prefs.lang])
+
+  // the body font comes from one CSS variable, so a new family applies everywhere at once
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-font', fontStack(prefs.fontFamily))
+  }, [prefs.fontFamily])
+
+  // the OS icon theme is only read when asked for; Pure is bundled and needs no IPC at all
+  useEffect(() => {
+    if (prefs.fileIcons !== 'system') return
+    void api.iconSet().then(setIconSet)
+  }, [prefs.fileIcons])
+
+  const iconSetFor = (): Record<string, string> => {
+    if (prefs.fileIcons === 'line') return {}
+    if (prefs.fileIcons === 'pure') return PURE_ICON_SET
+    // a desktop without a resolvable theme must not fall back to bare glyphs
+    return Object.keys(iconSet).length ? iconSet : PURE_ICON_SET
+  }
 
   const transferOpts = () => ({
     skipExisting: prefs.transferSkipExisting,
@@ -559,7 +610,7 @@ export default function App() {
     if (kind === 'copy' || kind === 'move') {
       const dest = tabOf(panes[1 - i])
       await api.jobs.start(kind, me.sel, dest, transferOpts())
-      setNote(t('{op} برای {n} مورد آغاز شد', { op: OP_LABEL[kind], n: fa(me.sel.length) }))
+      setNote(t('{op} برای {n} مورد آغاز شد', { op: t(OP_LABEL[kind]), n: fa(me.sel.length) }))
       setPanes((p) => p && patch(p, i, { sel: [] }))
       return
     }
@@ -570,8 +621,8 @@ export default function App() {
     const res = await api.remove(me.sel, kind === 'delete')
     setNote(
       res.errors.length
-        ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
-        : t('{op}: {n} مورد', { op: OP_LABEL[kind], n: fa(res.done) })
+        ? `${t(OP_LABEL[kind])}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
+        : t('{op}: {n} مورد', { op: t(OP_LABEL[kind]), n: fa(res.done) })
     )
     setPanes((p) => p && patch(p, i, { sel: [] }))
     reloadAll()
@@ -581,8 +632,8 @@ export default function App() {
     const res = await api.remove(paths, kind === 'delete')
     setNote(
       res.errors.length
-        ? `${OP_LABEL[kind]}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
-        : t('{op}: {n} مورد', { op: OP_LABEL[kind], n: fa(res.done) })
+        ? `${t(OP_LABEL[kind])}: ${fa(res.done)} انجام شد، ${fa(res.errors.length)} خطا — ${res.errors[0]}`
+        : t('{op}: {n} مورد', { op: t(OP_LABEL[kind]), n: fa(res.done) })
     )
     setPanes((p) => p && p.map((x, j) => ({ ...x, sel: [] })))
     reloadAll()
@@ -701,7 +752,7 @@ export default function App() {
       setArchiveResult(
         r.errors.length
           ? `${t('{n} فایل', { n: fa(r.done) })} · ${t('{n} خطا', { n: fa(r.errors.length) })} — ${r.errors[0]}`
-          : `${t('{n} فایل', { n: fa(r.done) })} → ${baseName(opts.dest)}`
+          : `${t('{n} فایل', { n: fa(r.done) })} ${getLang() === 'fa' ? '←' : '→'} ${baseName(opts.dest)}`
       )
     }
     await Promise.all([load(0, tabOf(panes[0])), load(1, tabOf(panes[1]))])
@@ -762,13 +813,24 @@ export default function App() {
   }
 
   /** A folder dropped on the sidebar becomes a bookmark; a plain file is refused with a note. */
-  const addMarks = (paths: string[]) => {
+  const addMarks = async (paths: string[]) => {
+    dragLog(`addMarks '${paths.join(',')}'`)
     const isDir = new Map<string, boolean>()
     for (const pane of panes ?? []) {
       for (const e of pane.listing?.entries ?? []) isDir.set(e.path, e.dir)
       for (const e of pane.results ?? []) isDir.set(e.path, e.dir)
     }
+    // a folder dragged from the Places tree itself or a symlink might not be known as a dir, so ask the disk
+    await Promise.all(
+      paths.map(async (p) => {
+        if (isDir.get(p) !== true) {
+          const r = await api.properties(p).catch(() => null)
+          if (r && !('error' in r) && r.dir) isDir.set(p, true)
+        }
+      })
+    )
     const dirs = paths.filter((p) => isDir.get(p) === true)
+    dragLog(`addMarks dirs='${dirs.join(',')}'`)
     if (!dirs.length) {
       setNote(t('فقط پوشه نشان می‌شود'))
       return
@@ -1317,6 +1379,26 @@ export default function App() {
     }
   }
 
+  /** Bookmarks without the sidebar: anchored at the pane's star caret. */
+  const markItems = (): MenuItem[] => {
+    const rows: MenuItem[] = marks.map((m) => ({
+      id: 'mark:' + m,
+      label: baseName(m),
+      icon: <StarIcon filled size={12} />
+    }))
+    if (!rows.length) {
+      return [
+        { head: true, label: t('نشان‌ها') },
+        {
+          id: 'noMarks',
+          label: t('هنوز نشانی نداری — با ستاره یا کشیدن پوشه روی سایدبار بساز'),
+          disabled: true
+        }
+      ]
+    }
+    return [{ head: true, label: t('نشان‌ها') }, ...rows]
+  }
+
   const menuItems = (path: string | null): MenuItem[] => {
     const me = panes?.[active]
     if (!me) return []
@@ -1704,7 +1786,7 @@ export default function App() {
         (p) =>
           p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] })
       ),
-    addressBar: () => setAddr(tabOf(panes![active])),
+    addressBar: () => setAddrTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n))),
     toggleView: () => setView((v) => (v === 'list' ? 'grid' : 'list')),
     toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
     terminal: () => {
@@ -1773,7 +1855,7 @@ export default function App() {
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
       if (!panes) return
       // a modal owns the keyboard: deleting behind the properties sheet would be invisible
-      if (editor || gallery || menu || columnMenu || settingsOpen || openWith || propsFor) return
+      if (editor || gallery || menu || columnMenu || marksMenu || settingsOpen || openWith || propsFor) return
       const me = panes[active]
 
       if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
@@ -2013,29 +2095,6 @@ export default function App() {
         />
       )}
 
-      {addr !== null && (
-        <div className="addrbar">
-          <input
-            autoFocus
-            dir="ltr"
-            value={addr}
-            placeholder="/path/to/folder"
-            onChange={(e) => setAddr(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setAddr(null)
-              if (e.key === 'Enter') {
-                const raw = addr.trim()
-                setAddr(null)
-                if (!raw) return
-                const path = raw === '~' || raw.startsWith('~/') ? raw.replace('~', home) : raw
-                go(active, path)
-              }
-            }}
-          />
-          <span className="hint">{t(t('مسیر را بنویس و Enter بزن · Esc انصراف'))}</span>
-        </div>
-      )}
-
       <div className="body" onMouseDown={() => settingsOpen && setSettingsOpen(false)}>
         {ui.sidebarOpen && ui.sidebar === 'docked' && (
           <Sidebar
@@ -2075,12 +2134,22 @@ export default function App() {
               </Fragment>
             )
           }
+          const isDualBoth = prefs.layout === 'dual' && !sideOpen
+          const paneFlexStyle: React.CSSProperties | undefined = isDualBoth
+            ? {
+                flex: `${i === 0 ? prefs.dualSplit : 1 - prefs.dualSplit} ${
+                  i === 0 ? prefs.dualSplit : 1 - prefs.dualSplit
+                } 0px`
+              }
+            : undefined
+
           const paneEl = (
           <Pane
             key={i}
             index={i}
             pane={pane}
             active={i === active}
+            style={paneFlexStyle}
             sort={sortOf(i)}
             view={viewOf(i)}
             sizes={sizes}
@@ -2089,6 +2158,8 @@ export default function App() {
               filterEls.current[i] = el
             }}
             filterTick={filterTicks[i] ?? 0}
+            addrTick={addrTicks[i] ?? 0}
+            home={home}
             onActivate={() => setActive(i)}
             onSort={(key) =>
               setSortFor(i, { key, asc: sortOf(i).key === key ? !sortOf(i).asc : true })
@@ -2140,6 +2211,7 @@ export default function App() {
             }}
             onSize={() => void computeSizes(i)}
             onBookmark={() => toggleMark(i)}
+            onBookmarksMenu={(x, y) => setMarksMenu({ x, y, pane: i })}
             onFlat={() => void runFlat(i)}
             onDupes={() => void runDupes(i)}
             onSearch={(q) => void runSearch(i, q)}
@@ -2170,7 +2242,7 @@ export default function App() {
             nameLines={prefs.gridNameLines}
             tileSize={prefs.tileSize}
             hideSingleTab={prefs.hideSingleTab}
-            iconSet={prefs.fileIcons === 'theme' ? iconSet : undefined}
+            iconSet={iconSetFor()}
             sizeFormat={prefs.sizeFormat}
             dateFormat={prefs.dateFormat}
             showSeconds={prefs.showSeconds}
@@ -2184,14 +2256,34 @@ export default function App() {
             reveal={reveal.pane === i ? reveal : null}
           />
           )
-          return prefs.paneTree && prefs.layout === 'dual' ? (
-            <div className="pane-with-tree" key={'wrap' + i}>
-              <PaneTree path={tabOf(pane)} showHidden={hidden} onNav={(d) => go(i, d)} />
-              {paneEl}
-            </div>
-          ) : (
-            paneEl
-          )
+          const renderedPane =
+            prefs.paneTree && prefs.layout === 'dual' ? (
+              <div className="pane-with-tree" key={'wrap' + i} style={paneFlexStyle}>
+                <PaneTree path={tabOf(pane)} showHidden={hidden} onNav={(d) => go(i, d)} />
+                {paneEl}
+              </div>
+            ) : (
+              paneEl
+            )
+
+          if (isDualBoth && i === 0) {
+            return (
+              <Fragment key={i}>
+                {renderedPane}
+                <div
+                  key="dual-split"
+                  className="vsplit"
+                  role="separator"
+                  aria-orientation="vertical"
+                  title={t('تغییر عرض دو پنجره')}
+                  onPointerDown={startDualResize}
+                  onDoubleClick={() => updatePrefs({ dualSplit: 0.5 })}
+                />
+              </Fragment>
+            )
+          }
+
+          return renderedPane
         })}
 
         {sideOpen && prefs.layout === 'single' && (
@@ -2570,6 +2662,20 @@ export default function App() {
           items={menuItems(menu.path)}
           onPick={pickMenu}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {marksMenu && (
+        <ContextMenu
+          x={marksMenu.x}
+          y={marksMenu.y}
+          items={markItems()}
+          onPick={(id) => {
+            const target = marksMenu.pane
+            setMarksMenu(null)
+            if (id.startsWith('mark:')) go(target, id.slice(5))
+          }}
+          onClose={() => setMarksMenu(null)}
         />
       )}
 

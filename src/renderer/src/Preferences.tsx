@@ -1,11 +1,29 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
-import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
+import { api } from './api'
+import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, type ColId, type Prefs } from './prefs'
 import { fa } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
+
+const FONT_SUGGESTIONS = [
+  'Vazirmatn',
+  'Noto Sans',
+  'Noto Sans Arabic',
+  'DejaVu Sans',
+  'Ubuntu',
+  'Cantarell',
+  'Inter',
+  'Tahoma',
+  'Segoe UI',
+  'SF Pro Text',
+  'Arial',
+  'system-ui',
+  'serif',
+  'monospace'
+]
 
 type Page =
   | 'appearance'
@@ -23,21 +41,22 @@ type Page =
   | 'launch'
   | 'advanced'
 
+/** Persian stays the key here; the nav translates at render so a language switch applies at once. */
 const PAGES: { id: Page; label: string }[] = [
-  { id: 'appearance', label: t('ظاهر و رنگ') },
-  { id: 'display', label: t('نمایش فایل‌ها') },
-  { id: 'columns', label: t('ستون‌ها') },
-  { id: 'toolbar', label: t('نوار ابزار') },
-  { id: 'keys', label: t('کلید میان‌بر') },
-  { id: 'layout', label: t('پنجره و چیدمان') },
-  { id: 'agents', label: t('ایجنت‌ها (MCP)') },
-  { id: 'search', label: t('جست‌وجو') },
-  { id: 'filetypes', label: t('انواع فایل') },
-  { id: 'archive', label: t('بایگانی و گالری') },
-  { id: 'transfer', label: t('انتقال') },
-  { id: 'operations', label: t('عملیات فایل') },
-  { id: 'launch', label: t('راه‌اندازی') },
-  { id: 'advanced', label: t('پیشرفته') }
+  { id: 'appearance', label: 'ظاهر و رنگ' },
+  { id: 'display', label: 'نمایش فایل‌ها' },
+  { id: 'columns', label: 'ستون‌ها' },
+  { id: 'toolbar', label: 'نوار ابزار' },
+  { id: 'keys', label: 'کلید میان‌بر' },
+  { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'agents', label: 'ایجنت‌ها (MCP)' },
+  { id: 'search', label: 'جست‌وجو' },
+  { id: 'filetypes', label: 'انواع فایل' },
+  { id: 'archive', label: 'بایگانی و گالری' },
+  { id: 'transfer', label: 'انتقال' },
+  { id: 'operations', label: 'عملیات فایل' },
+  { id: 'launch', label: 'راه‌اندازی' },
+  { id: 'advanced', label: 'پیشرفته' }
 ]
 
 type Props = {
@@ -54,6 +73,14 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
   const [newRoot, setNewRoot] = useState('')
   const [page, setPage] = useState<Page>(openPage ?? 'appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
+  const [isDefault, setIsDefault] = useState<boolean | null>(null)
+  const [settingDefault, setSettingDefault] = useState(false)
+
+  useEffect(() => {
+    if (page === 'launch') {
+      void api.isDefaultFileManager().then(setIsDefault).catch(() => setIsDefault(false))
+    }
+  }, [page])
 
   // while capturing, the next keydown becomes the accelerator for that command
   useEffect(() => {
@@ -121,7 +148,7 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
               className={'prefs-tab' + (page === p.id ? ' on' : '')}
               onClick={() => setPage(p.id)}
             >
-              {p.label}
+              {t(p.label)}
             </button>
           ))}
           <span className="spacer" />
@@ -131,6 +158,18 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
         <section className="prefs-body">
           {page === 'appearance' && (
             <>
+              {row(
+                t('زبان'),
+                t('فوراً اعمال می‌شود؛ کل رابط و جهت چیدمان هم عوض می‌شود'),
+                seg(
+                  prefs.lang,
+                  [
+                    { v: 'en', label: t('انگلیسی') },
+                    { v: 'fa', label: t('فارسی') }
+                  ],
+                  'lang'
+                )
+              )}
               {row(
                 t('تم'),
                 t('«سیستم» روشن/تیرهٔ سیستم‌عامل را زنده دنبال می‌کند'),
@@ -144,6 +183,31 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                   'theme'
                 )
               )}
+              {row(
+                t('فونت رابط کاربری'),
+                t('نام فونت نصب‌شده؛ خالی = وزیرمتن'),
+                <div className="font-row">
+                  <input
+                    className="pref-input"
+                    dir="ltr"
+                    list="ui-font-suggestions"
+                    placeholder="Vazirmatn"
+                    value={prefs.fontFamily}
+                    onChange={(e) => onChange({ fontFamily: cleanFontFamily(e.target.value) })}
+                  />
+                  <button className="btn ghost mini" onClick={() => onChange({ fontFamily: '' })}>
+                    {t('پیش‌فرض')}
+                  </button>
+                  <datalist id="ui-font-suggestions">
+                    {FONT_SUGGESTIONS.map((f) => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+              <div className="font-preview" dir="auto" style={{ fontFamily: fontStack(prefs.fontFamily) }}>
+                {t('نمونهٔ متن')} · Aa 0123
+              </div>
               {row(
                 t('تایتل‌بار'),
                 t('سیستم = قاب سیستم‌عامل، برنامه = نوار خود اپ'),
@@ -205,11 +269,12 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
               {row(t('پوشه‌ها اول فهرست'), t('مانند Directory Opus و FreeCommander'), check(prefs.foldersFirst, 'foldersFirst'))}
               {row(
                 t('آیکون فایل‌ها و پوشه‌ها'),
-                t('آیکونست سیستم (Pure) یا گلیف‌های خطی خود برنامه'),
+                t('Pure همراه برنامه پیش‌فرض است؛ برای آیکون‌های خود سیستم‌عامل «آیکون‌ست سیستم» را بزن'),
                 seg(
                   prefs.fileIcons,
                   [
-                    { v: 'theme', label: t('آیکونست سیستم') },
+                    { v: 'pure', label: t('Pure همراه برنامه') },
+                    { v: 'system', label: t('آیکون‌ست سیستم') },
                     { v: 'line', label: t('خطی') }
                   ],
                   'fileIcons'
@@ -776,6 +841,28 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                   placeholder="/home/…"
                   onChange={(e) => onChange({ startFolder: e.target.value })}
                 />
+              )}
+              {row(
+                t('مدیر فایل پیش‌فرض سیستم'),
+                isDefault
+                  ? t('این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است')
+                  : t('باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود'),
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={isDefault === true || settingDefault}
+                  onClick={async () => {
+                    setSettingDefault(true)
+                    try {
+                      const res = await api.setDefaultFileManager()
+                      if (res.ok) setIsDefault(true)
+                    } finally {
+                      setSettingDefault(false)
+                    }
+                  }}
+                >
+                  {isDefault ? t('پیش‌فرض است') : settingDefault ? t('در حال تنظیم…') : t('تنظیم به عنوان پیش‌فرض')}
+                </button>
               )}
             </>
           )}

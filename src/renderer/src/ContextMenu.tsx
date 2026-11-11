@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { submenuLeft } from './menu-position.ts'
 
 export type MenuItem =
   | { sep: true }
@@ -48,7 +49,12 @@ function clampPanel(el: HTMLElement, x: number, y: number): void {
 export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const nestedRef = useRef<HTMLDivElement>(null)
-  const [sub, setSub] = useState<{ key: string; items: MenuItem[]; x: number; y: number } | null>(null)
+  const [sub, setSub] = useState<{
+    key: string
+    items: MenuItem[]
+    /** the parent row's box, so the panel can pick a side that actually has room */
+    anchor: { left: number; right: number; top: number }
+  } | null>(null)
   const closeTimer = useRef<number | null>(null)
 
   const cancelClose = () => {
@@ -85,15 +91,16 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
   }, [x, y, items.length])
 
   useLayoutEffect(() => {
-    if (nestedRef.current && sub) clampPanel(nestedRef.current, sub.x, sub.y)
+    const el = nestedRef.current
+    if (!el || !sub) return
+    const rtl = document.documentElement.dir === 'rtl'
+    const left = submenuLeft(sub.anchor, el.offsetWidth, window.innerWidth, rtl)
+    clampPanel(el, left, sub.anchor.top - 4)
   }, [sub])
 
   const openSub = (ev: React.MouseEvent, child: MenuItem[], key: string) => {
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
-    const rtl = document.documentElement.dir === 'rtl'
-    const width = 248
-    const x2 = rtl ? rect.left - width - 4 : rect.right + 4
-    setSub({ key, items: child, x: x2, y: rect.top - 4 })
+    setSub({ key, items: child, anchor: { left: rect.left, right: rect.right, top: rect.top } })
   }
 
   const rows = (list: MenuItem[], inSub = false) =>
@@ -153,7 +160,7 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
           className="ctx ctx-nested"
           ref={nestedRef}
           role="menu"
-          style={{ left: sub.x, top: sub.y, minWidth: 248, maxWidth: 'min(440px, 92vw)' }}
+          style={{ left: sub.anchor.left, top: sub.anchor.top, minWidth: 248, maxWidth: 'min(440px, 92vw)' }}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >

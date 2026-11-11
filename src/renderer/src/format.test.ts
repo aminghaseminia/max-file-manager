@@ -6,6 +6,7 @@ import {
   crumbs,
   dirOf,
   fa,
+  fileUri,
   fmtDate,
   fmtSize,
   groupLabel,
@@ -285,4 +286,10 @@ test('permMode: files keep their execute bit, folders follow read with x', () =>
   assert.equal(permMode(0o755, 0, 'r', true), 0o555, 'a folder keeps x with read')
   assert.equal(permMode(0o755, 1, 'rw', true), 0o775)
   assert.equal(permMode(0o755, 2, 'none', true), 0o750)
+})
+
+test('fileUri: external drags get a real file URL, spaces and non-Latin names encoded', () => {
+  assert.equal(fileUri('/home/max/My File.mp3'), 'file:///home/max/My%20File.mp3')
+  assert.equal(fileUri('/home/max/آهنگ.mp3'), 'file:///home/max/%D8%A2%D9%87%D9%86%DA%AF.mp3')
+  assert.equal(fileUri('C:\\Users\\max\\a b.txt'), 'file:///C:/Users/max/a%20b.txt')
 })

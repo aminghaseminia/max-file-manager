@@ -12,7 +12,7 @@ import {
 import { constants as fsConstants, readFileSync, writeFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
 import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
@@ -33,7 +33,15 @@ import {
 } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { fitWindow } from './window-bounds.ts'
-import { defaultApp, launchApp, listApps, mimeForPath, openWithDefault } from './apps.ts'
+import {
+  defaultApp,
+  isDefaultFileManager,
+  launchApp,
+  listApps,
+  mimeForPath,
+  openWithDefault,
+  setDefaultFileManager
+} from './apps.ts'
 import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
@@ -75,6 +83,8 @@ protocol.registerSchemesAsPrivileged([
 type Chrome = { customTitlebar: boolean; rounded: boolean }
 
 const idCache = new Map<string, string>()
+/** one drag-debug session per process: the header line is written once */
+let debugLogStarted = false
 
 /** Resolve a uid/gid to a name with `getent`; a missing entry keeps the number. */
 function ownerName(kind: 'passwd' | 'group', id: number): Promise<string> {
@@ -119,7 +129,19 @@ let chrome: Chrome = {
 }
 let win: BrowserWindow | null = null
 
-const firstPath = process.argv.slice(1).find((a) => path.isAbsolute(a))
+function parseArgPath(arg: string): string | null {
+  if (!arg || typeof arg !== 'string') return null
+  if (arg.startsWith('file://')) {
+    try {
+      return fileURLToPath(arg)
+    } catch {
+      return null
+    }
+  }
+  return path.isAbsolute(arg) ? arg : null
+}
+
+const firstPath = process.argv.slice(1).map(parseArgPath).find((p): p is string => Boolean(p))
 
 // single instance: a second launch focuses the window and opens the path it was given
 if (bootPrefs.singleInstance !== false) {
@@ -131,7 +153,7 @@ if (bootPrefs.singleInstance !== false) {
       if (win.isMinimized()) win.restore()
       win.show()
       win.focus()
-      const target = argv.slice(1).find((a) => path.isAbsolute(a))
+      const target = argv.slice(1).map(parseArgPath).find((p): p is string => Boolean(p))
       if (target) win.webContents.send('app:open-path', target)
     })
   }
@@ -430,6 +452,25 @@ app.whenReady().then(async () => {
     }
   })
   /** Everything the properties dialog shows, in one stat round-trip. */
+  /** Drag debugging: MFM_DRAG_DEBUG=1 keeps one session's drag lifecycle in userData. */
+  ipcMain.handle('debug:log', (_e, msg: string) => {
+    if (process.env.MFM_DRAG_DEBUG !== '1') return false
+    const file = path.join(app.getPath('userData'), 'drag-debug.log')
+    try {
+      if (!debugLogStarted) {
+        debugLogStarted = true
+        writeFileSync(
+          file,
+          `${new Date().toISOString()} session start · electron ${process.versions.electron} · app ${app.getVersion()} · WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY ?? ''} · DISPLAY=${process.env.DISPLAY ?? ''}\n`
+        )
+      }
+      void fs.appendFile(file, `${new Date().toISOString()} ${String(msg)}\n`)
+      return true
+    } catch {
+      return false
+    }
+  })
+
   ipcMain.handle('fs:properties', async (_e, p: string) => {
     if (!path.isAbsolute(p)) return { error: 'bad_path' }
     const link = await fs.lstat(p).catch(() => null)
@@ -868,6 +909,10 @@ app.whenReady().then(async () => {
     if (!path.isAbsolute(id) || !path.isAbsolute(p)) return { error: 'bad_path' }
     return launchApp(id, p)
   })
+  ipcMain.handle('desktop:isDefaultFileManager', () => isDefaultFileManager())
+  ipcMain.handle('desktop:setDefaultFileManager', () =>
+    setDefaultFileManager(process.execPath, app.getAppPath())
+  )
   ipcMain.handle('window:control', (_e, action: 'minimize' | 'maximize' | 'close') => {
     if (!win) return
     if (action === 'minimize') win.minimize()

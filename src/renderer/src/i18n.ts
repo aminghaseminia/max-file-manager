@@ -6,14 +6,27 @@ export type Lang = 'en' | 'fa'
 
 let lang: Lang = 'en'
 
+/** React subscribes through `useSyncExternalStore`; changing the module value alone repaints nothing. */
+const listeners = new Set<() => void>()
+
 export const setLang = (l: Lang): void => {
-  lang = l === 'fa' ? 'fa' : 'en'
+  const next: Lang = l === 'fa' ? 'fa' : 'en'
+  const changed = next !== lang
+  lang = next
   if (typeof document !== 'undefined') {
     document.documentElement.lang = lang
     document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr'
   }
+  if (changed) for (const fn of listeners) fn()
 }
 export const getLang = (): Lang => lang
+
+export const subscribeLang = (fn: () => void): (() => void) => {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
 
 /** Persian → English. Anything missing falls back to the Persian source. */
 const EN: Record<string, string> = {
@@ -85,6 +98,13 @@ const EN: Record<string, string> = {
   'برداشتن نشان': 'Remove the bookmark',
   'نشان‌کردن در سایدبار': 'Bookmark in the sidebar',
   'تغییر عرض پیش‌نمایش': 'Resize the preview',
+  'تغییر عرض دو پنجره': 'Resize dual panes',
+  'مدیر فایل پیش‌فرض سیستم': 'System default file manager',
+  'این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است': 'This app is the default file manager for opening folders',
+  'باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود': 'Make this app handle folders opened from other applications',
+  'پیش‌فرض است': 'Default',
+  'تنظیم به عنوان پیش‌فرض': 'Set as default',
+  'در حال تنظیم…': 'Setting…',
   'تصویر کلیپ‌بورد ذخیره نشد': 'The clipboard image could not be saved',
   'ذخیره شد': 'Saved',
   'فیلتر نام (Ctrl+F)': 'Filter by name (Ctrl+F)',
@@ -207,6 +227,9 @@ const EN: Record<string, string> = {
   'مقصد:': 'Destination:',
   'بازگردانی': 'Undo',
   'ظاهر و رنگ': 'Appearance',
+  'فونت رابط کاربری': 'Interface font',
+  'نام فونت نصب‌شده؛ خالی = وزیرمتن': 'Installed font name; empty = Vazirmatn',
+  'نمونهٔ متن': 'Sample text',
   'نمایش فایل‌ها': 'File display',
   'نوار ابزار': 'Toolbar',
   'کلید میان‌بر': 'Shortcuts',
@@ -325,6 +348,8 @@ const EN: Record<string, string> = {
   'خانه': 'Home',
   'ریشه': 'Root',
   'نشان‌شده‌ها': 'Bookmarks',
+  'نشان‌ها': 'Bookmarks',
+  'هنوز نشانی نداری — با ستاره یا کشیدن پوشه روی سایدبار بساز': 'No bookmarks yet — use the star or drag a folder onto the sidebar',
   'حذف نشان': 'Remove bookmark',
   'برچسب‌ها': 'Labels',
   'باز/بسته': 'Expand',
@@ -367,6 +392,9 @@ const EN: Record<string, string> = {
   'پوشه‌های جست‌وجو': 'Search folders',
   'افزودن پوشه': 'Add folder',
   'زبان': 'Language',
+  'انگلیسی': 'English',
+  'فارسی': 'Persian',
+  'فوراً اعمال می‌شود؛ کل رابط و جهت چیدمان هم عوض می‌شود': 'Applies immediately; the whole interface and its reading direction change',
   'برای اعمال کامل، رابط تغییر می‌کند و چیدمان چپ/راست می‌شود': 'The interface and its reading direction follow this setting',
   'نمای پیش‌فرض': 'Default view',
   'فهرست': 'List',
@@ -517,6 +545,8 @@ const EN: Record<string, string> = {
   'کاشی بزرگ': 'Large',
   'کاشی بزرگ‌تر': 'X-Large',
   'آیکون فایل‌ها و پوشه‌ها': 'File and folder icons',
+  'Pure همراه برنامه': 'Bundled Pure',
+  'Pure همراه برنامه پیش‌فرض است؛ برای آیکون‌های خود سیستم‌عامل «آیکون‌ست سیستم» را بزن': 'Bundled Pure is the default; choose “Icon theme” for the operating system’s own icons',
   'آیکونست سیستم (Pure) یا گلیف‌های خطی خود برنامه': 'Desktop icon theme (Pure) or the app’s own line glyphs',
   'آیکونست سیستم': 'Icon theme',
   'خطی': 'Line glyphs',

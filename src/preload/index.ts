@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
+  debugLog: (msg: string) => ipcRenderer.invoke('debug:log', String(msg)),
   chmod: (p: string, mode: number) => ipcRenderer.invoke('fs:chmod', { path: p, mode }),
   properties: (p: string) => ipcRenderer.invoke('fs:properties', p),
   imageData: (p: string) => ipcRenderer.invoke('fs:imageData', p),
@@ -24,6 +25,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('app:runScript', { command, path, dir }),
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
+  isDefaultFileManager: () => ipcRenderer.invoke('desktop:isDefaultFileManager'),
+  setDefaultFileManager: () => ipcRenderer.invoke('desktop:setDefaultFileManager'),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
   mcp: {

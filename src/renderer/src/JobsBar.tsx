@@ -12,12 +12,12 @@ type Props = {
 }
 
 const STATE_LABEL: Record<string, string> = {
-  queued: t('در صف'),
-  running: t('در حال اجرا'),
-  paused: t('مکث'),
-  done: t('انجام شد'),
-  cancelled: t('لغو شد'),
-  error: t('خطا')
+  queued: 'در صف',
+  running: 'در حال اجرا',
+  paused: 'مکث',
+  done: 'انجام شد',
+  cancelled: 'لغو شد',
+  error: 'خطا'
 }
 
 export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
@@ -48,7 +48,7 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
               <span className="job-meta">
                 {j.state === 'running'
                   ? `${fa(pct)}٪ · ${fmtSize(j.done, false)} · ${fmtSize(j.speed, false)}/ث`
-                  : STATE_LABEL[j.state]}
+                  : t(STATE_LABEL[j.state])}
               </span>
               <span className="spacer" />
               {!!j.skipped && (

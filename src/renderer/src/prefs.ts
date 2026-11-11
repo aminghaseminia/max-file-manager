@@ -31,15 +31,16 @@ export const colLabel = (id: string): string => {
   return c ? t(c.label) : id
 }
 
+/** Persian stays the key; `colLabel` translates it at render time so a language switch applies. */
 export const COLUMNS: { id: ColId; label: string }[] = [
-  { id: 'type', label: t('نوع') },
-  { id: 'size', label: t('اندازه') },
-  { id: 'date', label: t('تاریخ') },
-  { id: 'mode', label: t('مجوز') },
-  { id: 'owner', label: t('مالک') },
-  { id: 'links', label: t('لینک') },
-  { id: 'dims', label: t('ابعاد') },
-  { id: 'rating', label: t('امتیاز') }
+  { id: 'type', label: 'نوع' },
+  { id: 'size', label: 'اندازه' },
+  { id: 'date', label: 'تاریخ' },
+  { id: 'mode', label: 'مجوز' },
+  { id: 'owner', label: 'مالک' },
+  { id: 'links', label: 'لینک' },
+  { id: 'dims', label: 'ابعاد' },
+  { id: 'rating', label: 'امتیاز' }
 ]
 
 /**
@@ -52,11 +53,15 @@ export type Prefs = {
   // appearance
   /** 'system' follows the OS light/dark preference live */
   theme: 'dark' | 'light' | 'system'
+  /** CSS family list for the whole UI; '' keeps the bundled Vazirmatn stack */
+  fontFamily: string
   view: View
   foldersFirst: boolean
   showHidden: boolean
-  /** share of the window width the side preview/editor takes in single layout (0.25–0.8) */
+  /** share of the side preview/editor in single layout (0.25–0.8) */
   sideWidth: number
+  /** share of the first pane in dual layout (0.2–0.8, default 0.5) */
+  dualSplit: number
   columns: ColId[]
   /** pixel width per optional column; a missing entry uses the built-in width */
   colWidths: Record<string, number>
@@ -69,8 +74,8 @@ export type Prefs = {
   gridNameLines: number
   /** grid tile width in px (80..240); thumbnail and name box scale with it */
   tileSize: number
-  /** file/folder icons: the desktop icon theme (Pure) or our own line glyphs */
-  fileIcons: 'theme' | 'line'
+  /** file/folder icons: the bundled Pure set, the desktop icon theme, or our own line glyphs */
+  fileIcons: 'pure' | 'system' | 'line'
   // window
   titlebar: 'app' | 'system'
   rounded: boolean
@@ -130,13 +135,33 @@ export type Prefs = {
   iconTheme: string
 }
 
+export const DEFAULT_FONT_FAMILY = "Vazirmatn, system-ui, 'Noto Sans', sans-serif"
+
+/** A single family gets Vazirmatn as a Persian-capable fallback; a full stack is left alone. */
+export const fontStack = (family: string): string => {
+  const v = cleanFontFamily(family)
+  if (!v) return DEFAULT_FONT_FAMILY
+  return v.includes(',') ? v : `${v}, ${DEFAULT_FONT_FAMILY}`
+}
+
+/** Whatever the user typed must stay a family list, never break out of the CSS declaration. */
+export const cleanFontFamily = (raw: unknown): string => {
+  if (typeof raw !== 'string') return ''
+  return raw
+    .replace(/[;{}()<>\\/\u0000-\u001f]/g, '')
+    .trim()
+    .slice(0, 120)
+}
+
 export const DEFAULTS: Prefs = {
   lang: 'en',
   theme: 'dark',
+  fontFamily: '',
   view: 'list',
   foldersFirst: true,
   showHidden: false,
   sideWidth: 0.5,
+  dualSplit: 0.5,
   columns: ['type', 'size', 'date'],
   colWidths: {},
   gridMeta: ['size'],
@@ -145,7 +170,7 @@ export const DEFAULTS: Prefs = {
   showSeconds: false,
   gridNameLines: 2,
   tileSize: 108,
-  fileIcons: 'theme',
+  fileIcons: 'pure',
   titlebar: 'app',
   rounded: true,
   layout: 'dual',
@@ -271,12 +296,17 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
   return {
     lang: p.lang === 'fa' ? 'fa' : 'en',
     theme: p.theme === 'light' || p.theme === 'system' ? p.theme : 'dark',
+    fontFamily: cleanFontFamily(p.fontFamily),
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,
     showHidden: p.showHidden === true,
     sideWidth:
       typeof p.sideWidth === 'number' && Number.isFinite(p.sideWidth)
         ? Math.min(0.8, Math.max(0.25, p.sideWidth))
+        : 0.5,
+    dualSplit:
+      typeof p.dualSplit === 'number' && Number.isFinite(p.dualSplit)
+        ? Math.min(0.8, Math.max(0.2, p.dualSplit))
         : 0.5,
     columns: normalColumns(p.columns, p.showTypeColumn),
     colWidths: normalWidths(p.colWidths),
@@ -292,7 +322,13 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
       typeof p.tileSize === 'number' && p.tileSize >= 80 && p.tileSize <= 240
         ? Math.round(p.tileSize)
         : 108,
-    fileIcons: p.fileIcons === 'line' ? 'line' : 'theme',
+    // old `theme` meant "the desktop icon theme"; keep that intent, everything else defaults to Pure
+    fileIcons:
+      p.fileIcons === 'line'
+        ? 'line'
+        : p.fileIcons === 'system' || (p.fileIcons as string) === 'theme'
+          ? 'system'
+          : 'pure',
     titlebar: p.titlebar === 'system' ? 'system' : 'app',
     rounded: p.rounded !== false,
     layout: p.layout === 'single' ? 'single' : 'dual',

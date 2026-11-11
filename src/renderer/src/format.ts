@@ -188,6 +188,13 @@ export function mediaUrl(p: string): string {
   return `mfm://local${tail.startsWith('/') ? '' : '/'}${tail}`
 }
 
+/** Local path → the `file://` URI external apps expect on a drag (`text/uri-list`). */
+export function fileUri(p: string): string {
+  const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
+  const tail = segs.join('/')
+  return `file://${tail.startsWith('/') ? '' : '/'}${tail}`
+}
+
 export type Kind = 'dir' | 'image' | 'video' | 'audio' | 'archive' | 'text' | 'doc' | 'pdf' | 'sheet' | 'slides' | 'code' | 'file'
 
 const KIND: Record<string, Kind> = {

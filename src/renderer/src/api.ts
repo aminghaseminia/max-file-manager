@@ -163,6 +163,7 @@ export type FileProperties = {
 export type Api = {
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
   statfs(p: string): Promise<{ free: number; size: number } | null>
+  debugLog(msg: string): Promise<boolean>
   chmod(p: string, mode: number): Promise<{ ok: true } | { error: string }>
   properties(p: string): Promise<FileProperties | { error: string }>
   imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
@@ -183,6 +184,8 @@ export type Api = {
   ): Promise<{ ok: true; output: string } | { error: string }>
   openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
+  isDefaultFileManager(): Promise<boolean>
+  setDefaultFileManager(): Promise<{ ok: boolean; error?: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>

@@ -22,7 +22,7 @@ const LABEL: Record<string, string> = {
 }
 
 /** translated at render time, so switching the language does not need a restart */
-const labelOfState = (state: string): string => t(labelOfState(state) ?? state)
+const labelOfState = (state: string): string => t(LABEL[state] ?? state)
 
 const TONE: Record<string, string> = {
   same: '',

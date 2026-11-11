@@ -1,10 +1,13 @@
 import { t } from './i18n.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Entry, Listing } from './api'
+import { keepDragPaths } from './drag'
+import { dragLog } from './draglog'
 import type { ColId } from './prefs'
 import {
   crumbs,
   fa,
+  fileUri,
   fmtDate,
   fmtSize,
   groupLabel,
@@ -20,6 +23,7 @@ import { PreviewPanel } from './PreviewPanel'
 import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon } from './Icons'
 import {
   ArrowUpIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -103,6 +107,10 @@ type Props = {
   /** the command bar's «filter» bumps this to open the floating input */
   filterTick: number
   filterRef(el: HTMLInputElement | null): void
+  /** Ctrl+L bumps this to edit the current path in place of the breadcrumbs */
+  addrTick: number
+  /** the user's home folder, so `~` in the address field resolves */
+  home: string
   onActivate(): void
   onSort(key: SortKey): void
   onNav(dir: string): void
@@ -124,6 +132,8 @@ type Props = {
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
   onBookmark(): void
+  /** open the bookmarks list for this pane, anchored at the caret */
+  onBookmarksMenu(x: number, y: number): void
   onFlat(): void
   onDupes(): void
   onSearch(q: SearchQuery): void
@@ -140,6 +150,7 @@ type Props = {
   onMetrics?(m: { cols: number; rows: number }): void
   /** bump `tick` to scroll this entry into view */
   reveal?: { path: string; tick: number } | null
+  style?: React.CSSProperties
 }
 
 const ROW = 28
@@ -171,6 +182,10 @@ export function Pane(props: Props) {
   const marquee = useRef<{ x: number; y: number; base: Set<string> } | null>(null)
   const filterInput = useRef<HTMLInputElement | null>(null)
   const lastFilterTick = useRef(props.filterTick)
+  /** the inline address field; null means the breadcrumbs are showing */
+  const [addrEdit, setAddrEdit] = useState<string | null>(null)
+  const addrInput = useRef<HTMLInputElement | null>(null)
+  const lastAddrTick = useRef(props.addrTick)
   const [query, setQuery] = useState('')
   const [content, setContent] = useState('')
   const [regex, setRegex] = useState(false)
@@ -196,6 +211,50 @@ export function Pane(props: Props) {
     setFilterOpen(true)
     setTimeout(() => filterInput.current?.focus(), 0)
   }, [props.filterTick])
+
+  /** Ctrl+L, or a double-click on the breadcrumbs, edits the path where it is displayed. */
+  const startAddrEdit = (path?: string): void => {
+    setAddrEdit(path ?? props.pane.tabs[props.pane.ti])
+    setTimeout(() => {
+      addrInput.current?.focus()
+      addrInput.current?.select()
+    }, 0)
+  }
+
+  // Ctrl+L: the breadcrumbs turn into an address field in place, not a bar over the panes
+  useEffect(() => {
+    if (props.addrTick === lastAddrTick.current) return
+    lastAddrTick.current = props.addrTick
+    startAddrEdit()
+  }, [props.addrTick])
+
+  // clicking anywhere outside the field closes it; blur alone is unreliable (the window may lose focus)
+  useEffect(() => {
+    if (addrEdit === null) return
+    const onDown = (ev: MouseEvent) => {
+      const el = ev.target as HTMLElement | null
+      if (el?.closest('.addr-edit')) return
+      setAddrEdit(null)
+    }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setAddrEdit(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [addrEdit])
+
+  /** `~` is the only shorthand; everything else goes to the loader as typed. */
+  const commitAddr = (): void => {
+    const raw = (addrEdit ?? '').trim()
+    setAddrEdit(null)
+    if (!raw) return
+    const path = raw === '~' ? props.home : raw.startsWith('~/') ? props.home + raw.slice(1) : raw
+    if (path) props.onNav(path)
+  }
 
   /** Drag on empty space to select everything the rectangle touches. */
   const startMarquee = (ev: React.PointerEvent) => {
@@ -417,7 +476,14 @@ export function Pane(props: Props) {
   const dragPaths = (path: string) => (pane.sel.includes(path) ? pane.sel : [path])
 
   const startDrag = (ev: React.DragEvent, path: string) => {
-    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(dragPaths(path)))
+    const paths = dragPaths(path)
+    // Wayland may hand an empty DataTransfer to drop; the sidebar falls back to this copy
+    keepDragPaths(paths)
+    dragLog(`start ${path} all='${paths.join(',')}'`)
+    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(paths))
+    // external apps (VLC, Telegram, …) only understand a file list, CRLF separated by the spec
+    ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
+    ev.dataTransfer.setData('text/plain', paths.join('\n'))
     // the sidebar asks for `link` when bookmarking; `copyMove` would cancel that drop
     ev.dataTransfer.effectAllowed = 'all'
   }
@@ -460,6 +526,7 @@ export function Pane(props: Props) {
   return (
     <section
       className={'pane' + (active ? ' active' : '')}
+      style={props.style}
       onMouseDown={props.onActivate}
     >
       {showTabs && (
@@ -523,7 +590,17 @@ export function Pane(props: Props) {
       </div>
       )}
 
-      <div className="path">
+      <div
+        className="path"
+        onDoubleClick={(ev) => {
+          const el = ev.target as HTMLElement
+          // nav/action buttons and the field itself keep their own double-click behaviour
+          if (el instanceof HTMLInputElement || el.closest('button:not(.crumb)')) return
+          ev.preventDefault()
+          // the first click already navigated; edit the crumb under the pointer, not a stale path
+          startAddrEdit((el.closest('.crumb') as HTMLElement | null)?.dataset.path)
+        }}
+      >
         <button className="tb" title={t(t('بازگشت (Alt+←)'))} onClick={props.onBack}>
           <ChevronRightIcon />
         </button>
@@ -536,16 +613,52 @@ export function Pane(props: Props) {
         <button className="tb" title={t(t('نوسازی (Ctrl+R)'))} onClick={props.onRefresh}>
           <RefreshIcon />
         </button>
-        <div className="crumbs">
-          {crumbs(cur).map((c) => (
-            <span key={c.path} className="crumb-wrap">
-              <button className="crumb" dir="auto" title={c.path} onClick={() => props.onNav(c.path)}>
-                {c.name}
-              </button>
-              <ChevronLeftIcon size={11} />
-            </span>
-          ))}
-        </div>
+        {addrEdit === null ? (
+          <div className="crumbs">
+            {crumbs(cur).map((c) => (
+              <span key={c.path} className="crumb-wrap">
+                <button
+                  className="crumb"
+                  dir="auto"
+                  data-path={c.path}
+                  title={c.path}
+                  onClick={(ev) => {
+                    // the second click of a double-click opens the editor instead of navigating again
+                    if (ev.detail > 1) return
+                    props.onNav(c.path)
+                  }}
+                >
+                  {c.name}
+                </button>
+                <ChevronLeftIcon size={11} />
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="addr-edit">
+            <input
+              ref={addrInput}
+              dir="ltr"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={t('مسیر')}
+              title={t('مسیر را بنویس و Enter بزن · Esc انصراف')}
+              placeholder="/path/to/folder"
+              value={addrEdit}
+              onChange={(e) => setAddrEdit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setAddrEdit(null)
+                  return
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitAddr()
+                }
+              }}
+            />
+          </div>
+        )}
         {pane.virtual && (
           <span className="vchip">
             {pane.virtual.label}
@@ -586,6 +699,17 @@ export function Pane(props: Props) {
           onClick={props.onBookmark}
         >
           <StarIcon filled={props.marked} />
+        </button>
+        <button
+          className="tb tb-caret"
+          title={t(t('نشان‌ها'))}
+          aria-haspopup="menu"
+          onClick={(ev) => {
+            const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+            props.onBookmarksMenu(Math.round(r.right), Math.round(r.bottom + 4))
+          }}
+        >
+          <ChevronDownIcon size={11} />
         </button>
       </div>
 
