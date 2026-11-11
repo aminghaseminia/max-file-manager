@@ -218,6 +218,9 @@ export default function App() {
   ])
   /** the row a shift-range starts from; keyboard navigation owns it */
   const navAnchor = useRef('')
+  /** type-ahead: the letters typed since the last pause, and when they were typed */
+  const typedBuf = useRef('')
+  const typedAt = useRef(0)
   const [reveal, setReveal] = useState<{ pane: number; path: string; tick: number }>({
     pane: -1,
     path: '',
@@ -1811,6 +1814,7 @@ export default function App() {
       const move = NAV[ev.key]
       if (move) {
         ev.preventDefault()
+        typedBuf.current = ''
         moveSel(move, ev.shiftKey)
         return
       }
@@ -1840,12 +1844,43 @@ export default function App() {
       }
       if (ev.key === 'Escape') {
         ev.preventDefault()
+        typedBuf.current = ''
         setPanes((p) => p && patch(p, active, { sel: [], filter: '' }))
         return
       }
       if (ev.ctrlKey && /^[1-9]$/.test(ev.key)) {
         ev.preventDefault()
         jumpTab(Number(ev.key) - 1)
+        return
+      }
+
+      // type-ahead: a plain character starts finding in the folder that is open right now.
+      // Space is the gallery key and Backspace is "up", so those only feed the buffer once it has text.
+      const pick = (hit: Entry) => {
+        navAnchor.current = hit.path
+        setPanes((p) => p && patch(p, active, { sel: [hit.path] }))
+        setReveal({ pane: active, path: hit.path, tick: Date.now() })
+      }
+      const findTyped = () => {
+        const needle = typedBuf.current.toLowerCase()
+        if (!needle) return null
+        return visibleOf(active).find((e) => e.name.toLowerCase().startsWith(needle)) ?? null
+      }
+      if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key.length === 1 && ev.key !== ' ') {
+        ev.preventDefault()
+        if (Date.now() - typedAt.current > 800) typedBuf.current = ''
+        typedBuf.current += ev.key
+        typedAt.current = Date.now()
+        const hit = findTyped()
+        if (hit) pick(hit)
+        return
+      }
+      if (ev.key === 'Backspace' && typedBuf.current) {
+        ev.preventDefault()
+        typedBuf.current = typedBuf.current.slice(0, -1)
+        typedAt.current = Date.now()
+        const hit = findTyped()
+        if (hit) pick(hit)
         return
       }
 
