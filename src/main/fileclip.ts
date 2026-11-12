@@ -1,12 +1,15 @@
 /**
- * File list on the system clipboard. Electron 45 cannot write `text/uri-list`, so one detached
- * PySide process owns the selection with `QMimeData.setUrls`. It stays alive and receives new
- * paths over stdin: replacing the owner on every copy raced with the compositor and left the
- * previous file on the clipboard. Its pid is kept per profile so a new app run can retire a
- * stale owner. Without Python/PySide the paths go to the clipboard as plain text.
+ * File list on the system clipboard.
+ * On Wayland, standard unfocused processes cannot write the clipboard via wl_data_device.
+ * We use a dedicated helper (wayland-clip) utilizing ext-data-control / wlr-data-control,
+ * which owns the selection with text/uri-list, x-special/gnome-copied-files, and
+ * application/x-kde-cutselection. On X11, a detached PySide fallback owns the selection.
+ * The helper stays alive and receives new paths over stdin.
+ * Its pid is kept per profile so a new app run can retire a stale owner.
+ * If neither helper is available, the paths go to the clipboard as plain text.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { app, clipboard } from 'electron'
 
@@ -56,10 +59,24 @@ const ownerFile = () => path.join(app.getPath('userData'), 'clipboard-owner')
 
 const isOurHelper = (pid: number): boolean => {
   try {
-    return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('PySide6')
+    const cmd = readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+    return cmd.includes('wayland-clip') || cmd.includes('PySide6')
   } catch {
     return false
   }
+}
+
+function findWaylandBinary(): string | null {
+  const candidates = [
+    path.join(__dirname, 'wayland-clip'),
+    path.join(__dirname, 'wayland-clip', 'wayland-clip'),
+    path.join(app.getAppPath(), 'out', 'main', 'wayland-clip'),
+    path.join(app.getAppPath(), 'src', 'main', 'wayland-clip', 'wayland-clip')
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  return null
 }
 
 /** Retire an owner left by an earlier run (the pid file is per profile). */
@@ -81,17 +98,33 @@ function startHelper(): Promise<boolean> {
   if (child) return Promise.resolve(true)
   if (starting) return starting
   starting = new Promise<boolean>((resolve) => {
-    let proc: ChildProcess
-    try {
-      proc = spawn('python3', ['-c', SCRIPT], {
-        detached: true,
-        stdio: ['pipe', 'pipe', 'ignore']
-      })
-    } catch {
-      starting = null
-      resolve(false)
-      return
+    let proc: ChildProcess | null = null
+    const waylandBin = process.env.WAYLAND_DISPLAY ? findWaylandBinary() : null
+
+    if (waylandBin) {
+      try {
+        proc = spawn(waylandBin, [], {
+          detached: true,
+          stdio: ['pipe', 'pipe', 'ignore']
+        })
+      } catch {
+        proc = null
+      }
     }
+
+    if (!proc) {
+      try {
+        proc = spawn('python3', ['-c', SCRIPT], {
+          detached: true,
+          stdio: ['pipe', 'pipe', 'ignore']
+        })
+      } catch {
+        starting = null
+        resolve(false)
+        return
+      }
+    }
+
     child = proc
     let settled = false
     const done = (ok: boolean) => {
@@ -100,16 +133,17 @@ function startHelper(): Promise<boolean> {
       starting = null
       resolve(ok)
     }
+
     proc.stdout?.on('data', (buf: Buffer) => {
       out += String(buf)
       for (;;) {
         const nl = out.indexOf('\n')
         if (nl < 0) break
-        const line = out.slice(0, nl)
+        const line = out.slice(0, nl).trim()
         out = out.slice(nl + 1)
         if (line === 'ready') {
           try {
-            writeFileSync(ownerFile(), String(proc.pid ?? ''))
+            writeFileSync(ownerFile(), String(proc?.pid ?? ''))
           } catch {
             // the clipboard works without the pid file
           }
@@ -120,6 +154,7 @@ function startHelper(): Promise<boolean> {
         }
       }
     })
+
     proc.once('error', () => {
       child = null
       done(false)
@@ -128,7 +163,6 @@ function startHelper(): Promise<boolean> {
       child = null
       done(false)
     })
-    // the Qt import can be slow on the first run; do not fail the copy for that
     setTimeout(() => done(true), 4000)
   })
   return starting

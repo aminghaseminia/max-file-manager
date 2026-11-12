@@ -3,4 +3,5 @@ out/
 dist/
 release/
 *.log
+src/main/wayland-clip/wayland-clip
 .DS_Store

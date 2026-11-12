@@ -1340,20 +1340,6 @@ export default function App() {
       return
     }
     setClip({ paths: targets, cut })
-    const one = targets.length === 1 ? entryOf(active, targets[0]) : undefined
-    // a single picture goes on the clipboard as its *content*, exactly like the gallery copy:
-    // Electron cannot write a file list on Wayland, but PNG pastes into every chat
-    if (one && !one.dir && isImage(one.ext)) {
-      try {
-        await copyImageContent(one.path)
-        setNote(t('تصویر در کلیپ‌بورد کپی شد'))
-      } catch (e) {
-        setNote(t('کپی تصویر نشد — {error}', { error: e instanceof Error ? e.message : String(e) }))
-      }
-      return
-    }
-    // everything else goes on the clipboard as a real file list (text/uri-list), so
-    // Telegram/Dolphin paste the file itself; the helper falls back to paths without PySide
     const kind = await api.clipboard.copyFiles(targets, cut)
     setNote(
       kind === 'files'
@@ -1467,8 +1453,15 @@ export default function App() {
       case 'quickCopy': {
         const targets = menuTargets(me.sel, path)
         if (targets.length) {
-          setClip({ paths: targets, cut: id === 'quickCut' })
-          void api.clipboard.writeText(targets.join('\n'))
+          const cut = id === 'quickCut'
+          setClip({ paths: targets, cut })
+          void api.clipboard.copyFiles(targets, cut).then((kind) => {
+            setNote(
+              kind === 'files'
+                ? t(cut ? '{n} فایل بریده شد' : '{n} فایل در کلیپ‌بورد کپی شد', { n: fa(targets.length) })
+                : t(cut ? 'مسیر {n} فایل بریده شد' : 'مسیر {n} فایل کپی شد', { n: fa(targets.length) })
+            )
+          })
         }
         break
       }
