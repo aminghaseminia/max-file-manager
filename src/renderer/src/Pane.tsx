@@ -1,15 +1,12 @@
 import { t } from './i18n.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Entry, Listing } from './api'
+import { api, type Entry, type Listing } from './api'
 import { keepDragPaths } from './drag'
-import { dragDownloadUrlFor, dragFileFor, prefetchDragFile } from './dragfiles'
 import { dragLog } from './draglog'
 import type { ColId } from './prefs'
 import {
   crumbs,
   fa,
-  downloadUrl,
-  fileUri,
   fmtDate,
   fmtSize,
   groupLabel,
@@ -493,40 +490,14 @@ export function Pane(props: Props) {
   // rows carry their own paths (not text) so a drag between panes stays typed
   const dragPaths = (path: string) => (pane.sel.includes(path) ? pane.sel : [path])
 
-  const startDrag = (ev: React.DragEvent, path: string, dir = false) => {
+  const startDrag = (ev: React.DragEvent, path: string, _dir = false) => {
     const paths = dragPaths(path)
+    if (!paths.length) return
     // Wayland may hand an empty DataTransfer to drop; the sidebar falls back to this copy
     keepDragPaths(paths)
     dragLog(`start ${path} all='${paths.join(',')}'`)
-    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(paths))
-    // external apps (VLC, Telegram, …) only understand a file list, CRLF separated by the spec
-    ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
-    ev.dataTransfer.setData('text/plain', paths.join('\n'))
-    // browser drop zones read `dataTransfer.files`; attach real files prefetched on pointer-down
-    // (a uri-list alone stays text for security, and DownloadURL is Chromium-only)
-    for (const p of paths.slice(0, 12)) {
-      const e =
-        pane.listing?.entries.find((x) => x.path === p) ?? pane.results?.find((x) => x.path === p)
-      if (!e || e.dir) continue
-      const file = dragFileFor(e.path, e.size, e.mtime)
-      if (file) {
-        try {
-          ev.dataTransfer.items.add(file)
-        } catch {
-          // the drag store may be protected; the uri-list still works for native apps
-        }
-      }
-    }
-    // Chromium targets only turn a drag into a File when DownloadURL carries the bytes itself;
-    // a `file://` payload is treated as a page URL and navigates the target instead.
-    if (!dir) {
-      const entry =
-        pane.listing?.entries.find((x) => x.path === path) ?? pane.results?.find((x) => x.path === path)
-      const dataUrl = entry ? dragDownloadUrlFor(entry.path, entry.size, entry.mtime) : null
-      ev.dataTransfer.setData('DownloadURL', dataUrl ? `application/octet-stream:${entry!.name}:${dataUrl}` : downloadUrl(path))
-    }
-    // the sidebar asks for `link` when bookmarking; `copyMove` would cancel that drop
-    ev.dataTransfer.effectAllowed = 'all'
+    ev.preventDefault()
+    api.dragOut(paths)
   }
 
   const allowDrop = (ev: React.DragEvent) => {
@@ -583,7 +554,7 @@ export function Pane(props: Props) {
               className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
               style={
                 tabColor && i === pane.ti
-                  ? { background: `color-mix(in srgb, ${tabColor} 18%, var(--panel-3))` }
+                  ? { background: `color-mix(in srgb, ${tabColor} 18%, var(--panel))` }
                   : undefined
               }
               draggable
@@ -944,11 +915,6 @@ export function Pane(props: Props) {
                 onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                 onContextMenu={(ev) => menu(ev, e.path)}
                 onClick={(ev) => click(start + k, ev)}
-                onPointerDown={(ev) => {
-                  if (ev.button === 0 && !e.dir) {
-                    void prefetchDragFile(e.path, e.name, e.size, e.mtime)
-                  }
-                }}
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
@@ -1014,11 +980,6 @@ export function Pane(props: Props) {
                   onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                   onContextMenu={(ev) => menu(ev, e.path)}
                   onClick={(ev) => click(idx, ev)}
-                  onPointerDown={(ev) => {
-                    if (ev.button === 0 && !e.dir) {
-                      void prefetchDragFile(e.path, e.name, e.size, e.mtime)
-                    }
-                  }}
                   onDoubleClick={() => props.onOpen(e.path)}
                   title={e.path}
                 >

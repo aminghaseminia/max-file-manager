@@ -69,6 +69,16 @@ export type Listing = {
   format?: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean } | null
 }
 export type DirRef = { name: string; path: string }
+export type Drive = {
+  id: string
+  name: string
+  device: string
+  mountpoint: string | null
+  size: string
+  fsType: string
+  removable: boolean
+  mounted: boolean
+}
 export type Result = { done: number; errors: string[] }
 export type SizeResult = { bytes: number; files: number; capped: boolean }
 
@@ -225,6 +235,11 @@ export type Api = {
     }>
     token(): Promise<string>
     onUi(cb: (msg: unknown) => void): () => void
+  }
+  drives: {
+    list(): Promise<Drive[]>
+    mount(device: string): Promise<{ ok: boolean; mountpoint?: string; error?: string }>
+    unmount(deviceOrMount: string): Promise<{ ok: boolean; error?: string }>
   }
   update: {
     check(force?: boolean): Promise<{

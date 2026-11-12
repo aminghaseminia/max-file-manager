@@ -291,10 +291,26 @@ export const HomeIcon = () => (
     <path d="M4 11l8-7 8 7v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
   </S>
 )
-export const DriveIcon = () => (
-  <S>
+export const DriveIcon = ({ size = 14 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="6" width="18" height="12" rx="2" />
     <path d="M7 12h.01M17 12h.01" />
+  </S>
+)
+export const UsbIcon = ({ size = 14 }: { size?: number }) => (
+  <S size={size}>
+    <circle cx="12" cy="18" r="1.5" />
+    <path d="M12 16.5V4M8 8l4-4 4 4" />
+    <path d="M12 11h-3a2 2 0 0 0-2 2v1" />
+    <path d="M12 8h3a2 2 0 0 1 2 2v2" />
+    <circle cx="7" cy="15" r="1" />
+    <rect x="16" y="12" width="2" height="2" />
+  </S>
+)
+export const EjectIcon = ({ size = 13 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M12 4l7 9H5z" />
+    <path d="M5 18h14" />
   </S>
 )
 export const PauseIcon = () => (

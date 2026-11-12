@@ -81,6 +81,7 @@ import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
+import { listDrives, mountDrive, unmountDrive } from './drives.ts'
 import type { DirRef, Entry } from './types.ts'
 
 // mfm:// serves local files to <img> so the renderer never gets a filesystem API.
@@ -731,6 +732,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false) => dirs(dir, !!showHidden))
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
+  ipcMain.handle('drives:list', () => listDrives())
+  ipcMain.handle('drives:mount', (_e, dev: string) => mountDrive(dev))
+  ipcMain.handle('drives:unmount', (_e, dev: string) => unmountDrive(dev))
   ipcMain.handle('fs:size', (_e, p: string) =>
     path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
   )
@@ -884,6 +888,12 @@ app.whenReady().then(async () => {
     switch (tool) {
       case 'roots':
         return { home: os.homedir(), roots: await roots() }
+      case 'drives_list':
+        return listDrives()
+      case 'drive_mount':
+        return mountDrive(String(args.device ?? ''))
+      case 'drive_unmount':
+        return unmountDrive(String(args.device ?? ''))
       case 'list': {
         const dir = needAbs(args.path)
         const l = await list(dir, !!args.hidden, !!args.dims)

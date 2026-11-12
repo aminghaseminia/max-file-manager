@@ -51,6 +51,11 @@ contextBridge.exposeInMainWorld('api', {
       }
     }
   },
+  drives: {
+    list: () => ipcRenderer.invoke('drives:list'),
+    mount: (device: string) => ipcRenderer.invoke('drives:mount', device),
+    unmount: (deviceOrMount: string) => ipcRenderer.invoke('drives:unmount', deviceOrMount)
+  },
   update: {
     check: (force?: boolean) => ipcRenderer.invoke('update:check', force),
     open: (url: string) => ipcRenderer.invoke('update:open', url)

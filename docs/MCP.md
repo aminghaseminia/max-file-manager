@@ -47,6 +47,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | tool | args | returns |
 | --- | --- | --- |
 | `roots` | – | home folder and mounted drives |
+| `drives_list` | – | connected USB and removable block devices and their mount points |
 | `list` | `path`, `hidden?`, `dims?` | entries + `pins`, `labels`, `ratings`, `notes`, `format`, file colours |
 | `dirs` | `path`, `hidden?` | child folders only |
 | `walk` | `dir`, `pattern?`, `regex?`, `content?`, `exclude[]?`, `cap?` | recursive matches with a budget |
@@ -125,6 +126,8 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `set_default_manager` | – | register this app as the default |
 | `update_open` | `url` | release page |
 | `hotkey` | `accel` | global shortcut; a Wayland failure is reported |
+| `drive_mount` | `device` | mount a removable block device (e.g. /dev/sdb1) |
+| `drive_unmount` | `device` | unmount a removable block device or mount point |
 
 ### UI (needs `read-write`; they change what the user sees)
 

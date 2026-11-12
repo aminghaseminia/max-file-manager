@@ -1,10 +1,10 @@
 import { t } from './i18n.ts'
 import { useEffect, useRef, useState } from 'react'
-import { api, type DirRef } from './api'
+import { api, type DirRef, type Drive } from './api'
 import { baseName } from './format'
 import { clearDragPaths, keepDragPaths, lastDragPaths } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
 
@@ -68,6 +68,9 @@ type Props = {
   /** the sidebar is floating over the panes; the pin docks it again */
   floating: boolean
   onToggleFloat(): void
+  drives?: Drive[]
+  onMountDrive?(device: string): void
+  onUnmountDrive?(deviceOrMount: string): void
 }
 
 export function Sidebar({
@@ -83,7 +86,10 @@ export function Sidebar({
   onMarkDrop,
   showHidden,
   floating,
-  onToggleFloat
+  onToggleFloat,
+  drives,
+  onMountDrive,
+  onUnmountDrive
 }: Props) {
   const [over, setOver] = useState(false)
   const ref = useRef<HTMLElement>(null)
@@ -215,6 +221,55 @@ export function Sidebar({
           onDrop={handleDrop}
         />
       ))}
+
+      {drives && drives.length > 0 && <div className="side-title">{t('حافظه‌های جانبی')}</div>}
+      {drives?.map((d) => {
+        const isCur = Boolean(
+          d.mountpoint && (activePath === d.mountpoint || activePath.startsWith(d.mountpoint + '/'))
+        )
+        return (
+          <div
+            key={d.device}
+            className={'tree-row side-drive' + (isCur ? ' on' : '') + (!d.mounted ? ' unmounted' : '')}
+          >
+            <span className="twisty" />
+            <button
+              className="tree-name"
+              dir="auto"
+              title={
+                d.mounted
+                  ? `${d.name} (${d.mountpoint})`
+                  : `${d.name} — ${t('برای اتصال کلیک کنید')}`
+              }
+              onClick={() => {
+                if (d.mounted && d.mountpoint) {
+                  onNav(d.mountpoint)
+                } else if (onMountDrive) {
+                  onMountDrive(d.device)
+                }
+              }}
+            >
+              <UsbIcon size={14} />
+              <span className="side-drive-label">{d.name}</span>
+              {!d.mounted && <span className="side-mount-tag">{t('اتصال')}</span>}
+            </button>
+            {d.mounted && onUnmountDrive && (
+              <button
+                type="button"
+                className="side-eject-btn"
+                title={t('جداسازی ایمن')}
+                aria-label={t('جداسازی ایمن')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUnmountDrive(d.device)
+                }}
+              >
+                <EjectIcon size={12} />
+              </button>
+            )}
+          </div>
+        )
+      })}
 
       {labels.length > 0 && <div className="side-title">{t(t('برچسب‌ها'))}</div>}
       {labels.map((l) => (

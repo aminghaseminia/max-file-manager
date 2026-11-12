@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
+import { api, type Chrome, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
@@ -162,6 +162,7 @@ function useSystemDark(): boolean {
 export default function App() {
   const [panes, setPanes] = useState<PaneState[] | null>(null)
   const [roots, setRoots] = useState<DirRef[]>([])
+  const [drives, setDrives] = useState<Drive[]>([])
   const [active, setActive] = useState(0)
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'name', asc: true })
@@ -566,6 +567,67 @@ export default function App() {
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+  }
+
+  /** Drag the edge of the floating sidebar to resize it. */
+  const startFloatSidebarResize = (ev: React.PointerEvent) => {
+    ev.preventDefault()
+    const panel = ev.currentTarget.parentElement as HTMLElement | null
+    if (!panel) return
+    const rect = panel.getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+    const move = (e: PointerEvent) => {
+      const width = rtl ? rect.right - e.clientX : e.clientX - rect.left
+      updatePrefs({ sidebarWidth: Math.min(600, Math.max(160, Math.round(width))) })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  useEffect(() => {
+    const refresh = () => {
+      api.drives.list().then(setDrives).catch(() => setDrives([]))
+    }
+    refresh()
+    const iv = setInterval(refresh, 3500)
+    window.addEventListener('focus', refresh)
+    return () => {
+      clearInterval(iv)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
+  const handleMountDrive = async (device: string) => {
+    const res = await api.drives.mount(device)
+    if (res.ok && res.mountpoint) {
+      go(active, res.mountpoint)
+      void api.drives.list().then(setDrives)
+    } else if (res.error) {
+      setPanes((p) => p && patch(p, active, { error: res.error }))
+    }
+  }
+
+  const handleUnmountDrive = async (device: string) => {
+    const d = drives.find((x) => x.device === device)
+    const res = await api.drives.unmount(device)
+    if (res.ok) {
+      void api.drives.list().then(setDrives)
+      if (d?.mountpoint) {
+        const mp = d.mountpoint
+        panes?.forEach((p, idx) => {
+          const cur = p.tabs[p.ti]
+          if (cur === mp || cur.startsWith(mp + '/')) {
+            go(idx, home)
+          }
+        })
+      }
+    } else if (res.error) {
+      setPanes((p) => p && patch(p, active, { error: res.error }))
+    }
   }
 
   const load = async (i: number, dir: string) => {
@@ -2754,6 +2816,9 @@ export default function App() {
             onNav={(d) => go(active, d)}
             onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
             onMarkDrop={addMarks}
+            drives={drives}
+            onMountDrive={handleMountDrive}
+            onUnmountDrive={handleUnmountDrive}
           />
         )}
 
@@ -2956,7 +3021,7 @@ export default function App() {
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
-            <div className="side-float-panel">
+            <div className="side-float-panel" style={{ width: prefs.sidebarWidth }}>
               <Sidebar
                 labels={labelCounts}
                 onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
@@ -2976,6 +3041,15 @@ export default function App() {
                 }}
                 onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
                 onMarkDrop={addMarks}
+                drives={drives}
+                onMountDrive={handleMountDrive}
+                onUnmountDrive={handleUnmountDrive}
+              />
+              <div
+                className="side-float-resize"
+                title={t('تغییر عرض سایدبار')}
+                onPointerDown={startFloatSidebarResize}
+                onDoubleClick={() => updatePrefs({ sidebarWidth: 208 })}
               />
             </div>
             <div

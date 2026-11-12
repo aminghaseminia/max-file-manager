@@ -20,9 +20,13 @@ test('mergePrefs keeps real values and coerces booleans', () => {
   assert.equal(p.sidebar, 'float')
   assert.equal(p.rounded, false)
   assert.equal(p.dualSplit, 0.65)
+  assert.equal(p.sidebarWidth, 208)
   assert.equal(p.confirmDelete, DEFAULTS.confirmDelete)
   assert.equal(mergePrefs({ dualSplit: 0.95 }).dualSplit, 0.8)
   assert.equal(mergePrefs({ dualSplit: 0.05 }).dualSplit, 0.2)
+  assert.equal(mergePrefs({ sidebarWidth: 100 }).sidebarWidth, 160)
+  assert.equal(mergePrefs({ sidebarWidth: 800 }).sidebarWidth, 600)
+  assert.equal(mergePrefs({ sidebarWidth: 320 }).sidebarWidth, 320)
 })
 
 test('language: English is the default, Persian survives, nonsense falls back', () => {

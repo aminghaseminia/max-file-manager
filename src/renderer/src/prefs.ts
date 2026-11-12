@@ -91,6 +91,7 @@ export type Prefs = {
   layout: Layout
   sidebar: 'docked' | 'float'
   sidebarOpen: boolean
+  sidebarWidth: number
   /** command id → accelerator text; '' means the command has no key */
   shortcuts: Record<string, string>
   /** command ids shown as buttons in the toolbar, in order */
@@ -202,6 +203,7 @@ export const DEFAULTS: Prefs = {
   layout: 'dual',
   sidebar: 'docked',
   sidebarOpen: true,
+  sidebarWidth: 208,
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
@@ -246,6 +248,7 @@ export type NamedLayout = {
   layout?: 'dual' | 'single'
   sidebar?: 'docked' | 'float'
   sidebarOpen?: boolean
+  sidebarWidth?: number
   view?: 'list' | 'grid'
   columns?: string[]
   toolbar?: string[]
@@ -263,6 +266,8 @@ function normalLayouts(raw: unknown): Record<string, NamedLayout> {
     if (l.layout === 'dual' || l.layout === 'single') keep.layout = l.layout
     if (l.sidebar === 'docked' || l.sidebar === 'float') keep.sidebar = l.sidebar
     if (typeof l.sidebarOpen === 'boolean') keep.sidebarOpen = l.sidebarOpen
+    if (typeof l.sidebarWidth === 'number' && Number.isFinite(l.sidebarWidth))
+      keep.sidebarWidth = Math.min(600, Math.max(160, Math.round(l.sidebarWidth)))
     if (l.view === 'list' || l.view === 'grid') keep.view = l.view
     if (Array.isArray(l.columns)) keep.columns = l.columns.filter((c) => COLS.has(c))
     if (Array.isArray(l.toolbar)) keep.toolbar = l.toolbar.filter((c) => typeof c === 'string')
@@ -407,6 +412,10 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
     sidebarOpen: p.sidebarOpen !== false,
+    sidebarWidth:
+      typeof p.sidebarWidth === 'number' && Number.isFinite(p.sidebarWidth)
+        ? Math.min(600, Math.max(160, Math.round(p.sidebarWidth)))
+        : 208,
     shortcuts,
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
@@ -480,6 +489,7 @@ export function migrateLegacy(s: any): Partial<Prefs> {
   if (s?.ui) {
     if (s.ui.sidebar === 'float') p.sidebar = 'float'
     if (s.ui.sidebarOpen === false) p.sidebarOpen = false
+    if (typeof s.ui.sidebarWidth === 'number') p.sidebarWidth = s.ui.sidebarWidth
     if (Array.isArray(s.ui.iconDirs)) p.iconDirs = s.ui.iconDirs.filter((d: unknown) => typeof d === 'string')
     if (typeof s.ui.iconTheme === 'string') p.iconTheme = s.ui.iconTheme
   }

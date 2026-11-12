@@ -60,18 +60,23 @@ let dragIcon: Electron.NativeImage | null = null
  * Called from `ipcRenderer.send` during `dragstart`.
  */
 export async function startFileDrag(wc: WebContents, files: string[]): Promise<{ ok: true } | { error: string }> {
+  if (wc.isDestroyed()) return { error: 'پنجره بسته شده' }
   const list = files.filter((f) => path.isAbsolute(f))
   if (!list.length) return { error: 'مسیر نامعتبر' }
   if (!dragIcon) {
     // a 32×32 dot is enough: the target app draws the file, the cursor only needs an image
     const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAP0lEQVR42u3OMQEAAAgDoJnc6BpjDyQgdWXm5wEECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQMC/AAsCAAG/2x6hAAAAAElFTkSuQmCC',
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAMklEQVR4nOzOMQ0AMAgAMLLMJAbRgiuQwdMq6J/KjkMvjgkICAgICAgICAgICAgICCwAAAD//1rIWFMAAAAGSURBVAMA+XwDCUIWSBAAAAAASUVORK5CYII=',
       'base64'
     )
     dragIcon = nativeImage.createFromBuffer(png)
   }
   // `file` is required by Electron; `files` carries a multi-selection. Passing only `files`
   // is rejected by the type and by the runtime.
-  wc.startDrag({ file: list[0], files: list, icon: dragIcon })
-  return { ok: true }
+  try {
+    wc.startDrag({ file: list[0], files: list, icon: dragIcon })
+    return { ok: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
