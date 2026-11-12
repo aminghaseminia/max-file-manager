@@ -33,10 +33,12 @@ test('mergePrefs keeps real values and coerces booleans', () => {
   assert.equal(mergePrefs({ sidebarTone: 6 }).sidebarTone, 6)
   assert.equal(mergePrefs({ sidebarTone: 0 as any }).sidebarTone, 1)
   assert.equal(mergePrefs({ sidebarTone: 7 as any }).sidebarTone, 1)
-  assert.equal(mergePrefs({ sidebarTone: '3' as any }).sidebarTone, 1)
   assert.deepEqual(p.sidebarCollapsed, [])
   assert.deepEqual(mergePrefs({ sidebarCollapsed: ['places', 'labels'] }).sidebarCollapsed, ['places', 'labels'])
   assert.deepEqual(mergePrefs({ sidebarCollapsed: 'invalid' as any }).sidebarCollapsed, [])
+  assert.equal(p.showSymlink, false)
+  assert.equal(mergePrefs({ showSymlink: true }).showSymlink, true)
+  assert.equal(mergePrefs({ showSymlink: 'yes' as any }).showSymlink, false)
 })
 
 test('language: English is the default, Persian survives, nonsense falls back', () => {

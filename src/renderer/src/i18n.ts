@@ -282,6 +282,8 @@ const EN: Record<string, string> = {
   'گلی': 'Rose',
   'پوشه‌ها اول': 'Folders first',
   'نمایش فایل‌های مخفی': 'Show hidden files',
+  'نمایش نشان پیوند نمادین': 'Show symbolic link indicator',
+  'نمایش آیکون پیوند در انتهای نام فایل‌ها و پوشه‌های دارای Symbolic Link': 'Show link icon next to symbolic link files and folders',
   'فیلتر نام‌گذاری‌شده': 'Named filter',
   'چیدمان': 'Layout',
   'سایدبار': 'Sidebar',

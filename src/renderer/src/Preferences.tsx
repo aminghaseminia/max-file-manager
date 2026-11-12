@@ -420,10 +420,16 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   ],
                   'fileIcons'
                 )
-              )}              {row(
+              )}
+              {row(
                 t('نمایش فایل‌های مخفی'),
                 t('پوشه‌هایی که از فهرست پنهان شده‌اند هم با این گزینه دیده می‌شوند'),
                 check(prefs.showHidden, 'showHidden')
+              )}
+              {row(
+                t('نمایش نشان پیوند نمادین'),
+                t('نمایش آیکون پیوند در انتهای نام فایل‌ها و پوشه‌های دارای Symbolic Link'),
+                check(prefs.showSymlink, 'showSymlink')
               )}
               {row(
                 t('قالب اندازه'),

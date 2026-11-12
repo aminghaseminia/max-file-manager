@@ -41,13 +41,17 @@ const pathsOf = (dt: DataTransfer): string[] => {
   if (dt.files.length) {
     return [...dt.files].map((f) => api.pathForFile(f)).filter(Boolean)
   }
-  const list = dt.getData('text/uri-list') || dt.getData('text/plain')
-  return list
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith('file://'))
-    .map(fileUrlToPath)
-    .filter(Boolean)
+  const text = dt.getData('text/uri-list') || dt.getData('text/plain')
+  if (text) {
+    const list = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => (l.startsWith('file://') ? fileUrlToPath(l) : l))
+      .filter(Boolean)
+    if (list.length) return list
+  }
+  return []
 }
 
 type Props = {

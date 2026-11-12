@@ -7,6 +7,7 @@ import type { ColId } from './prefs'
 import {
   crumbs,
   fa,
+  fileUri,
   fmtDate,
   fmtSize,
   groupLabel,
@@ -106,6 +107,7 @@ type Props = {
   sizeFormat: 'human' | 'bytes'
   dateFormat: 'iso' | 'jalali' | 'short'
   showSeconds: boolean
+  showSymlink?: boolean
   sizes: Record<string, string>
   marked: boolean
   /** Ctrl+wheel in the grid resizes the tiles (icons and thumbnails alike) */
@@ -494,10 +496,12 @@ export function Pane(props: Props) {
   const startDrag = (ev: React.DragEvent, path: string, _dir = false) => {
     const paths = dragPaths(path)
     if (!paths.length) return
-    // Wayland may hand an empty DataTransfer to drop; the sidebar falls back to this copy
     keepDragPaths(paths)
     dragLog(`start ${path} all='${paths.join(',')}'`)
-    ev.preventDefault()
+    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(paths))
+    ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
+    ev.dataTransfer.setData('text/plain', paths.join('\n'))
+    ev.dataTransfer.effectAllowed = 'all'
     api.dragOut(paths)
   }
 
@@ -945,7 +949,7 @@ export function Pane(props: Props) {
                   )}
                   <EntryIcon entry={e} iconSet={props.iconSet} />
                   <span dir="auto" className="trunc">{e.name}</span>
-                  {e.link && (
+                  {props.showSymlink && e.link && (
                     <span className="symmark" title={t('پیوند نمادین')}>
                       <LinkIcon />
                     </span>
@@ -1016,7 +1020,7 @@ export function Pane(props: Props) {
                       dir="auto"
                       style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
                     >{e.name}</span>
-                    {e.link && (
+                    {props.showSymlink && e.link && (
                       <span className="symmark tile-link" title={t('پیوند نمادین')}>
                         <LinkIcon />
                       </span>

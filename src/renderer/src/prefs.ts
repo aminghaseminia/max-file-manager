@@ -63,6 +63,8 @@ export type Prefs = {
   view: View
   foldersFirst: boolean
   showHidden: boolean
+  /** show link indicator badge next to symbolic links (default false) */
+  showSymlink: boolean
   /** share of the side preview/editor in single layout (0.25–0.8) */
   sideWidth: number
   /** share of the first pane in dual layout (0.2–0.8, default 0.5) */
@@ -189,6 +191,7 @@ export const DEFAULTS: Prefs = {
   view: 'list',
   foldersFirst: true,
   showHidden: false,
+  showSymlink: false,
   sideWidth: 0.5,
   dualSplit: 0.5,
   columns: ['type', 'size', 'date'],
@@ -379,6 +382,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,
     showHidden: p.showHidden === true,
+    showSymlink: p.showSymlink === true,
     sideWidth:
       typeof p.sideWidth === 'number' && Number.isFinite(p.sideWidth)
         ? Math.min(0.8, Math.max(0.25, p.sideWidth))

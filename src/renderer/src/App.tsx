@@ -3157,6 +3157,7 @@ export default function App() {
             sizeFormat={prefs.sizeFormat}
             dateFormat={prefs.dateFormat}
             showSeconds={prefs.showSeconds}
+            showSymlink={prefs.showSymlink}
             onGallery={() => pane.preview && openGallery(pane.preview.from, pane.preview.entry.path)}
             onContext={(path, x, y) => setMenu({ path, x, y })}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
