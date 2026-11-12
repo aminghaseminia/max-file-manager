@@ -133,10 +133,10 @@ export function Sidebar({
   const acceptDrag = (ev: React.DragEvent) => {
     const types = ev.dataTransfer.types
     const ours = types.includes('application/x-mfm') || types.includes('application/x-mfm-mark')
-    const outside = types.includes('Files') || types.includes('text/uri-list')
+    const outside = types.includes('Files') || types.includes('text/uri-list') || types.includes('text/plain')
     if (!ours && !outside && !lastDragPaths().length) return
     ev.preventDefault()
-    ev.dataTransfer.dropEffect = 'link'
+    ev.dataTransfer.dropEffect = 'copy'
     lastOver.current = { x: ev.clientX, y: ev.clientY, at: performance.now() }
     setOver(true)
     dragLog(
@@ -162,6 +162,7 @@ export function Sidebar({
     dropped.current = true
     dragCounter.current = 0
     setOver(false)
+    lastOver.current = null
     ev.preventDefault()
     ev.stopPropagation()
     const paths = pathsOf(ev.dataTransfer)
@@ -197,7 +198,7 @@ export function Sidebar({
         `dragend at ${ev.clientX},${ev.clientY} effect=${ev.dataTransfer?.dropEffect} wasDropped=${wasDropped} paths='${paths.join(',')}' point=${point ? `${point.x},${point.y} ${Math.round(performance.now() - point.at)}ms` : '-'}`
       )
       if (wasDropped || !paths.length || !point) return
-      if (performance.now() - point.at > 3000) return
+      if (performance.now() - point.at > 15000) return
       const r = ref.current?.getBoundingClientRect()
       if (!r) return
       if (point.x < r.left || point.x > r.right || point.y < r.top || point.y > r.bottom) return

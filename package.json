@@ -1,6 +1,6 @@
 {
   "name": "max-file-manager",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Dual-pane file manager for KDE and Windows (Directory Opus class), Electron + TypeScript",
   "license": "MIT",
   "author": "Majid Asgari <majidasgari@users.noreply.github.com>",

@@ -1252,6 +1252,9 @@ export default function App() {
     }
     setMarks((m) => [...m, ...added.filter((d) => !m.includes(d))])
     setNote(t('{n} پوشه نشان شد', { n: fa(added.length) }))
+    if (prefs.sidebarCollapsed?.includes('bookmarks')) {
+      updatePrefs({ sidebarCollapsed: prefs.sidebarCollapsed.filter((x) => x !== 'bookmarks') })
+    }
   }
 
   const setVirtual = (i: number, kind: 'flat' | 'search' | 'dupes', label: string, results: Entry[]) =>

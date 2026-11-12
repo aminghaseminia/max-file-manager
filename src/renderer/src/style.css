@@ -502,6 +502,9 @@ input {
   background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+.side.drop * {
+  pointer-events: none;
+}
 /* a themed icon is an <img draggable=false>; letting it own the pointer blocks the tile's drag */
 .pane .ic-img,
 .pane .thumb img {
