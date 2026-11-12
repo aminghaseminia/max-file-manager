@@ -26,7 +26,7 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
     <div className="jobs">
       <div className="jobs-head">
         <span className="jobs-title">{t(t('عملیات‌ها'))}</span>
-        <span className="pill">{fa(jobs.filter((j) => j.state === 'running').length)} در حال اجرا</span>
+        <span className="pill">{t('{n} در حال اجرا', { n: fa(jobs.filter((j) => j.state === 'running').length) })}</span>
         <span className="spacer" />
         <button className="tb" title={t(t('پاک کردن تمام‌شده‌ها'))} onClick={onClear}>
           <XIcon size={12} />
@@ -47,18 +47,18 @@ export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
               </span>
               <span className="job-meta">
                 {j.state === 'running'
-                  ? `${fa(pct)}٪ · ${fmtSize(j.done, false)} · ${fmtSize(j.speed, false)}/ث`
+                  ? `${t('{n}٪', { n: fa(pct) })} · ${fmtSize(j.done, false)} · ${fmtSize(j.speed, false)}/${t('ث')}`
                   : t(STATE_LABEL[j.state])}
               </span>
               <span className="spacer" />
               {!!j.skipped && (
                 <span className="job-skip" title={t(t('با فیلتر انتقال رد شد'))}>
-                  {fa(j.skipped)} رد‌شده
+                  {t('{n} رد‌شده', { n: fa(j.skipped) })}
                 </span>
               )}
               {j.errors.length > 0 && (
                 <span className="job-err" title={j.errors.join('\n')}>
-                  {fa(j.errors.length)} خطا
+                  {t('{n} خطا', { n: fa(j.errors.length) })}
                 </span>
               )}
               {(j.state === 'running' || j.state === 'paused') && (

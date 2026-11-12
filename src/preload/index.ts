@@ -148,6 +148,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   state: {
     get: () => ipcRenderer.invoke('state:get'),
-    set: (s: unknown) => ipcRenderer.invoke('state:set', s)
+    set: (s: unknown) => ipcRenderer.invoke('state:set', s),
+    setPrefs: (prefs: unknown) => ipcRenderer.invoke('state:setPrefs', prefs)
   }
 })

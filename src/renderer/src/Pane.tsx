@@ -924,7 +924,7 @@ export function Pane(props: Props) {
                     <span
                       className="ftdot"
                       style={{ background: props.typeColors[(e.ext || '').toLowerCase()] }}
-                      title={`نوع ${e.ext}`}
+                      title={`${t('نوع')} ${e.ext}`}
                     />
                   )}
                   {labelColor(e.name) && (

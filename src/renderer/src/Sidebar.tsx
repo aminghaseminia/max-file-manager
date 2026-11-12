@@ -220,9 +220,9 @@ export function Sidebar({
       {labels.map((l) => (
         <div key={l.id} className="tree-row">
           <span className="twisty" />
-          <button className="tree-name" onClick={() => onPickLabel(l.id)} title={`فیلتر: ${l.name}`}>
+          <button className="tree-name" onClick={() => onPickLabel(l.id)} title={`${t('فیلتر')}: ${t(l.name)}`}>
             <span className="lbl" style={{ background: l.color }} />
-            <span>{l.name}</span>
+            <span>{t(l.name)}</span>
             <span className="dim count">{l.count}</span>
           </button>
         </div>

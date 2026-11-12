@@ -351,7 +351,7 @@ export function Gallery({
         </span>
         {edit && (
           <span className="pill edit">
-            ویرایش‌شده {fa(edit.w)}×{fa(edit.h)}
+            {t('ویرایش‌شده')} {fa(edit.w)}×{fa(edit.h)}
           </span>
         )}
         <span className="spacer" />
@@ -425,14 +425,14 @@ export function Gallery({
 
       {cropping && (
         <div className="gallery-bar">
-          روی تصویر بکش تا محدودهٔ برش انتخاب شود
+          {t('روی تصویر بکش تا محدودهٔ برش انتخاب شود')}
           <span className="spacer" />
           <button
             className="btn"
             disabled={!crop || crop.w < 0.01 || crop.h < 0.01}
             onClick={() => void applyCrop()}
           >
-            برش بده
+            {t('برش بده')}
           </button>
           <button
             className="btn ghost"
@@ -441,23 +441,23 @@ export function Gallery({
               setCrop(null)
             }}
           >
-            انصراف
+            {t('انصراف')}
           </button>
         </div>
       )}
 
       {edit && !cropping && !resize && (
         <div className="gallery-bar">
-          ویرایش‌ها فقط در حافظه‌اند
+          {t('ویرایش‌ها فقط در حافظه‌اند')}
           <span className="spacer" />
           <button className="btn" disabled={busy} onClick={() => void save('copy')}>
-            ذخیره به‌عنوان کپی
+            {t('ذخیره به‌عنوان کپی')}
           </button>
           <button className="btn ghost" disabled={busy} onClick={() => void save('overwrite')}>
-            جایگزینی فایل اصلی
+            {t('جایگزینی فایل اصلی')}
           </button>
           <button className="btn ghost" onClick={() => setEdit(null)}>
-            دور انداختن
+            {t('دور انداختن')}
           </button>
         </div>
       )}
@@ -517,7 +517,7 @@ export function Gallery({
       {resize && (
         <div className="gallery-bar">
           <label className="inline-field">
-            عرض
+            {t('عرض')}
             <input
               dir="ltr"
               type="number"
@@ -531,7 +531,7 @@ export function Gallery({
             />
           </label>
           <label className="inline-field">
-            ارتفاع
+            {t('ارتفاع')}
             <input
               dir="ltr"
               type="number"
@@ -547,10 +547,10 @@ export function Gallery({
           <span className="hint">{t(t('نسبت حفظ می‌شود'))}</span>
           <span className="spacer" />
           <button className="btn" onClick={() => void applyResize()}>
-            اعمال
+            {t('اعمال')}
           </button>
           <button className="btn ghost" onClick={() => setResize(null)}>
-            انصراف
+            {t('انصراف')}
           </button>
         </div>
       )}
@@ -576,9 +576,9 @@ export function Gallery({
           ))}
           {total > strip.length && (
             <span className="hint">
-              {stripFrom > 0 ? `${fa(stripFrom)} تصویر قبل… · ` : ''}
+              {stripFrom > 0 ? t('{n} تصویر قبل… ·', { n: fa(stripFrom) }) : ''}
               {total - stripFrom - strip.length > 0
-                ? `و ${fa(total - stripFrom - strip.length)} تصویر دیگر…`
+                ? t('و {n} تصویر دیگر…', { n: fa(total - stripFrom - strip.length) })
                 : ''}
             </span>
           )}

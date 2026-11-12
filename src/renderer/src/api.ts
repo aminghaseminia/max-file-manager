@@ -337,7 +337,11 @@ export type Api = {
     }>
     onMaximized(cb: (max: boolean) => void): () => void
   }
-  state: { get(): Promise<StoredState | null>; set(s: StoredState): Promise<boolean> }
+  state: {
+    get(): Promise<StoredState | null>
+    set(s: StoredState): Promise<boolean>
+    setPrefs(prefs: Record<string, unknown>): Promise<boolean>
+  }
 }
 
 declare global {

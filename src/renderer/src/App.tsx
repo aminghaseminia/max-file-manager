@@ -256,7 +256,10 @@ export default function App() {
   })
 
   const updatePrefs = (patch: Partial<Prefs>) => {
-    setPrefs((p) => ({ ...p, ...patch }))
+    const next = { ...prefs, ...patch }
+    setPrefs(next)
+    // write prefs immediately; the debounced session save may be lost if the window closes
+    void api.state.setPrefs(next)
     if (patch.titlebar !== undefined || patch.rounded !== undefined) {
       // frame/transparent are window-creation options: main rebuilds the window and we reload
       void api.window.setChrome({
@@ -2990,7 +2993,7 @@ export default function App() {
         <div className="modal" onMouseDown={() => setLabelFor(null)}>
           <div className="dialog label-dialog" onMouseDown={(e) => e.stopPropagation()}>
             <div className="dialog-title" dir="auto">
-              برچسب برای {labelFor.name}
+              {t('برچسب برای')} {labelFor.name}
             </div>
             <div className="label-grid">
               {palette.map((l) => (

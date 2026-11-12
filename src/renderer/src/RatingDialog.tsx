@@ -113,7 +113,7 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog convert-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">تبدیل تصاویر ({count} فایل)</div>
+        <div className="dialog-title">{t('تبدیل تصاویر ({n} فایل)', { n: fa(count) })}</div>
         <div className="pref-row">
           <div className="pref-label">
             <span>{t(t('قالب خروجی'))}</span>
@@ -180,10 +180,10 @@ export function ConvertDialog({ count, onRun, onClose, otherPane, busy, result }
             disabled={busy}
             onClick={() => onRun({ format, maxSide, quality, toOtherPane: toOther })}
           >
-            تبدیل
+            {t('تبدیل')}
           </button>
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            <XIcon size={11} /> {t('بستن')}
           </button>
         </div>
       </div>
@@ -220,7 +220,7 @@ export function TagDialog({ name, tags, onSave, onClose }: TagProps) {
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog rating-dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="dialog-title" dir="auto">
-          برچسب‌های صوتی — {name}
+          {t('برچسب‌های صوتی —')} {name}
         </div>
         {field(t('عنوان'), title, setTitle)}
         {field(t('هنرمند'), artist, setArtist)}
@@ -229,10 +229,10 @@ export function TagDialog({ name, tags, onSave, onClose }: TagProps) {
         <div className="hint">{t(t('فقط فایل‌های صوتی (ID3) نوشته می‌شوند؛ EXIF فعلاً فقط خوانده می‌شود.'))}</div>
         <div className="dialog-actions">
           <button className="btn" onClick={() => onSave({ title, artist, album, year })}>
-            ذخیره
+            {t('ذخیره')}
           </button>
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            <XIcon size={11} /> {t('بستن')}
           </button>
         </div>
       </div>

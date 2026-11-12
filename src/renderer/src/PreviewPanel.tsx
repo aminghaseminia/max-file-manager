@@ -90,10 +90,10 @@ export function PreviewPanel({
         {entry && isHtmlPath(entry.path) && (
           <div className="seg preview-html-toggle">
             <button className={htmlCode ? '' : 'on'} onClick={() => setHtmlCode(false)}>
-              نمایش
+              {t('نمایش')}
             </button>
             <button className={htmlCode ? 'on' : ''} onClick={() => setHtmlCode(true)}>
-              کد
+              {t('کد')}
             </button>
           </div>
         )}
@@ -205,14 +205,14 @@ export function PreviewPanel({
                   </div>
                 ))}
                 {lines.length > 4000 && (
-                  <div className="pln-more">… {lines.length - 4000} خط دیگر نمایش داده نشد</div>
+                  <div className="pln-more">{t('… {n} خط دیگر نمایش داده نشد', { n: fa(lines.length - 4000) })}</div>
                 )}
               </div>
             )}
             {data?.kind === 'binary' && (
               <div className="preview-empty">
                 <FileIcon />
-                پیش‌نمایش برای این نوع فایل نیست
+                {t('پیش‌نمایش برای این نوع فایل نیست')}
               </div>
             )}
             {err && <div className="preview-empty">{err}</div>}

@@ -57,10 +57,10 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
 
         <div className="seg">
           <button className={mode === 'template' ? 'on' : ''} onClick={() => setMode('template')}>
-            الگو
+            {t('الگو')}
           </button>
           <button className={mode === 'regex' ? 'on' : ''} onClick={() => setMode('regex')}>
-            عبارت باقاعده
+            {t('عبارت باقاعده')}
           </button>
         </div>
 
@@ -129,7 +129,7 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
 
         <div className="dlg-actions">
           <button disabled={!canApply} onClick={() => onApply(pairs)}>
-            اعمال {fa(pairs.length)} تغییر
+            {t('اعمال {n} تغییر', { n: fa(pairs.length) })}
           </button>
           <button onClick={onClose}>{t(t('انصراف'))}</button>
         </div>

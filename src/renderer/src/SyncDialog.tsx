@@ -152,17 +152,17 @@ export function SyncDialog({
               </span>
             </div>
           ))}
-          {shown.length > 500 && <div className="dim">… {fa(shown.length - 500)} ردیف دیگر</div>}
+          {shown.length > 500 && <div className="dim">{t('… {n} ردیف دیگر', { n: fa(shown.length - 500) })}</div>}
         </div>
 
         {result && <div className="sync-result dim">{result}</div>}
 
         <div className="dialog-actions">
           <button className="btn" disabled={busy} onClick={() => onApply(mode, deleteExtra)}>
-            اجرا
+            {t('اجرا')}
           </button>
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            <XIcon size={11} /> {t('بستن')}
           </button>
         </div>
       </div>

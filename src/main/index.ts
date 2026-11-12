@@ -1055,6 +1055,14 @@ app.whenReady().then(async () => {
     await fs.writeFile(stateFile(), JSON.stringify(s, null, 2))
     return true
   })
+  /** Preferences are written at once: closing right after a change must not lose it. */
+  ipcMain.handle('state:setPrefs', async (_e, prefs: unknown) => {
+    const st = (await readState()) ?? {}
+    st.prefs = prefs
+    await fs.mkdir(path.dirname(stateFile()), { recursive: true })
+    await fs.writeFile(stateFile(), JSON.stringify(st, null, 2))
+    return true
+  })
 
   if (firstPath) {
     win.webContents.once('did-finish-load', () => win?.webContents.send('app:open-path', firstPath))
