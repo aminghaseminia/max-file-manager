@@ -436,6 +436,12 @@ input {
   flex-direction: column;
   gap: 1px;
 }
+.side.darker {
+  background: color-mix(in srgb, #000 6%, var(--panel));
+}
+.side.darker .tree-row:hover {
+  background: color-mix(in srgb, #000 11%, var(--panel));
+}
 .side-head {
   display: flex;
   align-items: center;
@@ -2047,6 +2053,9 @@ html[data-rounded='0'] .app {
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   display: flex;
+}
+.side-float-panel.darker {
+  background: color-mix(in srgb, #000 6%, var(--panel));
 }
 .side-float-resize {
   position: absolute;

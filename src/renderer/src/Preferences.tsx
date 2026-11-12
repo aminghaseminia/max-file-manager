@@ -680,6 +680,11 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
               )}
               {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
               {row(
+                t('رنگ تیره‌تر برای سایدبار'),
+                t('پس‌زمینهٔ سایدبار برای تفکیک بهتر کمی تیره‌تر نمایش داده شود'),
+                check(prefs.sidebarDarker, 'sidebarDarker')
+              )}
+              {row(
                 t('پنهان‌کردن نوار تب با یک تب'),
                 t('وقتی پنل فقط یک تب دارد، نوار بالای فهرست حذف می‌شود؛ در دوپنجره اگر یک طرف چند تب داشته باشد، نوار هر دو طرف می‌ماند'),
                 check(prefs.hideSingleTab, 'hideSingleTab')

@@ -71,6 +71,7 @@ type Props = {
   drives?: Drive[]
   onMountDrive?(device: string): void
   onUnmountDrive?(deviceOrMount: string): void
+  darker?: boolean
 }
 
 export function Sidebar({
@@ -89,7 +90,8 @@ export function Sidebar({
   onToggleFloat,
   drives,
   onMountDrive,
-  onUnmountDrive
+  onUnmountDrive,
+  darker
 }: Props) {
   const [over, setOver] = useState(false)
   const ref = useRef<HTMLElement>(null)
@@ -184,7 +186,7 @@ export function Sidebar({
   return (
     <aside
       ref={ref}
-      className={'side' + (over ? ' drop' : '')}
+      className={'side' + (over ? ' drop' : '') + (darker ? ' darker' : '')}
       onDragEnter={handleDragEnter}
       onDragOver={acceptDrag}
       onDragLeave={handleDragLeave}

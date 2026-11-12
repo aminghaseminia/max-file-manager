@@ -92,6 +92,7 @@ export type Prefs = {
   sidebar: 'docked' | 'float'
   sidebarOpen: boolean
   sidebarWidth: number
+  sidebarDarker: boolean
   /** command id → accelerator text; '' means the command has no key */
   shortcuts: Record<string, string>
   /** command ids shown as buttons in the toolbar, in order */
@@ -204,6 +205,7 @@ export const DEFAULTS: Prefs = {
   sidebar: 'docked',
   sidebarOpen: true,
   sidebarWidth: 208,
+  sidebarDarker: false,
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
@@ -416,6 +418,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
       typeof p.sidebarWidth === 'number' && Number.isFinite(p.sidebarWidth)
         ? Math.min(600, Math.max(160, Math.round(p.sidebarWidth)))
         : 208,
+    sidebarDarker: p.sidebarDarker === true,
     shortcuts,
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
@@ -490,6 +493,7 @@ export function migrateLegacy(s: any): Partial<Prefs> {
     if (s.ui.sidebar === 'float') p.sidebar = 'float'
     if (s.ui.sidebarOpen === false) p.sidebarOpen = false
     if (typeof s.ui.sidebarWidth === 'number') p.sidebarWidth = s.ui.sidebarWidth
+    if (typeof s.ui.sidebarDarker === 'boolean') p.sidebarDarker = s.ui.sidebarDarker
     if (Array.isArray(s.ui.iconDirs)) p.iconDirs = s.ui.iconDirs.filter((d: unknown) => typeof d === 'string')
     if (typeof s.ui.iconTheme === 'string') p.iconTheme = s.ui.iconTheme
   }

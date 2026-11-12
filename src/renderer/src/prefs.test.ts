@@ -27,6 +27,9 @@ test('mergePrefs keeps real values and coerces booleans', () => {
   assert.equal(mergePrefs({ sidebarWidth: 100 }).sidebarWidth, 160)
   assert.equal(mergePrefs({ sidebarWidth: 800 }).sidebarWidth, 600)
   assert.equal(mergePrefs({ sidebarWidth: 320 }).sidebarWidth, 320)
+  assert.equal(p.sidebarDarker, false)
+  assert.equal(mergePrefs({ sidebarDarker: true }).sidebarDarker, true)
+  assert.equal(mergePrefs({ sidebarDarker: 'yes' as any }).sidebarDarker, false)
 })
 
 test('language: English is the default, Persian survives, nonsense falls back', () => {

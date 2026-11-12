@@ -2819,6 +2819,7 @@ export default function App() {
             drives={drives}
             onMountDrive={handleMountDrive}
             onUnmountDrive={handleUnmountDrive}
+            darker={prefs.sidebarDarker}
           />
         )}
 
@@ -3021,7 +3022,10 @@ export default function App() {
 
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
-            <div className="side-float-panel" style={{ width: prefs.sidebarWidth }}>
+            <div
+              className={'side-float-panel' + (prefs.sidebarDarker ? ' darker' : '')}
+              style={{ width: prefs.sidebarWidth }}
+            >
               <Sidebar
                 labels={labelCounts}
                 onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
@@ -3044,6 +3048,7 @@ export default function App() {
                 drives={drives}
                 onMountDrive={handleMountDrive}
                 onUnmountDrive={handleUnmountDrive}
+                darker={prefs.sidebarDarker}
               />
               <div
                 className="side-float-resize"

@@ -125,6 +125,8 @@ const EN: Record<string, string> = {
   'پاک کردن فیلتر': 'Clear the filter',
   'چسباندن سایدبار': 'Dock the sidebar',
   'شناور کردن سایدبار': 'Float the sidebar',
+  'رنگ تیره‌تر برای سایدبار': 'Darker sidebar',
+  'پس‌زمینهٔ سایدبار برای تفکیک بهتر کمی تیره‌تر نمایش داده شود': 'Make the sidebar background slightly darker for better contrast',
   'باز کردن با…': 'Open with…',
   'برنامهٔ پیش‌فرض': 'System default',
   'برنامهٔ پیش‌فرض سیستم': 'System default app',
