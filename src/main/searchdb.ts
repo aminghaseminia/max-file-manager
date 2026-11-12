@@ -40,9 +40,21 @@ export function openDb(file: string): DatabaseSync {
     CREATE INDEX IF NOT EXISTS files_root ON files(root);
     CREATE INDEX IF NOT EXISTS dirs_root ON dirs(root);
     CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
+    CREATE TABLE IF NOT EXISTS app (k TEXT PRIMARY KEY, v TEXT);
   `)
   db = d
   return d
+}
+
+export function getAppKV(file: string, key: string): string | null {
+  const row = openDb(file).prepare('SELECT v FROM app WHERE k = ?').get(key) as { v?: string } | undefined
+  return row?.v ?? null
+}
+
+export function setAppKV(file: string, key: string, value: string): void {
+  openDb(file)
+    .prepare('INSERT INTO app(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v')
+    .run(key, value)
 }
 
 export function closeDb(): void {
@@ -89,6 +101,9 @@ export async function indexRoots(
     total: config.roots.length,
     root: ''
   }
+  // emit by threshold, not on exact multiples: a big folder jumps past 400 and the old check
+  // could then stall forever, leaving the progress bar frozen while work continued
+  let lastEmit = 0
 
   const upsert = d.prepare(
     `INSERT INTO files(path,name,ext,dir,size,mtime,root) VALUES(?,?,?,?,?,?,?)
@@ -140,7 +155,10 @@ export async function indexRoots(
         }
       }
       saveDir.run(dir, Math.round(st.mtimeMs), root)
-      if (onProgress && progress.scanned % 400 === 0) onProgress(progress)
+      if (onProgress && progress.scanned - lastEmit >= 400) {
+        lastEmit = progress.scanned
+        onProgress(progress)
+      }
     }
   }
 
@@ -179,10 +197,13 @@ export function searchIndex(file: string, query: string, limit = 200): SearchHit
       ext: String(r.ext ?? '')
     })
 
+  // Every separator a filename uses is a word boundary for the user too: `mim for me` and
+  // `mim.for.me` must both find `mim.for.me.4.3.1.md`, not just the exact prefix.
   const tokens = q
     .split(/\s+/)
-    .map((t) => t.replace(/["*]/g, ''))
+    .flatMap((t) => t.replace(/["*]/g, '').split(/[._\-/\\]+/))
     .filter(Boolean)
+    .slice(0, 12)
   if (tokens.length) {
     const match = tokens.map((t) => `"${t}"*`).join(' ')
     try {
@@ -190,17 +211,19 @@ export function searchIndex(file: string, query: string, limit = 200): SearchHit
         `SELECT f.path,f.name,f.dir,f.size,f.mtime,f.ext FROM fts
          JOIN files f ON f.rowid = fts.rowid WHERE fts MATCH ? ORDER BY f.dir DESC, f.name LIMIT ?`
       )
-      for (const r of stmt.all(match) as any[]) push(r)
+      for (const r of stmt.all(match, safeLimit) as any[]) push(r)
     } catch {
       /* a bad MATCH expression must not break search */
     }
   }
-  if (rows.length < 20) {
-    const like = `%${q.replace(/[%_]/g, '')}%`
+  // substring fallback: the indexed FTS only knows prefixes, but a user may remember the middle
+  if (rows.length < 20 && tokens.length) {
+    const where = tokens.map(() => 'name LIKE ?').join(' AND ')
+    const args = tokens.map((t) => `%${t.replace(/[%_]/g, '')}%`)
     const stmt = d.prepare(
-      `SELECT path,name,dir,size,mtime,ext FROM files WHERE name LIKE ? ORDER BY dir DESC, name LIMIT ?`
+      `SELECT path,name,dir,size,mtime,ext FROM files WHERE ${where} ORDER BY dir DESC, name LIMIT ?`
     )
-    for (const r of stmt.all(like, safeLimit) as any[]) {
+    for (const r of stmt.all(...args, safeLimit) as any[]) {
       if (!rows.some((x) => x.path === String(r.path))) push(r)
       if (rows.length >= safeLimit) break
     }

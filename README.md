@@ -38,13 +38,13 @@ An indexed search builds a database of the folders you choose (with exclusions),
 
 ## Settings
 
-One typed preferences object, persisted, with pages for appearance, file display, columns, toolbar, shortcuts (with conflict detection), window and layout, transfers, file operations, startup, file types, default applications per extension, archive and gallery, search, agents and advanced. The roadmap behind it is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md).
+One typed preferences object, persisted atomically in SQLite (`search.db`, table `app`) together with the window state, with pages for appearance, file display, columns, toolbar, shortcuts (with conflict detection), window and layout, transfers, file operations, startup, file types, default applications per extension, archive and gallery, search, agents and advanced. The roadmap behind it is derived from the Directory Opus, Krusader and FreeCommander manuals: [docs/PREFERENCES.md](docs/PREFERENCES.md).
 
 ![settings](docs/screenshot-settings.png)
 
-## Agents (MCP) — the last phase, off by default
+## Agents (MCP) — off by default
 
-A loopback-only HTTP API with a bearer token (`~/.config/max-file-manager/mcp.json`, mode `600`) exposes 24 tools over the *same* operations the UI uses, plus a dependency-free stdio bridge (`bin/mfm-mcp.mjs`) and an append-only audit log that records the tool and the shape of its arguments — never file contents.
+A loopback-only HTTP API with a bearer token (`~/.config/max-file-manager/mcp.json`, mode `600`) exposes 91 tools over the *same* operations the UI uses — files, transfers, the index, tags, colours, ratings, apps and the window itself, plus a dependency-free stdio bridge (`bin/mfm-mcp.mjs`) and an append-only audit log that records the tool and the shape of its arguments — never file contents.
 
 ![agents](docs/screenshot-agents.png)
 
@@ -79,7 +79,7 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 - **ID3/EXIF tags** in the preview and as batch-rename tokens (`{title} {artist} {album} {year} {date} {camera}`)
 - **Virtualized rendering**: a 100k-entry folder mounts only the visible slice
 - **Window chrome**: the app's own title row (themed caption buttons, left or right) or the system frame, rounded corners on a transparent window — your choice; the app icon and taskbar icon use Pure's Dolphin file-manager icon
-- **Desktop integration**: `Ctrl+Alt+T` terminal here (konsole/gnome-terminal/xfce4/x-terminal or `cmd`), reveal in the system file manager, dragging files **out** to VLC/Telegram and other programs (`text/uri-list` plus the multi-selection), `%U` folder launches from the desktop, and `scripts/install-integration.sh` to become the default handler for folders
+- **Desktop integration**: `Ctrl+Alt+T` terminal here (konsole/gnome-terminal/xfce4/x-terminal or `cmd`), reveal in the system file manager, dragging files **out** to VLC/Telegram and browser upload zones (`text/uri-list`, plus a real `File` with its bytes so web drop zones receive it), `%U` folder launches from the desktop, and `scripts/install-integration.sh` to become the default handler for folders
 - **Global hotkey** (X11; on Wayland bind it with KDE's “Add Command” — [docs/INTEGRATION.md](docs/INTEGRATION.md))
 - **Update check** against GitHub releases, shown as a status-bar chip
 - Safety: `contextIsolation: true`, `nodeIntegration: false`, a CSP in `index.html`, no `fs` and no `file://` in the renderer — images and PDFs come over `mfm://`, which serves absolute paths only
@@ -89,7 +89,7 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 - `F5` copy to the other pane · `F6` move · `F7` new folder · `F2` rename (batch when several are selected)
 - `F8` trash · `Shift+F8` delete permanently · `F9` folder size · `F3` preview · `F4` editor · `Ctrl+Z` undo
 - `Alt+←` / `Alt+→` back / forward · `Backspace` up · `Tab` switch active pane · `Ctrl+L` inline address bar · just start typing to filter
-- `Ctrl+Shift+K` search · `Ctrl+Shift+Y` sync · `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark
+- `Ctrl+K` global search (or double-tap `Shift`) · `Ctrl+Shift+Y` sync · `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark
 - `Space` gallery · `Esc` clear selection and close overlays · every one of these is rebindable in Preferences → Shortcuts
 
 ## Run it
@@ -124,7 +124,7 @@ Directory listing, stat, transfers, hashing and archive reading are native `fs`/
 
 ```
 src/main/index.ts     window + chrome, filesystem IPC, folder sizes, session state, mfm:// and thumb://
-src/main/mcp.ts       loopback MCP API: 24 tools over the same operations, token, audit log
+src/main/mcp.ts       loopback MCP API: 91 tools over the same operations, token, audit log
 src/main/jobs.ts      transfer queue: progress, pause, cancel, undo, batch rename, mkdir
 src/main/search.ts    recursive walk, name matcher, content search, duplicate finder
 src/main/searchdb.ts  SQLite FTS5 index of the chosen folders

@@ -6,6 +6,9 @@ import { t } from './i18n.ts'
 export type CommandId =
   | 'copy'
   | 'move'
+  | 'copyFiles'
+  | 'cutFiles'
+  | 'paste'
   | 'edit'
   | 'rename'
   | 'batchRename'
@@ -52,6 +55,9 @@ export type CommandDef = { id: CommandId; label: string; key: string; group: Com
 
 export const COMMANDS: CommandDef[] = [
   { id: 'copy', label: 'کپی به مقصد', key: 'F5', group: 'transfer' },
+  { id: 'copyFiles', label: 'کپی فایل', key: 'Ctrl+C', group: 'file' },
+  { id: 'cutFiles', label: 'برش فایل', key: 'Ctrl+X', group: 'file' },
+  { id: 'paste', label: 'چسباندن فایل', key: 'Ctrl+V', group: 'file' },
   { id: 'move', label: 'انتقال به مقصد', key: 'F6', group: 'transfer' },
   { id: 'edit', label: 'ویرایش متن', key: 'F4', group: 'file' },
   { id: 'rename', label: 'تغییر نام', key: 'F2', group: 'file' },
@@ -86,7 +92,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'reveal', label: 'نمایش در فایل‌منیجر سیستم', key: '', group: 'window' },
   { id: 'checkUpdate', label: 'بررسی به‌روزرسانی', key: '', group: 'window' },
   { id: 'indexSizes', label: 'اندازه از ایندکس (سریع)', key: '', group: 'file' },
-  { id: 'searchIndex', label: 'جست‌وجوی ایندکس‌شده', key: 'Ctrl+Shift+K', group: 'view' },
+  { id: 'searchIndex', label: 'جست‌وجوی گلوبال', key: 'Ctrl+K', group: 'view' },
   { id: 'presets', label: 'چیدمان‌ها و فیلترها', key: 'Ctrl+Shift+P', group: 'window' },
   { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },
   { id: 'look', label: 'آیکون پوشه', key: '', group: 'view' },

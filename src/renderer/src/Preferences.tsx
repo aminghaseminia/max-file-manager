@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
-import { api } from './api'
-import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, type ColId, type Prefs } from './prefs'
+import { api, type SearchProgress } from './api'
+import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, mergePrefs, type ColId, type Prefs } from './prefs'
 import { fa } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
@@ -67,11 +67,12 @@ type Props = {
   palette: { id: string; name: string; color: string }[]
   /** jump straight to a page (the column menu opens «columns») */
   openPage?: Page
+  searchRoots: string[]
   onChange(patch: Partial<Prefs>): void
   onClose(): void
 }
 
-export function Preferences({ prefs, palette, openPage, onChange, onClose }: Props) {
+export function Preferences({ prefs, palette, openPage, searchRoots, onChange, onClose }: Props) {
   const [extInput, setExtInput] = useState('')
   const [appExt, setAppExt] = useState('')
   const [appIdDraft, setAppIdDraft] = useState('')
@@ -82,6 +83,57 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
   const [capturing, setCapturing] = useState<string | null>(null)
   const [isDefault, setIsDefault] = useState<boolean | null>(null)
   const [settingDefault, setSettingDefault] = useState(false)
+  const [indexSt, setIndexSt] = useState<SearchProgress | null>(null)
+  const [ioBusy, setIoBusy] = useState(false)
+  const [settingsMsg, setSettingsMsg] = useState('')
+
+  // the index page shows the live run, so «is it indexing?» is answerable without guessing
+  useEffect(() => {
+    if (page !== 'search') return
+    let live = true
+    void api.search
+      .status()
+      .then((s) => {
+        if (live) setIndexSt(s)
+      })
+      .catch(() => undefined)
+    const off = api.search.onProgress((p) => {
+      if (live) setIndexSt((cur) => ({ ...cur, ...p }) as SearchProgress)
+    })
+    return () => {
+      live = false
+      off()
+    }
+  }, [page])
+
+  const indexAge = (ts: number): string => {
+    if (!ts) return t('هنوز ایندکس نشده')
+    const mins = Math.round((Date.now() - ts) / 60000)
+    return mins < 1 ? t('همین حالا') : `${fa(mins)} ${t('دقیقه پیش')}`
+  }
+
+  const exportSettings = async () => {
+    setIoBusy(true)
+    setSettingsMsg('')
+    const r = await api.settings.export(prefs)
+    setIoBusy(false)
+    if ('canceled' in r) return
+    setSettingsMsg('error' in r ? r.error : t('تنظیمات در {path} ذخیره شد', { path: r.path }))
+  }
+
+  const importSettings = async () => {
+    setIoBusy(true)
+    setSettingsMsg('')
+    const r = await api.settings.import()
+    setIoBusy(false)
+    if ('canceled' in r) return
+    if ('error' in r) {
+      setSettingsMsg(r.error)
+      return
+    }
+    onChange(mergePrefs(r.prefs as Partial<Prefs>))
+    setSettingsMsg(t('تنظیمات وارد شد'))
+  }
 
   useEffect(() => {
     if (page === 'launch') {
@@ -629,7 +681,7 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
               {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
               {row(
                 t('پنهان‌کردن نوار تب با یک تب'),
-                t('وقتی پنجره فقط یک تب دارد، نوار بالای فهرست حذف می‌شود'),
+                t('وقتی پنل فقط یک تب دارد، نوار بالای فهرست حذف می‌شود؛ در دوپنجره اگر یک طرف چند تب داشته باشد، نوار هر دو طرف می‌ماند'),
                 check(prefs.hideSingleTab, 'hideSingleTab')
               )}
               {row(
@@ -646,9 +698,43 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
 
           {page === 'search' && (
             <>
-              <div className="hint">
-                {t('ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents, Downloads, Desktop, Pictures, Music, Videos). جست‌وجو با Ctrl+Shift+K.')}
+              <div className="pref-row">
+                <div className="pref-label">{t('وضعیت ایندکس')}</div>
+                <div className="pref-value dim" dir="auto">
+                  {indexSt?.running
+                    ? t('در حال ایندکس: {scanned} بررسی‌شده · پوشهٔ {done}/{total}', {
+                        scanned: fa(indexSt.scanned),
+                        done: fa(indexSt.done),
+                        total: fa(indexSt.total)
+                      })
+                    : indexSt?.error
+                      ? t('ایندکس متوقف شد: {error}', { error: indexSt.error })
+                      : indexSt?.files
+                        ? t('{files} فایل · {dirs} پوشه · آخرین ایندکس {age}', {
+                            files: fa(indexSt.files),
+                            dirs: fa(indexSt.dirs),
+                            age: indexAge(indexSt.lastIndex)
+                          })
+                        : t('هنوز ایندکس نشده')}
+                </div>
+                <button
+                  className="btn ghost"
+                  disabled={!!indexSt?.running}
+                  onClick={() => void api.search.index({ roots: searchRoots, exclude: prefs.searchExclude })}
+                >
+                  {t('به‌روزرسانی ایندکس')}
+                </button>
               </div>
+              <div className="hint">
+                {t('ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents, Downloads, Desktop, Pictures, Music, Videos). جست‌وجو با {key} یا دو بار Shift.', {
+                  key: prefs.shortcuts.searchIndex || 'Ctrl+K'
+                })}
+              </div>
+              {row(
+                t('باز کردن جست‌وجوی گلوبال با دو بار Shift'),
+                t('برای عوض کردن کلید، تنظیمات → کلید میان‌بر → جست‌وجوی گلوبال'),
+                check(prefs.doubleShiftSearch, 'doubleShiftSearch')
+              )}
               <div className="preset-list">
                 {prefs.searchRoots.length === 0 && (
                   <div className="dim">{t(t('پوشهٔ پیش‌فرض سیستم استفاده می‌شود'))}</div>
@@ -1100,10 +1186,22 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
 
           {page === 'advanced' && (
             <>
+              <div className="pref-row">
+                <div className="pref-label">{t('تنظیمات')}</div>
+                <div className="pref-value">
+                  <button className="btn" disabled={ioBusy} onClick={() => void exportSettings()}>
+                    {t('خروجی تنظیمات…')}
+                  </button>
+                  <button className="btn ghost" disabled={ioBusy} onClick={() => void importSettings()}>
+                    {t('ورود تنظیمات…')}
+                  </button>
+                </div>
+              </div>
+              {settingsMsg && <div className="hint" dir="auto">{settingsMsg}</div>}
               <div className="hint">
                 {t('پک‌های آیکون افزوده‌شده:')} {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : t('هیچ')}
               </div>
-              <div className="hint">{t('تنظیمات در')} <code>state.json</code> {t('کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در فایل')} <code>.mfm.json</code> {t('داخل خود پوشه.')}</div>
+              <div className="hint">{t('تنظیمات در')} <code>search.db</code> {t('کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در فایل')} <code>.mfm.json</code> {t('داخل خود پوشه.')}</div>
               <div className="hint">
                 {t('دسته‌های بعدی طبق نقشهٔ راه (docs/PREFERENCES.md): ستون‌های سفارشی، نوار ابزار و کلیدها، فیلتر و مرتب‌سازی، تب‌ها، درخت پوشه، بایگانی، شبکه.')}
               </div>

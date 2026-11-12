@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
+import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
@@ -9,6 +9,7 @@ import { Editor } from './Editor'
 import { Gallery } from './Gallery'
 import { OpenWithDialog } from './OpenWithDialog'
 import { PropertiesDialog } from './PropertiesDialog'
+import { clearDragPaths, lastDragPaths } from './drag'
 import { dragLog } from './draglog'
 import { JobsBar } from './JobsBar'
 import { Pane, type FolderView, type PaneState, type SearchQuery, type View } from './Pane'
@@ -60,6 +61,7 @@ import {
   type SortKey
 } from './format'
 import { isHtmlPath } from './html'
+import { copyImageContent } from './clipboard'
 import {
   ArchiveOpenIcon,
   AudioIcon,
@@ -171,6 +173,7 @@ export default function App() {
   const [tabIconTick, setTabIconTick] = useState(0)
   const [sizes, setSizes] = useState<Record<string, string>>({})
   const [jobs, setJobs] = useState<Job[]>([])
+  const [indexStatus, setIndexStatus] = useState<SearchProgress | null>(null)
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
   const [tabPrompt, setTabPrompt] = useState<{ pane: number; path: string; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
@@ -303,6 +306,10 @@ export default function App() {
   const setUi = (patch: Partial<typeof ui> | ((cur: typeof ui) => Partial<typeof ui>)) =>
     updatePrefs((typeof patch === 'function' ? patch(ui) : patch) as Partial<Prefs>)
   const refreshRef = useRef<() => void>(() => {})
+  /** per-pane request id: a slow listing from an old folder must not overwrite a newer one */
+  const loadSeq = useRef([0, 0])
+  /** timestamp of the last lone Shift press, for double-tap global search */
+  const lastShift = useRef(0)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -562,12 +569,15 @@ export default function App() {
   }
 
   const load = async (i: number, dir: string) => {
+    const seq = ++loadSeq.current[i]
     setPanes((p) => p && patch(p, i, { loading: true }))
     try {
       const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
+      if (loadSeq.current[i] !== seq) return
       const fmt = (listing.format as FolderView | null) ?? null
       setPanes((p) => p && patch(p, i, { listing, fmt, error: '', loading: false }))
     } catch (e: any) {
+      if (loadSeq.current[i] !== seq) return
       setPanes((p) => p && patch(p, i, { listing: null, error: String(e?.message ?? e), loading: false }))
     }
   }
@@ -604,6 +614,24 @@ export default function App() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booted])
+
+  // the index run is global: show its progress in the status bar wherever the user is
+  useEffect(() => {
+    let live = true
+    void api.search
+      .status()
+      .then((s) => {
+        if (live) setIndexStatus(s)
+      })
+      .catch(() => undefined)
+    const off = api.search.onProgress((p) => {
+      if (live) setIndexStatus((cur) => ({ ...cur, ...p }) as SearchProgress)
+    })
+    return () => {
+      live = false
+      off()
+    }
+  }, [])
 
   // the OS-level hotkey follows the preference; the result is reported because it can fail
   useEffect(() => {
@@ -923,6 +951,18 @@ export default function App() {
     setEditor(p)
   }
 
+  /**
+   * With the editor docked, changing the file in the browsing pane means «show this one»: the
+   * Editor saves its old buffer on the path change and loads the new file in place.
+   */
+  const followEditor = (i: number, paths: string[]) => {
+    if (!editor || editorMax || paths.length !== 1) return
+    const target = paths[0]
+    if (!target || target === editor) return
+    const e = entryOf(i, target)
+    if (e && opensInEditor(e)) openEditor(target)
+  }
+
   /** The global side preview (works in single and dual layout). */
   const openPreview = (p: string) => {
     setPreviewPath(p)
@@ -1148,9 +1188,18 @@ export default function App() {
     )
   }
 
-  const dropFiles = async (files: File[], dest: string) => {
+  const dropFiles = async (files: File[], dest: string, copy: boolean) => {
     const paths = files.map((f) => api.pathForFile(f)).filter((p) => typeof p === 'string' && p)
     if (!paths.length) return
+    // a native drag of our own rows comes back as `Files`: treat it as the internal move/copy
+    // it was, not as a foreign copy
+    const mine = lastDragPaths()
+    const internal = mine.length > 0 && paths.every((p) => mine.includes(p))
+    clearDragPaths()
+    if (internal) {
+      await dropInternal(paths, dest, copy)
+      return
+    }
     await api.jobs.start('copy', paths, dest, transferOpts())
     setNote(t('کپی {n} مورد از بیرون', { n: fa(paths.length) }))
   }
@@ -1281,6 +1330,44 @@ export default function App() {
     if (cut) setClip(null)
   }
 
+  /** Ctrl+C/Ctrl+X: remember the selection for in-app paste and put real files on the OS clipboard. */
+  const copySelection = async (cut: boolean) => {
+    if (!panes) return
+    const me = panes[active]
+    const targets = me.sel
+    if (!targets.length) {
+      setNote(t('چیزی انتخاب نشده'))
+      return
+    }
+    setClip({ paths: targets, cut })
+    const one = targets.length === 1 ? entryOf(active, targets[0]) : undefined
+    // a single picture goes on the clipboard as its *content*, exactly like the gallery copy:
+    // Electron cannot write a file list on Wayland, but PNG pastes into every chat
+    if (one && !one.dir && isImage(one.ext)) {
+      try {
+        await copyImageContent(one.path)
+        setNote(t('تصویر در کلیپ‌بورد کپی شد'))
+      } catch (e) {
+        setNote(t('کپی تصویر نشد — {error}', { error: e instanceof Error ? e.message : String(e) }))
+      }
+      return
+    }
+    // a single text file is most useful as its text; everywhere accepts that
+    if (one && !one.dir && opensInEditor(one)) {
+      const r = await api.readText(one.path)
+      if (!('error' in r)) {
+        await api.clipboard.writeText(r.text)
+        setNote(t('متن فایل کپی شد'))
+        return
+      }
+    }
+    // binaries can only be named until Electron can write a file list
+    await api.clipboard.writeText(targets.join('\n'))
+    setNote(
+      t(cut ? 'مسیر {n} فایل بریده شد' : 'مسیر {n} فایل کپی شد', { n: fa(targets.length) })
+    )
+  }
+
   const pickMenu = (id: string) => {
     if (!menu || !panes) return
     if (id.startsWith('script:')) {
@@ -1385,7 +1472,10 @@ export default function App() {
       case 'quickCut':
       case 'quickCopy': {
         const targets = menuTargets(me.sel, path)
-        if (targets.length) setClip({ paths: targets, cut: id === 'quickCut' })
+        if (targets.length) {
+          setClip({ paths: targets, cut: id === 'quickCut' })
+          void api.clipboard.writeText(targets.join('\n'))
+        }
         break
       }
       case 'quickPaste': {
@@ -2062,6 +2152,7 @@ export default function App() {
       setPanes((p) => p && patch(p, active, { sel: [path] }))
     }
     if (previewOn) setPreviewPath(path)
+    followEditor(active, [path])
     setReveal((r) => ({ pane: active, path, tick: r.tick + 1 }))
   }
 
@@ -2109,6 +2200,9 @@ export default function App() {
     diff: () => void openDiff(),
     copy: () => void runSel(active, 'copy'),
     move: () => void runSel(active, 'move'),
+    copyFiles: () => void copySelection(false),
+    cutFiles: () => void copySelection(true),
+    paste: () => void pasteClipboard(tabOf(panes![active])),
     edit: () => {
       const p = panes![active].sel[0]
       if (p) openEditor(p)
@@ -2205,6 +2299,161 @@ export default function App() {
     prefs: () => setSettingsOpen(true)
   }
 
+  /**
+   * MCP UI bridge. Everything an agent cannot do on the filesystem alone (navigation, selection,
+   * tabs, dialogs, commands) arrives here; `uiHandler` always reads the latest render's state.
+   */
+  const uiHandler = useRef<(msg: unknown) => void>(() => {})
+  /** messages that arrived during boot, replayed once the panes exist */
+  const pendingUi = useRef<unknown[]>([])
+  const cmdQueue = useRef<{ id: CommandId; pane: number } | null>(null)
+  const runRef = useRef(RUN)
+  runRef.current = RUN
+
+  useEffect(() => {
+    if (!panes || !pendingUi.current.length) return
+    for (const m of pendingUi.current.splice(0)) uiHandler.current(m)
+  }, [panes])
+
+  useEffect(() => {
+    const q = cmdQueue.current
+    if (!q || q.pane !== active) return
+    cmdQueue.current = null
+    runRef.current[q.id]?.()
+  }, [active, panes])
+
+  uiHandler.current = (msg) => {
+    const m = (msg ?? {}) as { tool?: string; args?: Record<string, any>; prefs?: Partial<Prefs> }
+    const tool = String(m.tool ?? '')
+    const a = m.args ?? {}
+    if (!tool) return
+    // the window restores its session after the first render; an early call waits for that
+    if (!panes) {
+      pendingUi.current.push(msg)
+      return
+    }
+    const pane = Number.isInteger(a.pane) ? Math.min(panes.length - 1, Math.max(0, Number(a.pane))) : active
+    const me = panes[pane]
+    const str = (v: unknown) => (typeof v === 'string' ? v : '')
+    // navigation/selection/filtering focus the pane they act on, so a following `command` targets it
+    if ((tool === 'goto' || tool === 'select' || tool === 'filter') && pane !== active) setActive(pane)
+    switch (tool) {
+      case 'note':
+        setNote(str(a.text))
+        break
+      case 'prefs_set': {
+        const patch = (m.prefs ?? a.patch ?? {}) as Partial<Prefs>
+        const next = mergePrefs({ ...prefs, ...patch })
+        setPrefs(next)
+        void api.state.setPrefs(next)
+        if (patch.titlebar !== undefined || patch.rounded !== undefined) {
+          void api.window.setChrome({
+            customTitlebar: next.titlebar === 'app',
+            rounded: next.rounded
+          })
+        }
+        break
+      }
+      case 'command': {
+        const id = str(a.id) as CommandId
+        if (!Object.hasOwn(RUN, id)) {
+          setNote(`unknown command: ${id}`)
+          break
+        }
+        if (pane !== active) {
+          cmdQueue.current = { id, pane }
+          setActive(pane)
+        } else RUN[id]()
+        break
+      }
+      case 'goto': {
+        const path = str(a.path)
+        if (path) go(pane, path)
+        break
+      }
+      case 'select':
+        setPanes((p) =>
+          p && patch(p, pane, { sel: (Array.isArray(a.paths) ? a.paths : []).filter((x) => typeof x === 'string') })
+        )
+        break
+      case 'filter':
+        setPanes((p) => p && patch(p, pane, { filter: str(a.text) }))
+        break
+      case 'tab': {
+        const action = str(a.action)
+        const target = typeof a.path === 'string' && me.tabs.includes(a.path) ? a.path : me.tabs[me.ti]
+        const idx = me.tabs.indexOf(target)
+        if (action === 'new') addTab(pane, str(a.path) || tabOf(me))
+        else if (action === 'close') closeTab(pane, idx)
+        else if (action === 'reopen') reopenTab()
+        else if (action === 'next')
+          setPanes((p) => p && patch(p, pane, { ti: (p[pane].ti + 1) % p[pane].tabs.length, sel: [] }))
+        else if (action === 'prev')
+          setPanes(
+            (p) =>
+              p &&
+              patch(p, pane, {
+                ti: (p[pane].ti - 1 + p[pane].tabs.length) % p[pane].tabs.length,
+                sel: []
+              })
+          )
+        else if (action === 'select' && idx >= 0) setPanes((p) => p && patch(p, pane, { ti: idx, sel: [] }))
+        else if (action === 'rename')
+          setPanes((p) => {
+            if (!p) return p
+            const names = { ...p[pane].tabNames }
+            if (str(a.name).trim()) names[target] = str(a.name).trim()
+            else delete names[target]
+            return patch(p, pane, { tabNames: names })
+          })
+        else if (action === 'lock')
+          setPanes((p) => {
+            if (!p) return p
+            const locks = { ...p[pane].tabLocks }
+            if (a.on === false) delete locks[target]
+            else locks[target] = true
+            return patch(p, pane, { tabLocks: locks })
+          })
+        else if (action === 'color') {
+          const next = { ...prefs.tabColors }
+          if (str(a.color)) next[target] = str(a.color)
+          else delete next[target]
+          updatePrefs({ tabColors: next })
+        }
+        break
+      }
+      case 'bookmark': {
+        const path = str(a.path) || bookmarkTarget(pane)
+        if (!path) break
+        if (a.action === 'remove') setMarks((x) => x.filter((y) => y !== path))
+        else if (a.action === 'add') setMarks((x) => (x.includes(path) ? x : [...x, path]))
+        else setMarks((x) => (x.includes(path) ? x.filter((y) => y !== path) : [...x, path]))
+        break
+      }
+      case 'open_editor': {
+        const path = str(a.path) || me.sel[0]
+        if (path) openEditor(path)
+        else setNote(t('چیزی انتخاب نشده'))
+        break
+      }
+      case 'open_gallery':
+        openGallery(pane, str(a.path) || undefined)
+        break
+      case 'open_preview': {
+        if (str(a.path)) setPreviewPath(str(a.path))
+        setPreviewOn(a.on !== false)
+        break
+      }
+      case 'properties_dialog': {
+        const path = str(a.path) || me.sel[0]
+        if (path) setPropsFor(path)
+        break
+      }
+    }
+  }
+
+  useEffect(() => api.mcp.onUi((m) => uiHandler.current(m)), [])
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const el = ev.target as HTMLElement | null
@@ -2220,6 +2469,18 @@ export default function App() {
         return
       }
       if (typing) return
+
+      // double-tapping Shift opens global search; never while typing, and a slow second tap is ignored
+      if (ev.key === 'Shift' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.repeat) {
+        const now = Date.now()
+        if (prefs.doubleShiftSearch && now - lastShift.current < 420) {
+          lastShift.current = 0
+          ev.preventDefault()
+          setSearchOpen(true)
+          return
+        }
+        lastShift.current = now
+      }
 
       // the keyboard menu key (and Shift+F10) opens the same menu as right-click
       if (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10')) {
@@ -2344,11 +2605,14 @@ export default function App() {
     : undefined
 
   const searchRoots = prefs.searchRoots.length ? prefs.searchRoots : defaultSearchRoots(home)
-
   const sideOpen = previewOn || !!editor
+  // in dual layout a single-tab pane keeps its strip when the other pane has tabs, so the two
+  // sides do not sit at different heights
+  const forceTabStrip =
+    prefs.layout === 'dual' && !sideOpen && panes.some((p) => p.tabs.length > 1)
   const sideContent = editor && !editorMax ? (
     <Editor
-      key={editor + ':dock'}
+      key="editor-dock"
       path={editor}
       theme={theme}
       docked
@@ -2370,7 +2634,7 @@ export default function App() {
     <div className="app" data-layout={prefs.layout}>
       {editor && editorMax && (
         <Editor
-          key={editor + ':max'}
+          key="editor-max"
           path={editor}
           theme={theme}
           onToggleMax={() => setEditorMax(false)}
@@ -2478,6 +2742,7 @@ export default function App() {
           prefs={prefs}
           palette={palette}
           openPage={prefsOpenPage ?? undefined}
+          searchRoots={searchRoots}
           onChange={updatePrefs}
           onClose={() => {
             setSettingsOpen(false)
@@ -2576,6 +2841,7 @@ export default function App() {
                   sel: all ? cur.filter((x) => !paths.includes(x)) : [...new Set([...cur, ...paths])]
                 })
               })
+              if (mode === 'set') followEditor(i, paths)
             }}
             onFilter={(q) => setPanes((p) => p && patch(p, i, { filter: q }))}
             onTabNew={() =>
@@ -2638,6 +2904,7 @@ export default function App() {
             nameLines={prefs.gridNameLines}
             tileSize={prefs.tileSize}
             hideSingleTab={prefs.hideSingleTab}
+            forceTabStrip={forceTabStrip}
             iconSet={iconSetFor()}
             sizeFormat={prefs.sizeFormat}
             dateFormat={prefs.dateFormat}
@@ -2645,7 +2912,7 @@ export default function App() {
             onGallery={() => pane.preview && openGallery(pane.preview.from, pane.preview.entry.path)}
             onContext={(path, x, y) => setMenu({ path, x, y })}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
-            onDropFiles={(files, dest) => void dropFiles(files, dest)}
+            onDropFiles={(files, dest, copy) => void dropFiles(files, dest, copy)}
             onMetrics={(m) => {
               metrics.current[i] = m
             }}
@@ -2784,6 +3051,18 @@ export default function App() {
               </span>
             )}
             {selEntry.link && <span>{t('پیوند نمادین')}</span>}
+          </span>
+        )}
+        {indexStatus?.running && (
+          <span
+            className="index-chip"
+            title={t('ایندکس جست‌وجو در جریان است')}
+          >
+            {t('ایندکس: {scanned} بررسی‌شده · {done}/{total} پوشه', {
+              scanned: fa(indexStatus.scanned),
+              done: fa(indexStatus.done),
+              total: fa(indexStatus.total)
+            })}
           </span>
         )}
         {free != null && <span>{t('آزاد:')} {fmtSize(free, false, prefs.sizeFormat)}</span>}

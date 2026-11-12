@@ -1,30 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {
-  baseName,
-  crumbs,
-  dirOf,
-  fa,
-  fileUri,
-  fmtDate,
-  fmtSize,
-  groupLabel,
-  joinPath,
-  kindOf,
-  mediaUrl,
-  menuTargets,
-  modeString,
-  navIndex,
-  opensInEditor,
-  orderEntries,
-  permLevel,
-  permMode,
-  planRename,
-  sortEntries,
-  toJalali,
-  typeLabel
-} from './format.ts'
+import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, sortEntries, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -359,5 +336,17 @@ test('orderEntries: size keeps folders first, date interleaves them', () => {
   assert.deepEqual(
     orderEntries(dated, 'mtime', true).map((x) => x.name),
     ['a.txt', 'b.txt', 'zdir']
+  )
+})
+
+test('downloadUrl hands browser drop zones a real file payload', () => {
+  assert.equal(
+    downloadUrl('/tmp/a b.txt'),
+    'application/octet-stream:a b.txt:file:///tmp/a%20b.txt'
+  )
+  // a colon in the name would split the three-part payload
+  assert.equal(
+    downloadUrl('/tmp/a:b.txt'),
+    'application/octet-stream:a_b.txt:file:///tmp/a%3Ab.txt'
   )
 })

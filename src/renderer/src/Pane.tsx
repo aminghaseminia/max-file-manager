@@ -2,11 +2,13 @@ import { t } from './i18n.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Entry, Listing } from './api'
 import { keepDragPaths } from './drag'
+import { dragDownloadUrlFor, dragFileFor, prefetchDragFile } from './dragfiles'
 import { dragLog } from './draglog'
 import type { ColId } from './prefs'
 import {
   crumbs,
   fa,
+  downloadUrl,
   fileUri,
   fmtDate,
   fmtSize,
@@ -99,6 +101,8 @@ type Props = {
   tileSize: number
   /** a pane with one tab shows no tab strip */
   hideSingleTab: boolean
+  /** dual layout with a multi-tab sibling: keep both strips so the panes stay symmetric */
+  forceTabStrip?: boolean
   /** kind → icon file of the preferred desktop theme; empty means our line glyphs */
   iconSet?: Record<string, string>
   sizeFormat: 'human' | 'bytes'
@@ -155,7 +159,7 @@ type Props = {
   onGallery?(): void
   onContext(path: string | null, x: number, y: number): void
   onDropInternal(paths: string[], dest: string, copy: boolean): void
-  onDropFiles(files: File[], dest: string): void
+  onDropFiles(files: File[], dest: string, copy: boolean): void
   /** visible columns/rows, so the app can move the selection by a page or a grid row */
   onMetrics?(m: { cols: number; rows: number }): void
   /** bump `tick` to scroll this entry into view */
@@ -351,7 +355,7 @@ export function Pane(props: Props) {
 
   const cur = pane.tabs[pane.ti]
   // a single tab needs no strip; the + then lives in the path row so a new tab is still one click away
-  const showTabs = pane.tabs.length > 1 || !props.hideSingleTab
+  const showTabs = props.forceTabStrip || pane.tabs.length > 1 || !props.hideSingleTab
   const TILE = tileGeo(props.tileSize, props.nameLines, props.gridMeta.length)
   const TILE_W = TILE.w
   const TILE_H = TILE.h
@@ -489,7 +493,7 @@ export function Pane(props: Props) {
   // rows carry their own paths (not text) so a drag between panes stays typed
   const dragPaths = (path: string) => (pane.sel.includes(path) ? pane.sel : [path])
 
-  const startDrag = (ev: React.DragEvent, path: string) => {
+  const startDrag = (ev: React.DragEvent, path: string, dir = false) => {
     const paths = dragPaths(path)
     // Wayland may hand an empty DataTransfer to drop; the sidebar falls back to this copy
     keepDragPaths(paths)
@@ -498,6 +502,29 @@ export function Pane(props: Props) {
     // external apps (VLC, Telegram, …) only understand a file list, CRLF separated by the spec
     ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
     ev.dataTransfer.setData('text/plain', paths.join('\n'))
+    // browser drop zones read `dataTransfer.files`; attach real files prefetched on pointer-down
+    // (a uri-list alone stays text for security, and DownloadURL is Chromium-only)
+    for (const p of paths.slice(0, 12)) {
+      const e =
+        pane.listing?.entries.find((x) => x.path === p) ?? pane.results?.find((x) => x.path === p)
+      if (!e || e.dir) continue
+      const file = dragFileFor(e.path, e.size, e.mtime)
+      if (file) {
+        try {
+          ev.dataTransfer.items.add(file)
+        } catch {
+          // the drag store may be protected; the uri-list still works for native apps
+        }
+      }
+    }
+    // Chromium targets only turn a drag into a File when DownloadURL carries the bytes itself;
+    // a `file://` payload is treated as a page URL and navigates the target instead.
+    if (!dir) {
+      const entry =
+        pane.listing?.entries.find((x) => x.path === path) ?? pane.results?.find((x) => x.path === path)
+      const dataUrl = entry ? dragDownloadUrlFor(entry.path, entry.size, entry.mtime) : null
+      ev.dataTransfer.setData('DownloadURL', dataUrl ? `application/octet-stream:${entry!.name}:${dataUrl}` : downloadUrl(path))
+    }
     // the sidebar asks for `link` when bookmarking; `copyMove` would cancel that drop
     ev.dataTransfer.effectAllowed = 'all'
   }
@@ -523,7 +550,7 @@ export function Pane(props: Props) {
       return
     }
     const files = [...ev.dataTransfer.files]
-    if (files.length) props.onDropFiles(files, dest)
+    if (files.length) props.onDropFiles(files, dest, ev.ctrlKey)
   }
 
   const menu = (ev: React.MouseEvent, path: string | null) => {
@@ -912,11 +939,16 @@ export function Pane(props: Props) {
                 style={{ top: (start + k) * ROW, gridTemplateColumns: gridTemplate }}
                 title={e.path}
                 draggable
-                onDragStart={(ev) => startDrag(ev, e.path)}
+                onDragStart={(ev) => startDrag(ev, e.path, e.dir)}
                 onDragOver={allowDrop}
                 onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                 onContextMenu={(ev) => menu(ev, e.path)}
                 onClick={(ev) => click(start + k, ev)}
+                onPointerDown={(ev) => {
+                  if (ev.button === 0 && !e.dir) {
+                    void prefetchDragFile(e.path, e.name, e.size, e.mtime)
+                  }
+                }}
                 onDoubleClick={() => props.onOpen(e.path)}
               >
                 <span className="name">
@@ -977,11 +1009,16 @@ export function Pane(props: Props) {
                   }
                   style={{ top: r * TILE_H, insetInlineStart: c * TILE_W, width: TILE_W - 6, height: TILE_H - 6 }}
                   draggable
-                  onDragStart={(ev) => startDrag(ev, e.path)}
+                  onDragStart={(ev) => startDrag(ev, e.path, e.dir)}
                   onDragOver={allowDrop}
                   onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                   onContextMenu={(ev) => menu(ev, e.path)}
                   onClick={(ev) => click(idx, ev)}
+                  onPointerDown={(ev) => {
+                    if (ev.button === 0 && !e.dir) {
+                      void prefetchDragFile(e.path, e.name, e.size, e.mtime)
+                    }
+                  }}
                   onDoubleClick={() => props.onOpen(e.path)}
                   title={e.path}
                 >
@@ -1006,11 +1043,6 @@ export function Pane(props: Props) {
                         title={t(t('برچسب'))}
                       />
                     )}
-                    {e.link && (
-                      <span className="symmark symmark-tile" title={t('پیوند نمادین')}>
-                        <LinkIcon />
-                      </span>
-                    )}
                   </span>
                   <span className="tile-name-row">
                     {!e.dir && e.color && (
@@ -1021,6 +1053,11 @@ export function Pane(props: Props) {
                       dir="auto"
                       style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
                     >{e.name}</span>
+                    {e.link && (
+                      <span className="symmark tile-link" title={t('پیوند نمادین')}>
+                        <LinkIcon />
+                      </span>
+                    )}
                   </span>
                   {metaParts.length > 0 && (
                     <span className="tile-meta" dir="auto">

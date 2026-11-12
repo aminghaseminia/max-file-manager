@@ -70,6 +70,8 @@ export async function startFileDrag(wc: WebContents, files: string[]): Promise<{
     )
     dragIcon = nativeImage.createFromBuffer(png)
   }
+  // `file` is required by Electron; `files` carries a multi-selection. Passing only `files`
+  // is rejected by the type and by the runtime.
   wc.startDrag({ file: list[0], files: list, icon: dragIcon })
   return { ok: true }
 }

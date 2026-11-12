@@ -228,6 +228,17 @@ export function fileUri(p: string): string {
   return `file://${tail.startsWith('/') ? '' : '/'}${tail}`
 }
 
+/**
+ * Chrome's non-standard `DownloadURL` drag type. Native apps (Telegram, Dolphin) read the
+ * `text/uri-list`, but a browser drop zone only fills `dataTransfer.files` when the drag also
+ * offers this — a `text/uri-list` from another Chromium window stays plain text for security.
+ * VSCode uses the same type to keep in-app HTML5 drops working.
+ */
+export function downloadUrl(p: string): string {
+  const name = (p.split(/[\\/]/).pop() || 'file').replace(/:/g, '_')
+  return `application/octet-stream:${name}:${fileUri(p)}`
+}
+
 export type Kind = 'dir' | 'image' | 'video' | 'audio' | 'archive' | 'text' | 'doc' | 'pdf' | 'sheet' | 'slides' | 'code' | 'file'
 
 const KIND: Record<string, Kind> = {

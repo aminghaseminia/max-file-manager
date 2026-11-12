@@ -49,6 +49,8 @@ export const COLUMNS: { id: ColId; label: string }[] = [
  * FreeCommander use (see docs/PREFERENCES.md). Anything not listed here is not configurable yet.
  */
 export type Prefs = {
+  /** schema version, so a changed default binding can migrate exactly once */
+  prefsVersion: number
   /** UI language; English is the default */
   lang: Lang
   // appearance
@@ -122,6 +124,8 @@ export type Prefs = {
   searchRoots: string[]
   /** glob-ish names/paths the indexer skips */
   searchExclude: string[]
+  /** double-tapping Shift opens the global search overlay */
+  doubleShiftSearch: boolean
   /** show a folder tree inside every pane (Opus «Dual Tree») */
   paneTree: boolean
   /** user commands: name → shell line, `{path}` and `{dir}` are substituted */
@@ -172,6 +176,7 @@ export const cleanFontFamily = (raw: unknown): string => {
 }
 
 export const DEFAULTS: Prefs = {
+  prefsVersion: 2,
   lang: 'en',
   theme: 'dark',
   colorTheme: DEFAULT_COLOR_THEME,
@@ -217,6 +222,7 @@ export const DEFAULTS: Prefs = {
   fileTypes: {},
   searchRoots: [],
   searchExclude: ['node_modules', '.git', '.cache', '.venv', 'dist', 'build', '*.tmp', '.Trash', 'snap'],
+  doubleShiftSearch: true,
   paneTree: false,
   scripts: {},
   transferSkipExisting: false,
@@ -348,7 +354,13 @@ function cleanDefaultApps(raw: unknown): Record<string, { id: string; name: stri
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
 export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) | null | undefined): Prefs {
   const p = { ...DEFAULTS, ...(raw ?? {}) }
+  const rawVersion = Number((raw as { prefsVersion?: unknown } | null | undefined)?.prefsVersion)
+  const version = Number.isFinite(rawVersion) && rawVersion > 0 ? rawVersion : 1
+  const shortcuts = normalShortcuts(p.shortcuts)
+  // v2 moved global search from Ctrl+Shift+K to Ctrl+K; only an unmodified old default is touched
+  if (version < 2 && shortcuts.searchIndex === 'Ctrl+Shift+K') shortcuts.searchIndex = 'Ctrl+K'
   return {
+    prefsVersion: Math.max(2, version),
     lang: p.lang === 'fa' ? 'fa' : 'en',
     theme: p.theme === 'light' || p.theme === 'system' ? p.theme : 'dark',
     colorTheme: isColorTheme(p.colorTheme) ? p.colorTheme : DEFAULT_COLOR_THEME,
@@ -395,7 +407,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
     sidebarOpen: p.sidebarOpen !== false,
-    shortcuts: normalShortcuts(p.shortcuts),
+    shortcuts,
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
       p.toolbarMode === 'icon' || p.toolbarMode === 'text' ? p.toolbarMode : 'icon-text',
@@ -431,6 +443,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     searchExclude: Array.isArray(p.searchExclude)
       ? p.searchExclude.filter((r) => typeof r === 'string' && r.trim())
       : DEFAULTS.searchExclude,
+    doubleShiftSearch: p.doubleShiftSearch !== false,
     paneTree: p.paneTree === true,
     scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,

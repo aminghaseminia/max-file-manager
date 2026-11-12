@@ -199,6 +199,8 @@ export function PreviewPanel({
                     <span className="pln">{n + 1}</span>
                     <span
                       className="ptext"
+                      // each line picks its own direction, so Persian previews are not left-aligned
+                      dir="auto"
                       // highlight.js escapes first, so the markup is safe to inject
                       dangerouslySetInnerHTML={{ __html: ln ? highlightCode(ln, lang) : ' ' }}
                     />

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_FONT_FAMILY, DEFAULTS, cleanFontFamily, fontStack, mergePrefs, migrateLegacy } from './prefs.ts'
+import { DEFAULT_FONT_FAMILY, DEFAULT_TOOLBAR, DEFAULTS, cleanFontFamily, fontStack, mergePrefs, migrateLegacy } from './prefs.ts'
+import { DEFAULT_SHORTCUTS } from './commands.ts'
 
 test('mergePrefs fills defaults and rejects nonsense', () => {
   const p = mergePrefs({ theme: 'neon' as any, layout: 'triple' as any, foldersFirst: undefined })
@@ -124,4 +125,10 @@ test('tab colours: only absolute paths and real hex colours survive', () => {
     } as never
   })
   assert.deepEqual(p.tabColors, { '/home/max/Downloads': '#4f8ff0', 'C:\\Users\\max': '#e0564d' })
+})
+
+test('global search moves to Ctrl+K once, then a deliberate old binding is kept', () => {
+  const old = { shortcuts: { ...DEFAULT_SHORTCUTS, searchIndex: 'Ctrl+Shift+K' } }
+  assert.equal(mergePrefs(old).shortcuts.searchIndex, 'Ctrl+K')
+  assert.equal(mergePrefs({ ...old, prefsVersion: 2 }).shortcuts.searchIndex, 'Ctrl+Shift+K')
 })

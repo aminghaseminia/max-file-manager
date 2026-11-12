@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+// mcp:ui messages are buffered until the renderer subscribes, so an early agent call is not lost
+let uiListener: ((msg: unknown) => void) | null = null
+const uiQueue: unknown[] = []
+ipcRenderer.on('mcp:ui', (_e, msg) => {
+  if (uiListener) uiListener(msg)
+  else uiQueue.push(msg)
+})
+
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
   list: (dir: string, showHidden: boolean, dims = false) =>
@@ -9,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   chmod: (p: string, mode: number) => ipcRenderer.invoke('fs:chmod', { path: p, mode }),
   properties: (p: string) => ipcRenderer.invoke('fs:properties', p),
   imageData: (p: string) => ipcRenderer.invoke('fs:imageData', p),
+  readBytes: (p: string, max?: number) => ipcRenderer.invoke('fs:readBytes', { path: p, max }),
   saveImage: (src: string, dataUrl: string, mode: string) =>
     ipcRenderer.invoke('image:save', { src, dataUrl, mode }),
   dirs: (dir: string, showHidden = false) => ipcRenderer.invoke('fs:dirs', dir, showHidden),
@@ -32,7 +41,15 @@ contextBridge.exposeInMainWorld('api', {
   mcp: {
     status: () => ipcRenderer.invoke('mcp:status'),
     configure: (patch: unknown) => ipcRenderer.invoke('mcp:configure', patch),
-    token: () => ipcRenderer.invoke('mcp:token')
+    token: () => ipcRenderer.invoke('mcp:token'),
+    // buffered here: an agent may call before the window has mounted its listener
+    onUi: (cb: (msg: unknown) => void) => {
+      uiListener = cb
+      for (const m of uiQueue.splice(0)) cb(m)
+      return () => {
+        if (uiListener === cb) uiListener = null
+      }
+    }
   },
   update: {
     check: (force?: boolean) => ipcRenderer.invoke('update:check', force),
@@ -42,6 +59,7 @@ contextBridge.exposeInMainWorld('api', {
     index: (cfg: unknown) => ipcRenderer.invoke('search:index', cfg),
     query: (query: string, limit?: number) => ipcRenderer.invoke('search:query', { query, limit }),
     stats: () => ipcRenderer.invoke('search:stats'),
+    status: () => ipcRenderer.invoke('search:status'),
     sizes: (dirs: string[]) => ipcRenderer.invoke('search:sizes', dirs),
     clear: () => ipcRenderer.invoke('search:clear'),
     onProgress: (cb: (p: unknown) => void) => {
@@ -49,6 +67,10 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('search:progress', fn)
       return () => ipcRenderer.removeListener('search:progress', fn)
     }
+  },
+  settings: {
+    export: (prefs: unknown) => ipcRenderer.invoke('settings:export', { prefs }),
+    import: () => ipcRenderer.invoke('settings:import')
   },
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
@@ -94,6 +116,7 @@ contextBridge.exposeInMainWorld('api', {
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
   clipboard: {
+    writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
     saveImage: (dir: string, name: string, data: Uint8Array) =>
       ipcRenderer.invoke('clipboard:saveImage', { dir, name, data })
   },

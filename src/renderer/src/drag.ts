@@ -6,6 +6,7 @@
  * It is cleared on `dragend`/`drop`, which always follow the drag.
  */
 let paths: string[] = []
+let keptAt = 0
 let clearTimer: ReturnType<typeof setTimeout> | null = null
 
 export const keepDragPaths = (next: string[]): void => {
@@ -14,9 +15,17 @@ export const keepDragPaths = (next: string[]): void => {
     clearTimer = null
   }
   paths = next
+  keptAt = Date.now()
 }
 
-export const lastDragPaths = (): string[] => paths
+export const lastDragPaths = (): string[] => {
+  // a native drag may never fire `dragend`; an old path list must not fake an internal drop
+  if (paths.length && Date.now() - keptAt > 60_000) {
+    paths = []
+    return []
+  }
+  return paths
+}
 
 export const clearDragPaths = (): void => {
   if (clearTimer) clearTimeout(clearTimer)

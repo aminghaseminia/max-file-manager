@@ -29,6 +29,22 @@ export type SearchHit = {
   mtime: number
   ext: string
 }
+
+export type SearchProgress = {
+  running: boolean
+  scanned: number
+  added: number
+  done: number
+  total: number
+  root: string
+  startedAt: number
+  finishedAt: number
+  files: number
+  dirs: number
+  lastIndex: number
+  error: string
+}
+export type SearchStatus = SearchProgress & { stats: { files: number; dirs: number; lastIndex: number } }
 export type SyncRow = {
   rel: string
   state: string
@@ -167,12 +183,14 @@ export type FileProperties = {
 }
 
 export type Api = {
+
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
   statfs(p: string): Promise<{ free: number; size: number } | null>
   debugLog(msg: string): Promise<boolean>
   chmod(p: string, mode: number): Promise<{ ok: true } | { error: string }>
   properties(p: string): Promise<FileProperties | { error: string }>
   imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
+  readBytes(p: string, max?: number): Promise<{ data?: Uint8Array; error?: string }>
   saveImage(src: string, dataUrl: string, mode: 'overwrite' | 'copy'): Promise<{ path: string } | { error: string }>
   dirs(dir: string, showHidden?: boolean): Promise<DirRef[]>
   roots(): Promise<DirRef[]>
@@ -202,9 +220,11 @@ export type Api = {
       port: number
       mode: string
       token: string
+      error: string
       log: string[]
     }>
     token(): Promise<string>
+    onUi(cb: (msg: unknown) => void): () => void
   }
   update: {
     check(force?: boolean): Promise<{
@@ -224,12 +244,19 @@ export type Api = {
       dirs: number
       durationMs: number
       stats: { files: number; dirs: number; lastIndex: number }
+      alreadyRunning?: boolean
+      status?: SearchStatus
     }>
     query(query: string, limit?: number): Promise<SearchHit[]>
     stats(): Promise<{ files: number; dirs: number; lastIndex: number }>
+    status(): Promise<SearchStatus>
     sizes(dirs: string[]): Promise<Record<string, { bytes: number; files: number }>>
     clear(): Promise<{ files: number; dirs: number; lastIndex: number }>
-    onProgress(cb: (p: { scanned: number; added: number; done: number; total: number; root: string }) => void): () => void
+    onProgress(cb: (p: SearchProgress) => void): () => void
+  }
+  settings: {
+    export(prefs: unknown): Promise<{ path: string } | { canceled: true } | { error: string }>
+    import(): Promise<{ prefs: Record<string, unknown> } | { canceled: true } | { error: string }>
   }
   tags(paths: string[]): Promise<Record<string, Record<string, string>>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
@@ -293,6 +320,7 @@ export type Api = {
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<{ ok: true } | { error: string }>
   clipboard: {
+    writeText(text: string): Promise<boolean>
     saveImage(dir: string, name: string, data: Uint8Array): Promise<{ path: string } | { error: string }>
   }
   apps: {

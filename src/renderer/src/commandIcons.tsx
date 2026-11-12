@@ -5,6 +5,8 @@ import {
   ChevronLeftIcon,
   DriveIcon,
   CopyIcon,
+  CutIcon,
+  PasteIcon,
   DupeIcon,
   EyeIcon,
   FileIcon,
@@ -34,6 +36,9 @@ import type { CommandId } from './commands'
 /** Icon per command, used by the toolbar and the function-key bar. */
 export const CMD_ICON: Record<CommandId, JSX.Element> = {
   copy: <CopyIcon />,
+  copyFiles: <CopyIcon />,
+  cutFiles: <CutIcon />,
+  paste: <PasteIcon />,
   move: <MoveIcon />,
   edit: <RenameIcon />,
   rename: <RenameIcon />,

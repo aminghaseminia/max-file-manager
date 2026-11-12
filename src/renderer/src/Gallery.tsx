@@ -2,10 +2,12 @@ import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
 import { fa, mediaUrl } from './format'
+import { copyImageContent } from './clipboard'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ConfirmIcon,
+  CopyIcon,
   DupeIcon,
   MaximizeIcon,
   MinusIcon,
@@ -76,6 +78,7 @@ export function Gallery({
   const [busy, setBusy] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const activeThumb = useRef<HTMLButtonElement | null>(null)
+  const copyRef = useRef<() => void>(() => {})
 
   const total = images.length
   const cur = images[Math.min(at, total - 1)]
@@ -286,6 +289,16 @@ export function Gallery({
         return
       }
       if (cropping || resize) return
+      const target = e.target as HTMLElement | null
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'c' || e.key === 'C') &&
+        !(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'))
+      ) {
+        e.preventDefault()
+        copyRef.current()
+        return
+      }
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
@@ -338,6 +351,18 @@ export function Gallery({
     return () => window.removeEventListener('keydown', onKey)
   }, [total, cropping, resize, onClose, onFullscreen])
 
+  /** Copy the picture itself (not its path) so it can be pasted into a chat or document. */
+  const copyImage = async () => {
+    if (!cur) return
+    try {
+      await copyImageContent(cur.path, edit?.url)
+      onSaved(t('تصویر در کلیپ‌بورد کپی شد'))
+    } catch (e) {
+      onSaved(t('کپی تصویر نشد — {error}', { error: e instanceof Error ? e.message : String(e) }))
+    }
+  }
+  copyRef.current = () => void copyImage()
+
   const src = edit?.url ?? (cur ? mediaUrl(cur.path) : '')
 
   return (
@@ -355,6 +380,9 @@ export function Gallery({
           </span>
         )}
         <span className="spacer" />
+        <button className="tb" title={t('کپی تصویر در کلیپ‌بورد (Ctrl+C)')} onClick={() => void copyImage()}>
+          <CopyIcon />
+        </button>
         <button className="tb" title={t(t('چرخش به راست (R)'))} onClick={() => void rotate(1)}>
           <RotateIcon />
         </button>
