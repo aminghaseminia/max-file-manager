@@ -21,7 +21,16 @@ md.setUrls(urls)
 if urls:
     md.setData('x-special/gnome-copied-files', (('cut' if cut else 'copy') + '\n' + '\n'.join(u.toString() for u in urls)).encode())
     md.setData('application/x-kde-cutselection', b'1' if cut else b'0')
-app.clipboard().setMimeData(md)
+cb = app.clipboard()
+cb.setMimeData(md)
+# a new copy (file list, image, or text) takes the selection; this owner must not linger and
+# keep serving the old file. Ignore the change our own setMimeData just caused.
+armed = [False]
+QTimer.singleShot(600, lambda: armed.__setitem__(0, True))
+def lost(_mode=None):
+    if armed[0]:
+        app.quit()
+cb.dataChanged.connect(lost)
 QTimer.singleShot(600000, app.quit)
 app.exec()
 `
