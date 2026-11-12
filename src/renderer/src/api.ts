@@ -320,6 +320,7 @@ export type Api = {
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<{ ok: true } | { error: string }>
   clipboard: {
+    copyFiles(paths: string[], cut?: boolean): Promise<'files' | 'text'>
     writeText(text: string): Promise<boolean>
     saveImage(dir: string, name: string, data: Uint8Array): Promise<{ path: string } | { error: string }>
   }

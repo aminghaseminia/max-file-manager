@@ -1352,19 +1352,13 @@ export default function App() {
       }
       return
     }
-    // a single text file is most useful as its text; everywhere accepts that
-    if (one && !one.dir && opensInEditor(one)) {
-      const r = await api.readText(one.path)
-      if (!('error' in r)) {
-        await api.clipboard.writeText(r.text)
-        setNote(t('متن فایل کپی شد'))
-        return
-      }
-    }
-    // binaries can only be named until Electron can write a file list
-    await api.clipboard.writeText(targets.join('\n'))
+    // everything else goes on the clipboard as a real file list (text/uri-list), so
+    // Telegram/Dolphin paste the file itself; the helper falls back to paths without PySide
+    const kind = await api.clipboard.copyFiles(targets, cut)
     setNote(
-      t(cut ? 'مسیر {n} فایل بریده شد' : 'مسیر {n} فایل کپی شد', { n: fa(targets.length) })
+      kind === 'files'
+        ? t(cut ? '{n} فایل بریده شد' : '{n} فایل در کلیپ‌بورد کپی شد', { n: fa(targets.length) })
+        : t(cut ? 'مسیر {n} فایل بریده شد' : 'مسیر {n} فایل کپی شد', { n: fa(targets.length) })
     )
   }
 

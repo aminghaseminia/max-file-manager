@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('api', {
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
   clipboard: {
+    copyFiles: (paths: string[], cut = false) => ipcRenderer.invoke('clipboard:copyFiles', { paths, cut }),
     writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
     saveImage: (dir: string, name: string, data: Uint8Array) =>
       ipcRenderer.invoke('clipboard:saveImage', { dir, name, data })

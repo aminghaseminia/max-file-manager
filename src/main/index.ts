@@ -74,6 +74,7 @@ import {
   type McpMode
 } from './mcp.ts'
 import { randomBytes } from 'node:crypto'
+import { copyFilesToClipboard } from './fileclip.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -1387,6 +1388,10 @@ app.whenReady().then(async () => {
 
   /** Save an image from the renderer's clipboard as a normal file in the target folder. */
   /** Main-process clipboard write works even when the renderer is not focused. */
+  /** A real file list (text/uri-list) so Telegram/Dolphin paste the file, not its path. */
+  ipcMain.handle('clipboard:copyFiles', (_e, a: { paths?: string[]; cut?: boolean }) =>
+    copyFilesToClipboard((a?.paths ?? []).filter((p) => path.isAbsolute(p)), !!a?.cut)
+  )
   ipcMain.handle('clipboard:writeText', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''))
     return true
