@@ -89,7 +89,13 @@ export type Job = {
 }
 
 export type StoredState = {
-  panes?: { tabs: string[]; ti: number }[]
+  panes?: {
+    tabs: string[]
+    ti: number
+    pinCount?: number
+    names?: Record<string, string>
+    locks?: Record<string, boolean>
+  }[]
   active?: number
   hidden?: boolean
   theme?: 'dark' | 'light'
@@ -265,6 +271,7 @@ export type Api = {
   getMeta(dir: string): Promise<FolderMeta | null>
   labelPalette(): Promise<{ id: string; name: string; color: string }[]>
   setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>>
+  setEntryColor(dir: string, name: string, color: string): Promise<FolderMeta | null>
   setRating(dir: string, name: string, stars: number): Promise<Record<string, number>>
   setFormat(
     dir: string,
@@ -277,7 +284,12 @@ export type Api = {
   iconsIn(themeDir: string): Promise<IconRef[]>
   /** kind → icon file from the preferred theme (Pure); empty when no theme is installed */
   iconSet(): Promise<Record<string, string>>
+  folderLook(p: string): Promise<{ color?: string; icon?: string }>
   mkdir(dir: string, name: string): Promise<Result>
+  symlink(
+    target: string,
+    linkPath: string
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<{ ok: true } | { error: string }>
   clipboard: {
@@ -305,7 +317,11 @@ export type Api = {
     clear(): Promise<void>
     onUpdate(cb: (job: Job) => void): () => void
   }
-  app: { onOpenPath(cb: (p: string) => void): () => void }
+  app: {
+    onOpenPath(cb: (p: string) => void): () => void
+    /** the path the process was launched with (null when started normally) */
+    launchPath(): Promise<string | null>
+  }
   undo: { run(): Promise<{ done: number; label: string }>; depth(): Promise<number> }
   window: {
     minimize(): Promise<void>
@@ -315,6 +331,10 @@ export type Api = {
     setFullscreen(on: boolean): Promise<boolean>
     getChrome(): Promise<Chrome>
     setChrome(c: Chrome): Promise<Chrome>
+    setTray(a: { minimize: boolean; close: boolean; show: string; quit: string }): Promise<{
+      minimize: boolean
+      close: boolean
+    }>
     onMaximized(cb: (max: boolean) => void): () => void
   }
   state: { get(): Promise<StoredState | null>; set(s: StoredState): Promise<boolean> }

@@ -47,10 +47,19 @@ type Props = {
   onPathChange?(next: string): void
   /** mode/label/stars/note changed: the listing behind the sheet has to be re-read */
   onUpdate?(): void
+  /** folders only: open the colour/icon picker for this folder */
+  onChangeIcon?(): void
 }
 
 /** Dolphin-style «Properties»: general, permissions, checksums and details. */
-export function PropertiesDialog({ path, onClose, onNote, onPathChange, onUpdate }: Props) {
+export function PropertiesDialog({
+  path,
+  onClose,
+  onNote,
+  onPathChange,
+  onUpdate,
+  onChangeIcon
+}: Props) {
   const [tab, setTab] = useState<TabId>('general')
   const [data, setData] = useState<FileProperties | null>(null)
   const [failed, setFailed] = useState(false)
@@ -515,6 +524,11 @@ export function PropertiesDialog({ path, onClose, onNote, onPathChange, onUpdate
               {data?.name ?? baseName(path)}
             </div>
             <div className="props-kind">{entry ? typeLabel(entry) : t('در حال خواندن…')}</div>
+            {data?.dir && onChangeIcon && (
+              <button className="btn ghost props-icon-btn" onClick={onChangeIcon}>
+                {t('تغییر آیکون…')}
+              </button>
+            )}
           </div>
         </div>
 

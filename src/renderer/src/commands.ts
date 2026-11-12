@@ -89,7 +89,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'searchIndex', label: 'جست‌وجوی ایندکس‌شده', key: 'Ctrl+Shift+K', group: 'view' },
   { id: 'presets', label: 'چیدمان‌ها و فیلترها', key: 'Ctrl+Shift+P', group: 'window' },
   { id: 'saveFormat', label: 'قالب نمایش این پوشه', key: '', group: 'view' },
-  { id: 'look', label: 'رنگ و آیکون پوشه', key: '', group: 'view' },
+  { id: 'look', label: 'آیکون پوشه', key: '', group: 'view' },
   { id: 'properties', label: 'ویژگی‌ها', key: 'Alt+Enter', group: 'file' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' }
 ]

@@ -1,5 +1,6 @@
 import { t } from './i18n.ts'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS } from './commands.ts'
+import { DEFAULT_COLOR_THEME, isColorTheme } from './themes.ts'
 
 /** The toolbar the app ships with; the user can change it in preferences. */
 export const DEFAULT_TOOLBAR = [
@@ -53,6 +54,8 @@ export type Prefs = {
   // appearance
   /** 'system' follows the OS light/dark preference live */
   theme: 'dark' | 'light' | 'system'
+  /** palette family id from themes.ts, applied on top of light/dark */
+  colorTheme: string
   /** CSS family list for the whole UI; '' keeps the bundled Vazirmatn stack */
   fontFamily: string
   view: View
@@ -78,6 +81,10 @@ export type Prefs = {
   fileIcons: 'pure' | 'system' | 'line'
   // window
   titlebar: 'app' | 'system'
+  /** caption-button look; only used with the app's own title bar */
+  titlebarButtons: 'default' | 'mcmojave' | 'windows' | 'minimal'
+  /** physical side of the caption buttons */
+  titlebarSide: 'left' | 'right'
   rounded: boolean
   layout: Layout
   sidebar: 'docked' | 'float'
@@ -93,6 +100,10 @@ export type Prefs = {
   middleClickClosesTab: boolean
   /** a pane with a single tab needs no tab strip */
   hideSingleTab: boolean
+  /** show each tab folder's own icon next to its name */
+  tabIcons: boolean
+  /** folder path → tab colour (hex) chosen from the tab menu */
+  tabColors: Record<string, string>
   // archives, gallery and preview
   zipLevel: number
   imageFormat: 'png' | 'jpeg' | 'webp'
@@ -126,10 +137,17 @@ export type Prefs = {
   trashByDefault: boolean
   // launching
   singleInstance: boolean
+  /** hide the window in the tray when minimized / closed (needs single instance) */
+  minimizeToTray: boolean
+  closeToTray: boolean
+  /** restore the last tabs or always open one folder */
+  startup: 'session' | 'folder'
   hotkey: string
   hotkeyEnabled: boolean
   /** '' means: reopen the last session */
   startFolder: string
+  /** extension → app that opens it, overriding the OS default */
+  defaultApps: Record<string, { id: string; name: string }>
   // icon packs (folder look)
   iconDirs: string[]
   iconTheme: string
@@ -156,6 +174,7 @@ export const cleanFontFamily = (raw: unknown): string => {
 export const DEFAULTS: Prefs = {
   lang: 'en',
   theme: 'dark',
+  colorTheme: DEFAULT_COLOR_THEME,
   fontFamily: '',
   view: 'list',
   foldersFirst: true,
@@ -172,6 +191,8 @@ export const DEFAULTS: Prefs = {
   tileSize: 108,
   fileIcons: 'pure',
   titlebar: 'app',
+  titlebarButtons: 'default',
+  titlebarSide: 'right',
   rounded: true,
   layout: 'dual',
   sidebar: 'docked',
@@ -182,6 +203,8 @@ export const DEFAULTS: Prefs = {
   newTabPos: 'next',
   middleClickClosesTab: true,
   hideSingleTab: true,
+  tabIcons: true,
+  tabColors: {},
   doubleClick: 'gallery',
   zipLevel: 6,
   imageFormat: 'png',
@@ -202,9 +225,13 @@ export const DEFAULTS: Prefs = {
   confirmDelete: true,
   trashByDefault: true,
   singleInstance: true,
+  minimizeToTray: false,
+  closeToTray: false,
+  startup: 'session',
   hotkey: 'Super+E',
   hotkeyEnabled: false,
   startFolder: '',
+  defaultApps: {},
   iconDirs: [],
   iconTheme: ''
 }
@@ -290,12 +317,41 @@ function normalShortcuts(raw: unknown): Record<string, string> {
   return out
 }
 
+/** Tab colours are keyed by an absolute folder path and must stay real hex colours. */
+function cleanTabColors(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v) && (k.startsWith('/') || /^[A-Za-z]:[\\/]/.test(k))) {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+/** Extension → app, restricted to a plain extension and an absolute .desktop path. */
+function cleanDefaultApps(raw: unknown): Record<string, { id: string; name: string }> {
+  const out: Record<string, { id: string; name: string }> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [rawExt, v] of Object.entries(raw as Record<string, unknown>)) {
+    const ext = rawExt.toLowerCase().replace(/^\./, '').trim()
+    if (!/^[a-z0-9._+-]{1,24}$/.test(ext)) continue
+    if (!v || typeof v !== 'object') continue
+    const app = v as { id?: unknown; name?: unknown }
+    if (typeof app.id !== 'string' || !(app.id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(app.id))) continue
+    if (typeof app.name !== 'string' || !app.name.trim()) continue
+    out[ext] = { id: app.id, name: app.name.trim().slice(0, 120) }
+  }
+  return out
+}
+
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
 export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) | null | undefined): Prefs {
   const p = { ...DEFAULTS, ...(raw ?? {}) }
   return {
     lang: p.lang === 'fa' ? 'fa' : 'en',
     theme: p.theme === 'light' || p.theme === 'system' ? p.theme : 'dark',
+    colorTheme: isColorTheme(p.colorTheme) ? p.colorTheme : DEFAULT_COLOR_THEME,
     fontFamily: cleanFontFamily(p.fontFamily),
     view: p.view === 'grid' ? 'grid' : 'list',
     foldersFirst: p.foldersFirst !== false,
@@ -330,6 +386,11 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
           ? 'system'
           : 'pure',
     titlebar: p.titlebar === 'system' ? 'system' : 'app',
+    titlebarButtons:
+      p.titlebarButtons === 'mcmojave' || p.titlebarButtons === 'windows' || p.titlebarButtons === 'minimal'
+        ? p.titlebarButtons
+        : 'default',
+    titlebarSide: p.titlebarSide === 'left' ? 'left' : 'right',
     rounded: p.rounded !== false,
     layout: p.layout === 'single' ? 'single' : 'dual',
     sidebar: p.sidebar === 'float' ? 'float' : 'docked',
@@ -341,6 +402,8 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
     hideSingleTab: p.hideSingleTab !== false,
+    tabIcons: p.tabIcons !== false,
+    tabColors: cleanTabColors(p.tabColors),
     doubleClick: p.doubleClick === 'gallery' || p.doubleClick === 'preview' ? p.doubleClick : 'open',
     zipLevel:
       typeof p.zipLevel === 'number' && p.zipLevel >= 0 && p.zipLevel <= 9 ? Math.floor(p.zipLevel) : 6,
@@ -379,9 +442,13 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     confirmDelete: p.confirmDelete !== false,
     trashByDefault: p.trashByDefault !== false,
     singleInstance: p.singleInstance !== false,
+    minimizeToTray: p.minimizeToTray === true,
+    closeToTray: p.closeToTray === true,
+    startup: p.startup === 'folder' ? 'folder' : 'session',
     hotkey: typeof p.hotkey === 'string' && p.hotkey.trim() ? p.hotkey.trim() : 'Super+E',
     hotkeyEnabled: p.hotkeyEnabled === true,
     startFolder: typeof p.startFolder === 'string' ? p.startFolder : '',
+    defaultApps: cleanDefaultApps(p.defaultApps),
     iconDirs: Array.isArray(p.iconDirs) ? p.iconDirs.filter((d) => typeof d === 'string' && d) : [],
     iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : ''
   }

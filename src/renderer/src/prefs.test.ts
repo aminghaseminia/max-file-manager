@@ -39,6 +39,23 @@ test('file icons: bundled Pure by default, old “theme” becomes the OS theme'
   assert.equal(mergePrefs({ fileIcons: 'neon' as never }).fileIcons, 'pure')
 })
 
+test('colour theme: default survives, known ids keep, unknown falls back', () => {
+  assert.equal(mergePrefs({}).colorTheme, 'default')
+  assert.equal(mergePrefs({ colorTheme: 'wine' }).colorTheme, 'wine')
+  assert.equal(mergePrefs({ colorTheme: 'neon' as never }).colorTheme, 'default')
+})
+
+test('caption buttons: known themes and sides keep, nonsense falls back', () => {
+  assert.equal(mergePrefs({}).titlebarButtons, 'default')
+  assert.equal(mergePrefs({}).titlebarSide, 'right')
+  assert.equal(mergePrefs({ titlebarButtons: 'mcmojave' }).titlebarButtons, 'mcmojave')
+  assert.equal(mergePrefs({ titlebarButtons: 'windows' }).titlebarButtons, 'windows')
+  assert.equal(mergePrefs({ titlebarButtons: 'minimal' }).titlebarButtons, 'minimal')
+  assert.equal(mergePrefs({ titlebarButtons: 'aqua' as never }).titlebarButtons, 'default')
+  assert.equal(mergePrefs({ titlebarSide: 'left' }).titlebarSide, 'left')
+  assert.equal(mergePrefs({ titlebarSide: 'top' as never }).titlebarSide, 'right')
+})
+
 test('mergePrefs drops non-string icon dirs', () => {
   const p = mergePrefs({ iconDirs: ['/icons', 42 as any, ''] })
   assert.deepEqual(p.iconDirs, ['/icons'])
@@ -94,4 +111,17 @@ test('fontStack keeps a full stack and gives a single family a Persian fallback'
   assert.equal(fontStack(''), DEFAULT_FONT_FAMILY)
   assert.match(fontStack('Inter'), /^Inter, Vazirmatn/)
   assert.equal(fontStack('Inter, sans-serif'), 'Inter, sans-serif')
+})
+
+test('tab colours: only absolute paths and real hex colours survive', () => {
+  assert.deepEqual(mergePrefs({}).tabColors, {})
+  const p = mergePrefs({
+    tabColors: {
+      '/home/max/Downloads': '#4f8ff0',
+      'C:\\Users\\max': '#e0564d',
+      relative: '#4fb56a',
+      '/home/max/Documents': 'not-a-colour'
+    } as never
+  })
+  assert.deepEqual(p.tabColors, { '/home/max/Downloads': '#4f8ff0', 'C:\\Users\\max': '#e0564d' })
 })

@@ -2,6 +2,8 @@ import {
   app,
   BrowserWindow,
   globalShortcut,
+  Menu,
+  Tray,
   ipcMain,
   nativeImage,
   net,
@@ -9,11 +11,12 @@ import {
   screen,
   shell
 } from 'electron'
-import { constants as fsConstants, readFileSync, writeFileSync, promises as fs } from 'node:fs'
+import { constants as fsConstants, existsSync, readFileSync, writeFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
+import { targetPath } from './launch-path.ts'
 import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconSetPaths, iconsIn, themeDirs } from './icons.ts'
@@ -22,6 +25,7 @@ import { preview } from './preview.ts'
 import {
   LABELS,
   readMeta,
+  setEntryColor,
   setFormat,
   setLabel,
   setMeta,
@@ -70,7 +74,7 @@ import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
-import { freeName, remove } from './ops.ts'
+import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import type { DirRef, Entry } from './types.ts'
 
@@ -129,19 +133,7 @@ let chrome: Chrome = {
 }
 let win: BrowserWindow | null = null
 
-function parseArgPath(arg: string): string | null {
-  if (!arg || typeof arg !== 'string') return null
-  if (arg.startsWith('file://')) {
-    try {
-      return fileURLToPath(arg)
-    } catch {
-      return null
-    }
-  }
-  return path.isAbsolute(arg) ? arg : null
-}
-
-const firstPath = process.argv.slice(1).map(parseArgPath).find((p): p is string => Boolean(p))
+const firstPath = targetPath(process.argv, app.getAppPath() || process.cwd())
 
 // single instance: a second launch focuses the window and opens the path it was given
 if (bootPrefs.singleInstance !== false) {
@@ -153,7 +145,7 @@ if (bootPrefs.singleInstance !== false) {
       if (win.isMinimized()) win.restore()
       win.show()
       win.focus()
-      const target = argv.slice(1).map(parseArgPath).find((p): p is string => Boolean(p))
+      const target = targetPath(argv, app.getAppPath() || process.cwd())
       if (target) win.webContents.send('app:open-path', target)
     })
   }
@@ -360,6 +352,62 @@ function windowBounds(): { x: number; y: number; width: number; height: number }
   })
 }
 
+function windowIcon(): string | undefined {
+  const dev = path.join(app.getAppPath(), 'build/icon.png')
+  if (existsSync(dev)) return dev
+  const packed = path.join(process.resourcesPath ?? '', 'icon.png')
+  return existsSync(packed) ? packed : undefined
+}
+
+let tray: Tray | null = null
+let trayPrefs = { minimize: false, close: false }
+let quitting = false
+const singleInstanceEnabled = bootPrefs.singleInstance !== false
+
+function showWindow(): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function ensureTray(labels: { show: string; quit: string }): void {
+  const wanted = singleInstanceEnabled && (trayPrefs.minimize || trayPrefs.close)
+  if (!wanted) {
+    tray?.destroy()
+    tray = null
+    return
+  }
+  if (!tray) {
+    try {
+      const src = windowIcon()
+      const image = src ? nativeImage.createFromPath(src) : nativeImage.createEmpty()
+      tray = new Tray(image.resize({ width: 22, height: 22 }))
+      tray.setToolTip('Max File Manager')
+      tray.on('click', showWindow)
+      tray.on('double-click', showWindow)
+    } catch {
+      // no usable tray host: never hide the window with no way back
+      tray = null
+      trayPrefs = { minimize: false, close: false }
+      return
+    }
+  }
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: labels.show, click: showWindow },
+      { type: 'separator' },
+      {
+        label: labels.quit,
+        click: () => {
+          quitting = true
+          app.quit()
+        }
+      }
+    ])
+  )
+}
+
 function createWindow(): BrowserWindow {
   const frameless = chrome.customTitlebar
   const transparent = frameless && chrome.rounded
@@ -372,6 +420,7 @@ function createWindow(): BrowserWindow {
     transparent,
     backgroundColor: transparent ? '#00000000' : '#16181d',
     hasShadow: false,
+    icon: windowIcon(),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -381,6 +430,18 @@ function createWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  const icon = windowIcon()
+  if (icon) w.setIcon(icon)
+  if (singleInstanceEnabled) {
+    w.on('minimize', () => {
+      if (trayPrefs.minimize) w.hide()
+    })
+    w.on('close', (e) => {
+      if (!trayPrefs.close || quitting) return
+      e.preventDefault()
+      w.hide()
+    })
+  }
   w.on('ready-to-show', () => {
     w.show()
     if (saved?.maximized) w.maximize()
@@ -442,6 +503,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
     const l = await list(dir, showHidden, dims)
     const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
+    // file colours live in the parent folder's marker; folders carry their own colour already
+    if (meta?.colors) {
+      for (const e of l.entries) if (!e.dir && meta.colors[e.name]) e.color = meta.colors[e.name]
+    }
     return {
       ...l,
       pins: meta?.pins ?? [],
@@ -852,6 +917,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:setNote', (_e, a: { dir: string; name: string; text: string }) =>
     path.isAbsolute(a?.dir ?? '') ? setNote(a.dir, String(a.name ?? ''), String(a.text ?? '')) : {}
   )
+  ipcMain.handle('meta:setEntryColor', (_e, a: { dir: string; name: string; color: string }) =>
+    path.isAbsolute(a?.dir ?? '') ? setEntryColor(a.dir, String(a.name ?? ''), String(a.color ?? '')) : null
+  )
   ipcMain.handle('meta:setLabel', (_e, a: { dir: string; name: string; label: string | null }) =>
     path.isAbsolute(a?.dir ?? '') ? setLabel(a.dir, String(a.name ?? ''), a.label ?? null) : {}
   )
@@ -862,7 +930,20 @@ app.whenReady().then(async () => {
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
   ipcMain.handle('icons:set', () => iconSetPaths())
+  ipcMain.handle('icons:folderLook', async (_e, p: string) => {
+    if (typeof p !== 'string' || !path.isAbsolute(p)) return {}
+    const meta = await readMeta(p)
+    if (meta?.icon || meta?.color) return { color: meta.color, icon: meta.icon }
+    const native = await readNativeFolderLook(p)
+    return native.icon ? { icon: native.icon } : {}
+  })
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
+  ipcMain.handle('app:launchPath', () => firstPath)
+  ipcMain.handle('fs:symlink', (_e, target: string, linkPath: string) =>
+    typeof target === 'string' && typeof linkPath === 'string'
+      ? createSymlink(target, linkPath)
+      : { ok: false, error: 'invalid paths' }
+  )
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
   )
@@ -925,6 +1006,25 @@ app.whenReady().then(async () => {
     return !!on
   })
   ipcMain.handle('window:getChrome', () => chrome)
+  app.on('before-quit', () => {
+    quitting = true
+  })
+  ipcMain.handle(
+    'window:setTray',
+    (
+      _e,
+      a: { minimize?: boolean; close?: boolean; show?: string; quit?: string }
+    ) => {
+      trayPrefs = singleInstanceEnabled
+        ? { minimize: a?.minimize === true, close: a?.close === true }
+        : { minimize: false, close: false }
+      ensureTray({
+        show: String(a?.show ?? 'Show window'),
+        quit: String(a?.quit ?? 'Quit')
+      })
+      return trayPrefs
+    }
+  )
   ipcMain.handle('window:setChrome', async (_e, next: Chrome) => {
     chrome = { customTitlebar: !!next.customTitlebar, rounded: !!next.rounded }
     await saveChrome(chrome)

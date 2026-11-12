@@ -1,7 +1,16 @@
 import { getLang, t } from './i18n.ts'
 import type { Entry } from './api.ts'
 
-export type SortKey = 'name' | 'size' | 'mtime' | 'ext'
+export type SortKey =
+  | 'name'
+  | 'size'
+  | 'mtime'
+  | 'ext'
+  | 'mode'
+  | 'owner'
+  | 'links'
+  | 'dims'
+  | 'rating'
 
 const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹'
 
@@ -128,13 +137,29 @@ export function crumbs(p: string): Crumb[] {
 const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Folders always first (Directory Opus default), then the chosen column. */
-export function sortEntries(entries: Entry[], key: SortKey, asc: boolean, foldersFirst = true): Entry[] {
+export function sortEntries(
+  entries: Entry[],
+  key: SortKey,
+  asc: boolean,
+  foldersFirst = true,
+  ratings?: Record<string, number>
+): Entry[] {
   const dir = asc ? 1 : -1
+  const num = (x: number | undefined) => x ?? 0
   return [...entries].sort((a, b) => {
     if (foldersFirst && a.dir !== b.dir) return a.dir ? -1 : 1
     if (key === 'size' && a.size !== b.size) return (a.size - b.size) * dir
     if (key === 'mtime' && a.mtime !== b.mtime) return (a.mtime - b.mtime) * dir
     if (key === 'ext' && a.ext !== b.ext) return COLLATOR.compare(a.ext, b.ext) * dir
+    if (key === 'mode' && num(a.mode) !== num(b.mode)) return (num(a.mode) - num(b.mode)) * dir
+    if (key === 'owner' && num(a.uid) !== num(b.uid)) return (num(a.uid) - num(b.uid)) * dir
+    if (key === 'links' && num(a.nlink) !== num(b.nlink)) return (num(a.nlink) - num(b.nlink)) * dir
+    if (key === 'dims' && num(a.w) * num(a.h) !== num(b.w) * num(b.h)) {
+      return (num(a.w) * num(a.h) - num(b.w) * num(b.h)) * dir
+    }
+    if (key === 'rating' && num(ratings?.[a.name]) !== num(ratings?.[b.name])) {
+      return (num(ratings?.[a.name]) - num(ratings?.[b.name])) * dir
+    }
     return COLLATOR.compare(a.name, b.name) * (key === 'name' ? dir : 1)
   })
 }
@@ -162,7 +187,9 @@ export function orderEntries(
         return e.name.toLowerCase().includes(q)
       })
     : entries
-  const sorted = sortEntries(kept, key, asc, foldersFirst)
+  // folders first is meaningful for name and size; date/owner/… interleave everything
+  const groupFolders = key === 'name' || key === 'size'
+  const sorted = sortEntries(kept, key, asc, groupFolders ? foldersFirst : false, ratings)
   if (!pins || !pins.size) return sorted
   // pinned names float to the very top, keeping the sort order among themselves
   const pinned = sorted.filter((e) => pins.has(e.name))
@@ -186,6 +213,12 @@ export function mediaUrl(p: string): string {
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
   const tail = segs.join('/')
   return `mfm://local${tail.startsWith('/') ? '' : '/'}${tail}`
+}
+
+/** Which entries a context-menu action applies to: the whole selection or the row clicked. */
+export function menuTargets(selection: string[], path: string | null): string[] {
+  if (!path) return selection
+  return selection.includes(path) ? selection : [path]
 }
 
 /** Local path → the `file://` URI external apps expect on a drag (`text/uri-list`). */

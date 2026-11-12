@@ -7,6 +7,7 @@ import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
+import { COLOR_THEMES } from './themes'
 
 const FONT_SUGGESTIONS = [
   'Vazirmatn',
@@ -35,6 +36,7 @@ type Page =
   | 'agents'
   | 'search'
   | 'filetypes'
+  | 'defaultApps'
   | 'archive'
   | 'transfer'
   | 'operations'
@@ -52,6 +54,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'agents', label: 'ایجنت‌ها (MCP)' },
   { id: 'search', label: 'جست‌وجو' },
   { id: 'filetypes', label: 'انواع فایل' },
+  { id: 'defaultApps', label: 'برنامه‌های پیش‌فرض' },
   { id: 'archive', label: 'بایگانی و گالری' },
   { id: 'transfer', label: 'انتقال' },
   { id: 'operations', label: 'عملیات فایل' },
@@ -70,6 +73,10 @@ type Props = {
 
 export function Preferences({ prefs, palette, openPage, onChange, onClose }: Props) {
   const [extInput, setExtInput] = useState('')
+  const [appExt, setAppExt] = useState('')
+  const [appIdDraft, setAppIdDraft] = useState('')
+  const [appChoices, setAppChoices] = useState<{ id: string; name: string }[]>([])
+  const [osDefault, setOsDefault] = useState('')
   const [newRoot, setNewRoot] = useState('')
   const [page, setPage] = useState<Page>(openPage ?? 'appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
@@ -81,6 +88,32 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
       void api.isDefaultFileManager().then(setIsDefault).catch(() => setIsDefault(false))
     }
   }, [page])
+
+  useEffect(() => {
+    const ext = appExt.trim().toLowerCase().replace(/^\./, '')
+    if (!ext) {
+      setAppChoices([])
+      setOsDefault('')
+      return
+    }
+    let live = true
+    const probe = `/mfm-probe.${ext}`
+    void api.apps
+      .list(probe)
+      .then((list) => {
+        if (live) setAppChoices(list.map((a) => ({ id: a.id, name: a.name })))
+      })
+      .catch(() => undefined)
+    void api.apps
+      .default(probe)
+      .then((d) => {
+        if (live) setOsDefault(d?.name ?? '')
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [appExt])
 
   // while capturing, the next keydown becomes the accelerator for that command
   useEffect(() => {
@@ -113,12 +146,18 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
     </div>
   )
 
-  const seg = <T extends string>(value: T, options: { v: T; label: string }[], key: keyof Prefs) => (
+  const seg = <T extends string>(
+    value: T,
+    options: { v: T; label: string }[],
+    key: keyof Prefs,
+    disabled = false
+  ) => (
     <div className="seg">
       {options.map((o) => (
         <button
           key={o.v}
           className={value === o.v ? 'on' : ''}
+          disabled={disabled}
           onClick={() => onChange({ [key]: o.v } as Partial<Prefs>)}
         >
           {o.label}
@@ -184,6 +223,28 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                 )
               )}
               {row(
+                t('تم رنگی'),
+                t('رنگ سطوح و لهجهٔ برنامه؛ روی حالت روشن و تیره هر دو اعمال می‌شود'),
+                <div className="theme-grid">
+                  {COLOR_THEMES.map((ct) => (
+                    <button
+                      key={ct.id}
+                      className={'theme-chip' + (prefs.colorTheme === ct.id ? ' on' : '')}
+                      title={t(ct.label)}
+                      onClick={() => onChange({ colorTheme: ct.id })}
+                    >
+                      <span
+                        className="theme-dot"
+                        style={{
+                          background: `linear-gradient(135deg, ${ct.accent} 0 52%, ${ct.surface} 52% 100%)`
+                        }}
+                      />
+                      {t(ct.label)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {row(
                 t('فونت رابط کاربری'),
                 t('نام فونت نصب‌شده؛ خالی = وزیرمتن'),
                 <div className="font-row">
@@ -224,6 +285,34 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                     onChange={(e) => onChange({ rounded: e.target.checked })}
                   />
                 </label>
+              )}
+              {row(
+                t('دکمه‌های پنجره'),
+                prefs.titlebar === 'system' ? t('فقط با تایتل‌بار برنامه ممکن است') : null,
+                seg(
+                  prefs.titlebarButtons,
+                  [
+                    { v: 'default', label: t('پیش‌فرض') },
+                    { v: 'mcmojave', label: t('مک (McMojave)') },
+                    { v: 'windows', label: t('ویندوز') },
+                    { v: 'minimal', label: t('مینیمال') }
+                  ],
+                  'titlebarButtons',
+                  prefs.titlebar === 'system'
+                )
+              )}
+              {row(
+                t('سمت دکمه‌های پنجره'),
+                prefs.titlebar === 'system' ? t('فقط با تایتل‌بار برنامه ممکن است') : null,
+                seg(
+                  prefs.titlebarSide,
+                  [
+                    { v: 'left', label: t('چپ') },
+                    { v: 'right', label: t('راست') }
+                  ],
+                  'titlebarSide',
+                  prefs.titlebar === 'system'
+                )
               )}
             </>
           )}
@@ -543,6 +632,11 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                 t('وقتی پنجره فقط یک تب دارد، نوار بالای فهرست حذف می‌شود'),
                 check(prefs.hideSingleTab, 'hideSingleTab')
               )}
+              {row(
+                t('آیکون در تب‌ها'),
+                t('آیکون خود پوشهٔ هر تب کنار نامش نمایش داده شود'),
+                check(prefs.tabIcons, 'tabIcons')
+              )}
             </>
           )}
 
@@ -662,6 +756,100 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                     </button>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {page === 'defaultApps' && (
+            <>
+              <div className="hint">
+                {t(
+                  'برای هر پسوند مشخص کن کدام برنامه باز شود؛ بدون تنظیم، برنامهٔ پیش‌فرض سیستم استفاده می‌شود.'
+                )}
+              </div>
+              {Object.entries(prefs.defaultApps)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([ext, app]) => (
+                  <div className="pref-row" key={ext}>
+                    <div className="pref-label">
+                      <span dir="ltr">.{ext}</span>
+                      <span className="hint">{app.name}</span>
+                    </div>
+                    <div className="pref-control">
+                      <button
+                        className="btn ghost mini"
+                        onClick={() => {
+                          setAppExt(ext)
+                          setAppIdDraft(app.id)
+                        }}
+                      >
+                        {t('تغییر')}
+                      </button>
+                      <button
+                        className="btn ghost mini"
+                        onClick={() => {
+                          const next = { ...prefs.defaultApps }
+                          delete next[ext]
+                          onChange({ defaultApps: next })
+                        }}
+                      >
+                        {t('حذف')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              <div className="preset-save">
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  placeholder={t('پسوند')}
+                  value={appExt}
+                  onChange={(e) => {
+                    setAppExt(e.target.value)
+                    setAppIdDraft('')
+                  }}
+                />
+                <select
+                  className="pref-input"
+                  value={appIdDraft}
+                  onChange={(e) => setAppIdDraft(e.target.value)}
+                >
+                  <option value="">{t('انتخاب برنامه…')}</option>
+                  {(appIdDraft && !appChoices.some((a) => a.id === appIdDraft)
+                    ? [{ id: appIdDraft, name: prefs.defaultApps[appExt]?.name ?? appIdDraft }, ...appChoices]
+                    : appChoices
+                  ).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn"
+                  disabled={!appExt.trim() || !appIdDraft}
+                  onClick={() => {
+                    const ext = appExt.trim().toLowerCase().replace(/^\./, '')
+                    if (!/^[a-z0-9._+-]{1,24}$/.test(ext) || !appIdDraft) return
+                    const app = appChoices.find((a) => a.id === appIdDraft)
+                    onChange({
+                      defaultApps: {
+                        ...prefs.defaultApps,
+                        [ext]: { id: appIdDraft, name: app?.name ?? appIdDraft }
+                      }
+                    })
+                    setAppExt('')
+                    setAppIdDraft('')
+                  }}
+                >
+                  {t('ذخیره')}
+                </button>
+              </div>
+              <div className="hint">
+                {osDefault
+                  ? t('پیش‌فرض سیستم: {name}', { name: osDefault })
+                  : appExt.trim()
+                    ? t('برنامه‌ای برای این پسوند پیدا نشد')
+                    : t('بدون نقطه؛ مثلاً png')}
               </div>
             </>
           )}
@@ -832,15 +1020,58 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                 check(prefs.singleInstance, 'singleInstance')
               )}
               {row(
+                t('شروع برنامه'),
+                t('نشست قبلی را برگردان یا همیشه یک پوشه را باز کن'),
+                seg(
+                  prefs.startup,
+                  [
+                    { v: 'session', label: t('نشست قبلی') },
+                    { v: 'folder', label: t('پوشهٔ مشخص') }
+                  ],
+                  'startup'
+                )
+              )}
+              {row(
                 t('پوشهٔ شروع'),
-                t('خالی = همان نشست قبلی'),
+                prefs.startup === 'session'
+                  ? t('در حالت «نشست قبلی» استفاده نمی‌شود')
+                  : t('خالی = پوشهٔ خانه'),
                 <input
                   className="pref-input"
                   dir="ltr"
                   value={prefs.startFolder}
                   placeholder="/home/…"
+                  disabled={prefs.startup === 'session'}
                   onChange={(e) => onChange({ startFolder: e.target.value })}
                 />
+              )}
+              {row(
+                t('کوچک‌کردن به سینی'),
+                prefs.singleInstance
+                  ? t('پنجره پنهان می‌شود و آیکون در سینی می‌ماند')
+                  : t('فقط با تک‌نمونه در دسترس است'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.minimizeToTray}
+                    disabled={!prefs.singleInstance}
+                    onChange={(e) => onChange({ minimizeToTray: e.target.checked })}
+                  />
+                </label>
+              )}
+              {row(
+                t('بستن به سینی'),
+                prefs.singleInstance
+                  ? t('بستن پنجره برنامه را نمی‌بندد؛ از منوی سینی خارج شو')
+                  : t('فقط با تک‌نمونه در دسترس است'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.closeToTray}
+                    disabled={!prefs.singleInstance}
+                    onChange={(e) => onChange({ closeToTray: e.target.checked })}
+                  />
+                </label>
               )}
               {row(
                 t('مدیر فایل پیش‌فرض سیستم'),

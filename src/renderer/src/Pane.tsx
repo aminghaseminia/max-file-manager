@@ -20,7 +20,7 @@ import {
   type SortKey
 } from './format'
 import { PreviewPanel } from './PreviewPanel'
-import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon } from './Icons'
+import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon } from './Icons'
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -53,6 +53,10 @@ export type FolderView = { view?: View; columns?: string[]; sortKey?: string; so
 export type PaneState = {
   tabs: string[]
   ti: number
+  /** custom tab titles keyed by folder path */
+  tabNames: Record<string, string>
+  /** locked tabs keep their folder; navigation opens a new tab */
+  tabLocks: Record<string, boolean>
   /** tabs before this index are pinned: first, protected from closing, no boundary crossing */
   pinCount: number
   hist: string[]
@@ -128,6 +132,12 @@ type Props = {
   onTabMove(from: number, to: number): void
   middleClickClosesTab: boolean
   palette: { id: string; name: string; color: string }[]
+  /** folder path → tab colour chosen in the tab menu */
+  tabColors: Record<string, string>
+  /** folder path → its own colour/icon for the tab strip */
+  tabIcons: Record<string, { color?: string; icon?: string }>
+  /** settings switch: show the folder icon inside each tab */
+  showTabIcons: boolean
   typeColors: Record<string, string>
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
@@ -209,7 +219,11 @@ export function Pane(props: Props) {
     if (props.filterTick === lastFilterTick.current) return
     lastFilterTick.current = props.filterTick
     setFilterOpen(true)
-    setTimeout(() => filterInput.current?.focus(), 0)
+    setTimeout(() => {
+      const el = filterInput.current
+      el?.focus()
+      el?.setSelectionRange(el.value.length, el.value.length)
+    }, 0)
   }, [props.filterTick])
 
   /** Ctrl+L, or a double-click on the breadcrumbs, edits the path where it is displayed. */
@@ -437,11 +451,11 @@ export function Pane(props: Props) {
     type: { label: t('نوع'), width: 88, sort: 'ext' },
     size: { label: t('اندازه'), width: 94, sort: 'size', end: true },
     date: { label: t('تاریخ'), width: 120, sort: 'mtime' },
-    mode: { label: t('مجوز'), width: 92 },
-    owner: { label: t('مالک'), width: 72, end: true },
-    links: { label: t('لینک'), width: 52, end: true },
-    dims: { label: t('ابعاد'), width: 90, end: true },
-    rating: { label: t('امتیاز'), width: 74, end: true }
+    mode: { label: t('مجوز'), width: 92, sort: 'mode' },
+    owner: { label: t('مالک'), width: 72, sort: 'owner', end: true },
+    links: { label: t('لینک'), width: 52, sort: 'links', end: true },
+    dims: { label: t('ابعاد'), width: 90, sort: 'dims', end: true },
+    rating: { label: t('امتیاز'), width: 74, sort: 'rating', end: true }
   }
 
   const widthOf = (c: ColId) => props.colWidths[c] ?? COL_META[c].width
@@ -531,13 +545,20 @@ export function Pane(props: Props) {
     >
       {showTabs && (
       <div className="tabs">
-        <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? t('مبدأ') : t('مقصد')}</span>
         {pane.tabs.map((tabPath, i) => {
           const pinned = i < pane.pinCount
+          const locked = pane.tabLocks[tabPath] === true
+          const title = pane.tabNames[tabPath] || tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath
+          const tabColor = props.tabColors[tabPath]
           return (
             <div
               key={tabPath + i}
               className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
+              style={
+                tabColor && i === pane.ti
+                  ? { background: `color-mix(in srgb, ${tabColor} 18%, var(--panel-3))` }
+                  : undefined
+              }
               draggable
               onDragStart={(ev) => {
                 ev.dataTransfer.setData('application/x-mfm-tab', String(i))
@@ -555,7 +576,7 @@ export function Pane(props: Props) {
               }}
               onClick={() => props.onTabPick(i)}
               onAuxClick={(ev) => {
-                if (ev.button === 1 && props.middleClickClosesTab) {
+                if (ev.button === 1 && props.middleClickClosesTab && !locked) {
                   ev.preventDefault()
                   props.onTabClose(i)
                 }
@@ -568,8 +589,26 @@ export function Pane(props: Props) {
               title={tabPath}
             >
               {pinned && <PinIcon filled />}
-              <span dir="auto">{tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath}</span>
-              {!pinned && pane.tabs.length > 1 && (
+              {locked && <LockIcon size={11} />}
+              {props.showTabIcons && (
+                <EntryIcon
+                  size={14}
+                  iconSet={props.iconSet}
+                  entry={{
+                    name: tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath,
+                    path: tabPath,
+                    dir: true,
+                    size: 0,
+                    mtime: 0,
+                    ext: '',
+                    color: props.tabIcons[tabPath]?.color,
+                    icon: props.tabIcons[tabPath]?.icon
+                  }}
+                />
+              )}
+              {tabColor && <span className="tab-dot" style={{ background: tabColor }} />}
+              <span dir="auto">{title}</span>
+              {!pinned && !locked && pane.tabs.length > 1 && (
                 <button
                   className="x"
                   title={t(t('بستن تب'))}
@@ -891,6 +930,9 @@ export function Pane(props: Props) {
                   {labelColor(e.name) && (
                     <span className="lbl" style={{ background: labelColor(e.name) }} title={t(t('برچسب'))} />
                   )}
+                  {!e.dir && e.color && (
+                    <span className="file-color" style={{ background: e.color }} title={t('رنگ')} />
+                  )}
                   {pinSet.has(e.name) && (
                     <span className="pinmark" title={t(t('سنجاق‌شده'))}>
                       <PinIcon filled />
@@ -970,11 +1012,16 @@ export function Pane(props: Props) {
                       </span>
                     )}
                   </span>
-                  <span
-                    className="tile-name"
-                    dir="auto"
-                    style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
-                  >{e.name}</span>
+                  <span className="tile-name-row">
+                    {!e.dir && e.color && (
+                      <span className="file-color" style={{ background: e.color }} title={t('رنگ')} />
+                    )}
+                    <span
+                      className="tile-name"
+                      dir="auto"
+                      style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
+                    >{e.name}</span>
+                  </span>
                   {metaParts.length > 0 && (
                     <span className="tile-meta" dir="auto">
                       {metaParts.map((part, mi) => (

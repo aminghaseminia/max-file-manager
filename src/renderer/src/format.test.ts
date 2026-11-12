@@ -13,6 +13,7 @@ import {
   joinPath,
   kindOf,
   mediaUrl,
+  menuTargets,
   modeString,
   navIndex,
   opensInEditor,
@@ -25,7 +26,19 @@ import {
   typeLabel
 } from './format.ts'
 
-type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number; ext: string }
+type Entry = {
+  name: string
+  path: string
+  dir: boolean
+  size: number
+  mtime: number
+  ext: string
+  mode?: number
+  uid?: number
+  nlink?: number
+  w?: number
+  h?: number
+}
 
 const e = (name: string, dir: boolean, size = 0, mtime = 0, ext = ''): Entry => ({
   name,
@@ -288,8 +301,63 @@ test('permMode: files keep their execute bit, folders follow read with x', () =>
   assert.equal(permMode(0o755, 2, 'none', true), 0o750)
 })
 
+test('menuTargets: the clicked row wins unless it is part of the selection', () => {
+  assert.deepEqual(menuTargets(['/a', '/b'], '/a'), ['/a', '/b'])
+  assert.deepEqual(menuTargets(['/a', '/b'], '/c'), ['/c'])
+  assert.deepEqual(menuTargets(['/a'], null), ['/a'])
+})
+
 test('fileUri: external drags get a real file URL, spaces and non-Latin names encoded', () => {
   assert.equal(fileUri('/home/max/My File.mp3'), 'file:///home/max/My%20File.mp3')
   assert.equal(fileUri('/home/max/آهنگ.mp3'), 'file:///home/max/%D8%A2%D9%87%D9%86%DA%AF.mp3')
   assert.equal(fileUri('C:\\Users\\max\\a b.txt'), 'file:///C:/Users/max/a%20b.txt')
+})
+
+test('sortEntries: optional columns (mode, owner, links, dims, rating) sort too', () => {
+  const mk = (name: string, extra: Partial<Entry>): Entry => ({
+    name,
+    path: '/' + name,
+    dir: false,
+    size: 0,
+    mtime: 0,
+    ext: '',
+    ...extra
+  })
+  const list = [
+    mk('a', { mode: 0o644, uid: 1000, nlink: 1, w: 10, h: 10 }),
+    mk('b', { mode: 0o755, uid: 0, nlink: 3, w: 100, h: 50 }),
+    mk('c', { mode: 0o600, uid: 1001, nlink: 2, w: 20, h: 20 })
+  ]
+  assert.deepEqual(sortEntries(list, 'mode', true, false).map((e) => e.name), ['c', 'a', 'b'])
+  assert.deepEqual(sortEntries(list, 'owner', true, false).map((e) => e.name), ['b', 'a', 'c'])
+  assert.deepEqual(sortEntries(list, 'links', false, false).map((e) => e.name), ['b', 'c', 'a'])
+  assert.deepEqual(sortEntries(list, 'dims', true, false).map((e) => e.name), ['a', 'c', 'b'])
+  const ratings = { a: 1, b: 5, c: 3 }
+  assert.deepEqual(sortEntries(list, 'rating', false, false, ratings).map((e) => e.name), ['b', 'c', 'a'])
+})
+
+test('orderEntries: size keeps folders first, date interleaves them', () => {
+  const list = [
+    e('zdir', true, 7),
+    e('a.txt', false, 30),
+    e('b.txt', false, 5),
+    e('c.txt', false, 10)
+  ]
+  assert.deepEqual(
+    orderEntries(list, 'size', true).map((x) => x.name),
+    ['zdir', 'b.txt', 'c.txt', 'a.txt']
+  )
+  assert.deepEqual(
+    orderEntries(list, 'name', true).map((x) => x.name),
+    ['zdir', 'a.txt', 'b.txt', 'c.txt']
+  )
+  const dated = [
+    { ...e('zdir', true, 7), mtime: 3 },
+    { ...e('a.txt', false, 30), mtime: 1 },
+    { ...e('b.txt', false, 5), mtime: 2 }
+  ]
+  assert.deepEqual(
+    orderEntries(dated, 'mtime', true).map((x) => x.name),
+    ['a.txt', 'b.txt', 'zdir']
+  )
 })

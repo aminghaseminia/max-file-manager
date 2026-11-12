@@ -19,10 +19,23 @@ export type MenuItem =
       sep?: false
     }
 
+export type MenuAction = {
+  id: string
+  label: string
+  icon: ReactNode
+  disabled?: boolean
+  danger?: boolean
+}
+
 type Props = {
   x: number
   y: number
   items: MenuItem[]
+  /** icon-only quick actions pinned under the list (cut/copy/paste/delete) */
+  actions?: MenuAction[]
+  /** folder-colour dots under the quick actions; click applies the colour ('' clears it) */
+  swatches?: { value: string; label: string; active?: boolean }[]
+  onSwatch?(value: string): void
   onPick(id: string): void
   onClose(): void
 }
@@ -46,7 +59,7 @@ function clampPanel(el: HTMLElement, x: number, y: number): void {
   el.style.left = `${Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8))}px`
 }
 
-export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
+export function ContextMenu({ x, y, items, actions, swatches, onSwatch, onPick, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const nestedRef = useRef<HTMLDivElement>(null)
   const [sub, setSub] = useState<{
@@ -88,7 +101,7 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
 
   useLayoutEffect(() => {
     if (ref.current) clampPanel(ref.current, x, y)
-  }, [x, y, items.length])
+  }, [x, y, items.length, actions?.length, swatches?.length])
 
   useLayoutEffect(() => {
     const el = nestedRef.current
@@ -155,6 +168,49 @@ export function ContextMenu({ x, y, items, onPick, onClose }: Props) {
       onMouseLeave={scheduleClose}
     >
       {rows(items)}
+      {actions && actions.length > 0 && (
+        <>
+          <div className="ctx-sep" />
+          <div className="ctx-quick">
+            {actions.map((a) => (
+              <button
+                key={a.id}
+                className={'ctx-quick-btn' + (a.danger ? ' danger' : '')}
+                title={a.label}
+                aria-label={a.label}
+                disabled={a.disabled}
+                onClick={() => {
+                  onPick(a.id)
+                  onClose()
+                }}
+              >
+                {a.icon}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {swatches && swatches.length > 0 && (
+        <div className="ctx-colors">
+          {swatches.map((s) => (
+            <button
+              key={s.value || 'none'}
+              className={
+                'ctx-color' + (s.value ? '' : ' none') + (s.active ? ' on' : '')
+              }
+              style={s.value ? { background: s.value } : undefined}
+              title={s.label}
+              aria-label={s.label}
+              onClick={() => {
+                onSwatch?.(s.value)
+                onClose()
+              }}
+            >
+              {s.value ? '' : '×'}
+            </button>
+          ))}
+        </div>
+      )}
       {sub && (
         <div
           className="ctx ctx-nested"

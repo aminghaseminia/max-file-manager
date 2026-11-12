@@ -4,7 +4,7 @@ import { api, type DirRef } from './api'
 import { baseName } from './format'
 import { clearDragPaths, keepDragPaths, lastDragPaths } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, XIcon } from './Icons'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
 
@@ -55,6 +55,9 @@ type Props = {
   onPickLabel(id: string): void
   roots: DirRef[]
   marks: string[]
+  /** each bookmark's own folder colour/icon, resolved once by the app */
+  markIcons: Record<string, { color?: string; icon?: string }>
+  iconSet?: Record<string, string>
   activePath: string
   onNav(dir: string): void
   onUnmark(dir: string): void
@@ -72,6 +75,8 @@ export function Sidebar({
   onPickLabel,
   roots,
   marks,
+  markIcons,
+  iconSet,
   activePath,
   onNav,
   onUnmark,
@@ -228,7 +233,20 @@ export function Sidebar({
         <div key={m} className={'tree-row mark' + (activePath === m ? ' on' : '')}>
           <span className="twisty" />
           <button className="tree-name" dir="auto" title={m} onClick={() => onNav(m)}>
-            <StarIcon filled size={13} />
+            <EntryIcon
+              size={14}
+              iconSet={iconSet}
+              entry={{
+                name: baseName(m),
+                path: m,
+                dir: true,
+                size: 0,
+                mtime: 0,
+                ext: '',
+                color: markIcons[m]?.color,
+                icon: markIcons[m]?.icon
+              }}
+            />
             <span>{baseName(m)}</span>
           </button>
           <button className="x" title={t(t('حذف نشان'))} onClick={() => onUnmark(m)}>

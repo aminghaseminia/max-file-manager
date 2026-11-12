@@ -15,6 +15,8 @@ import folderBlue from './assets/pure/folder-blue.svg?raw'
 import folderPurple from './assets/pure/folder-purple.svg?raw'
 import folderPink from './assets/pure/folder-pink.svg?raw'
 import folderGrey from './assets/pure/folder-grey.svg?raw'
+import folderTeal from './assets/pure/folder-teal.svg?raw'
+import folderBlack from './assets/pure/folder-black.svg?raw'
 import image from './assets/pure/image-x-generic.svg?raw'
 import video from './assets/pure/video-x-generic.svg?raw'
 import audio from './assets/pure/audio-x-generic.svg?raw'
@@ -57,7 +59,9 @@ export const PURE_FOLDER_COLORS: Record<string, string> = {
   'dir:#4f8ff0': inline(folderBlue),
   'dir:#9a6ee0': inline(folderPurple),
   'dir:#dd6b9c': inline(folderPink),
-  'dir:#8a93a3': inline(folderGrey)
+  'dir:#8a93a3': inline(folderGrey),
+  'dir:#2aa9a0': inline(folderTeal),
+  'dir:#2f353d': inline(folderBlack)
 }
 
 /** Everything the default icon source needs: kinds plus coloured folders. */

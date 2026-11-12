@@ -54,6 +54,261 @@
   --c-file: #6f7987;
 }
 
+/* ---------- colour themes (Settings → Appearance) ---------- */
+/* Each theme recolours surfaces and the accent; light/dark still decides the lightness. */
+
+:root[data-theme='dark'][data-color-theme='wine'] {
+  --bg: oklch(0.155 0.0132 15);
+  --panel: oklch(0.19 0.0220 15);
+  --panel-2: oklch(0.22 0.0220 15);
+  --panel-3: oklch(0.255 0.0220 15);
+  --line: oklch(0.30 0.0220 15);
+  --line-soft: oklch(0.25 0.0220 15);
+  --text: oklch(0.92 0.008 15);
+  --dim: oklch(0.70 0.02 15);
+  --accent: oklch(0.68 0.1500 8);
+  --accent-soft: oklch(0.30 0.0495 8);
+  --sel: oklch(0.34 0.0450 8);
+}
+
+:root[data-theme='light'][data-color-theme='wine'] {
+  --bg: oklch(0.965 0.0066 15);
+  --panel: oklch(0.998 0.002 15);
+  --panel-2: oklch(0.978 0.0077 15);
+  --panel-3: oklch(0.945 0.0121 15);
+  --line: oklch(0.90 0.0132 15);
+  --line-soft: oklch(0.93 0.0088 15);
+  --text: oklch(0.20 0.0154 15);
+  --dim: oklch(0.50 0.02 15);
+  --accent: oklch(0.55 0.1500 8);
+  --accent-soft: oklch(0.93 0.0375 8);
+  --sel: oklch(0.93 0.0375 8);
+}
+
+:root[data-theme='dark'][data-color-theme='midnight'] {
+  --bg: oklch(0.155 0.0168 265);
+  --panel: oklch(0.19 0.0280 265);
+  --panel-2: oklch(0.22 0.0280 265);
+  --panel-3: oklch(0.255 0.0280 265);
+  --line: oklch(0.30 0.0280 265);
+  --line-soft: oklch(0.25 0.0280 265);
+  --text: oklch(0.92 0.008 265);
+  --dim: oklch(0.70 0.02 265);
+  --accent: oklch(0.68 0.1600 262);
+  --accent-soft: oklch(0.30 0.0528 262);
+  --sel: oklch(0.34 0.0480 262);
+}
+
+:root[data-theme='light'][data-color-theme='midnight'] {
+  --bg: oklch(0.965 0.0084 265);
+  --panel: oklch(0.998 0.002 265);
+  --panel-2: oklch(0.978 0.0098 265);
+  --panel-3: oklch(0.945 0.0154 265);
+  --line: oklch(0.90 0.0168 265);
+  --line-soft: oklch(0.93 0.0112 265);
+  --text: oklch(0.20 0.0196 265);
+  --dim: oklch(0.50 0.02 265);
+  --accent: oklch(0.55 0.1600 262);
+  --accent-soft: oklch(0.93 0.0400 262);
+  --sel: oklch(0.93 0.0400 262);
+}
+
+:root[data-theme='dark'][data-color-theme='charcoal'] {
+  --bg: oklch(0.155 0.0048 260);
+  --panel: oklch(0.19 0.0080 260);
+  --panel-2: oklch(0.22 0.0080 260);
+  --panel-3: oklch(0.255 0.0080 260);
+  --line: oklch(0.30 0.0080 260);
+  --line-soft: oklch(0.25 0.0080 260);
+  --text: oklch(0.92 0.008 260);
+  --dim: oklch(0.70 0.02 260);
+  --accent: oklch(0.68 0.1000 240);
+  --accent-soft: oklch(0.30 0.0330 240);
+  --sel: oklch(0.34 0.0300 240);
+}
+
+:root[data-theme='light'][data-color-theme='charcoal'] {
+  --bg: oklch(0.965 0.0024 260);
+  --panel: oklch(0.998 0.002 260);
+  --panel-2: oklch(0.978 0.0028 260);
+  --panel-3: oklch(0.945 0.0044 260);
+  --line: oklch(0.90 0.0048 260);
+  --line-soft: oklch(0.93 0.0032 260);
+  --text: oklch(0.20 0.0056 260);
+  --dim: oklch(0.50 0.02 260);
+  --accent: oklch(0.55 0.1000 240);
+  --accent-soft: oklch(0.93 0.0250 240);
+  --sel: oklch(0.93 0.0250 240);
+}
+
+:root[data-theme='dark'][data-color-theme='forest'] {
+  --bg: oklch(0.155 0.0120 150);
+  --panel: oklch(0.19 0.0200 150);
+  --panel-2: oklch(0.22 0.0200 150);
+  --panel-3: oklch(0.255 0.0200 150);
+  --line: oklch(0.30 0.0200 150);
+  --line-soft: oklch(0.25 0.0200 150);
+  --text: oklch(0.92 0.008 150);
+  --dim: oklch(0.70 0.02 150);
+  --accent: oklch(0.68 0.1400 155);
+  --accent-soft: oklch(0.30 0.0462 155);
+  --sel: oklch(0.34 0.0420 155);
+}
+
+:root[data-theme='light'][data-color-theme='forest'] {
+  --bg: oklch(0.965 0.0060 150);
+  --panel: oklch(0.998 0.002 150);
+  --panel-2: oklch(0.978 0.0070 150);
+  --panel-3: oklch(0.945 0.0110 150);
+  --line: oklch(0.90 0.0120 150);
+  --line-soft: oklch(0.93 0.0080 150);
+  --text: oklch(0.20 0.0140 150);
+  --dim: oklch(0.50 0.02 150);
+  --accent: oklch(0.55 0.1400 155);
+  --accent-soft: oklch(0.93 0.0350 155);
+  --sel: oklch(0.93 0.0350 155);
+}
+
+:root[data-theme='dark'][data-color-theme='lilac'] {
+  --bg: oklch(0.155 0.0108 300);
+  --panel: oklch(0.19 0.0180 300);
+  --panel-2: oklch(0.22 0.0180 300);
+  --panel-3: oklch(0.255 0.0180 300);
+  --line: oklch(0.30 0.0180 300);
+  --line-soft: oklch(0.25 0.0180 300);
+  --text: oklch(0.92 0.008 300);
+  --dim: oklch(0.70 0.02 300);
+  --accent: oklch(0.68 0.1600 292);
+  --accent-soft: oklch(0.30 0.0528 292);
+  --sel: oklch(0.34 0.0480 292);
+}
+
+:root[data-theme='light'][data-color-theme='lilac'] {
+  --bg: oklch(0.965 0.0054 300);
+  --panel: oklch(0.998 0.002 300);
+  --panel-2: oklch(0.978 0.0063 300);
+  --panel-3: oklch(0.945 0.0099 300);
+  --line: oklch(0.90 0.0108 300);
+  --line-soft: oklch(0.93 0.0072 300);
+  --text: oklch(0.20 0.0126 300);
+  --dim: oklch(0.50 0.02 300);
+  --accent: oklch(0.55 0.1600 292);
+  --accent-soft: oklch(0.93 0.0400 292);
+  --sel: oklch(0.93 0.0400 292);
+}
+
+:root[data-theme='dark'][data-color-theme='mint'] {
+  --bg: oklch(0.155 0.0096 175);
+  --panel: oklch(0.19 0.0160 175);
+  --panel-2: oklch(0.22 0.0160 175);
+  --panel-3: oklch(0.255 0.0160 175);
+  --line: oklch(0.30 0.0160 175);
+  --line-soft: oklch(0.25 0.0160 175);
+  --text: oklch(0.92 0.008 175);
+  --dim: oklch(0.70 0.02 175);
+  --accent: oklch(0.68 0.1300 168);
+  --accent-soft: oklch(0.30 0.0429 168);
+  --sel: oklch(0.34 0.0390 168);
+}
+
+:root[data-theme='light'][data-color-theme='mint'] {
+  --bg: oklch(0.965 0.0048 175);
+  --panel: oklch(0.998 0.002 175);
+  --panel-2: oklch(0.978 0.0056 175);
+  --panel-3: oklch(0.945 0.0088 175);
+  --line: oklch(0.90 0.0096 175);
+  --line-soft: oklch(0.93 0.0064 175);
+  --text: oklch(0.20 0.0112 175);
+  --dim: oklch(0.50 0.02 175);
+  --accent: oklch(0.55 0.1300 168);
+  --accent-soft: oklch(0.93 0.0325 168);
+  --sel: oklch(0.93 0.0325 168);
+}
+
+:root[data-theme='dark'][data-color-theme='sand'] {
+  --bg: oklch(0.155 0.0132 70);
+  --panel: oklch(0.19 0.0220 70);
+  --panel-2: oklch(0.22 0.0220 70);
+  --panel-3: oklch(0.255 0.0220 70);
+  --line: oklch(0.30 0.0220 70);
+  --line-soft: oklch(0.25 0.0220 70);
+  --text: oklch(0.92 0.008 70);
+  --dim: oklch(0.70 0.02 70);
+  --accent: oklch(0.68 0.1300 35);
+  --accent-soft: oklch(0.30 0.0429 35);
+  --sel: oklch(0.34 0.0390 35);
+}
+
+:root[data-theme='light'][data-color-theme='sand'] {
+  --bg: oklch(0.965 0.0066 70);
+  --panel: oklch(0.998 0.002 70);
+  --panel-2: oklch(0.978 0.0077 70);
+  --panel-3: oklch(0.945 0.0121 70);
+  --line: oklch(0.90 0.0132 70);
+  --line-soft: oklch(0.93 0.0088 70);
+  --text: oklch(0.20 0.0154 70);
+  --dim: oklch(0.50 0.02 70);
+  --accent: oklch(0.55 0.1300 35);
+  --accent-soft: oklch(0.93 0.0325 35);
+  --sel: oklch(0.93 0.0325 35);
+}
+
+:root[data-theme='dark'][data-color-theme='sky'] {
+  --bg: oklch(0.155 0.0120 225);
+  --panel: oklch(0.19 0.0200 225);
+  --panel-2: oklch(0.22 0.0200 225);
+  --panel-3: oklch(0.255 0.0200 225);
+  --line: oklch(0.30 0.0200 225);
+  --line-soft: oklch(0.25 0.0200 225);
+  --text: oklch(0.92 0.008 225);
+  --dim: oklch(0.70 0.02 225);
+  --accent: oklch(0.68 0.1600 235);
+  --accent-soft: oklch(0.30 0.0528 235);
+  --sel: oklch(0.34 0.0480 235);
+}
+
+:root[data-theme='light'][data-color-theme='sky'] {
+  --bg: oklch(0.965 0.0060 225);
+  --panel: oklch(0.998 0.002 225);
+  --panel-2: oklch(0.978 0.0070 225);
+  --panel-3: oklch(0.945 0.0110 225);
+  --line: oklch(0.90 0.0120 225);
+  --line-soft: oklch(0.93 0.0080 225);
+  --text: oklch(0.20 0.0140 225);
+  --dim: oklch(0.50 0.02 225);
+  --accent: oklch(0.55 0.1600 235);
+  --accent-soft: oklch(0.93 0.0400 235);
+  --sel: oklch(0.93 0.0400 235);
+}
+
+:root[data-theme='dark'][data-color-theme='rose'] {
+  --bg: oklch(0.155 0.0108 350);
+  --panel: oklch(0.19 0.0180 350);
+  --panel-2: oklch(0.22 0.0180 350);
+  --panel-3: oklch(0.255 0.0180 350);
+  --line: oklch(0.30 0.0180 350);
+  --line-soft: oklch(0.25 0.0180 350);
+  --text: oklch(0.92 0.008 350);
+  --dim: oklch(0.70 0.02 350);
+  --accent: oklch(0.68 0.1500 340);
+  --accent-soft: oklch(0.30 0.0495 340);
+  --sel: oklch(0.34 0.0450 340);
+}
+
+:root[data-theme='light'][data-color-theme='rose'] {
+  --bg: oklch(0.965 0.0054 350);
+  --panel: oklch(0.998 0.002 350);
+  --panel-2: oklch(0.978 0.0063 350);
+  --panel-3: oklch(0.945 0.0099 350);
+  --line: oklch(0.90 0.0108 350);
+  --line-soft: oklch(0.93 0.0072 350);
+  --text: oklch(0.20 0.0126 350);
+  --dim: oklch(0.50 0.02 350);
+  --accent: oklch(0.55 0.1500 340);
+  --accent-soft: oklch(0.93 0.0375 340);
+  --sel: oklch(0.93 0.0375 340);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -320,29 +575,16 @@ input {
 .tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 6px 0;
+  gap: 3px;
+  padding: 6px 8px 0;
   overflow: hidden;
-}
-.badge {
-  flex: none;
-  margin-inline-end: 4px;
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--dim);
-  background: var(--panel-3);
-}
-.badge.on {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 .tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  max-width: 170px;
-  padding: 4px 9px;
+  gap: 5px;
+  max-width: 190px;
+  padding: 5px 11px;
   border-radius: 6px;
   color: var(--dim);
   white-space: nowrap;
@@ -357,6 +599,25 @@ input {
 .tab > span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.menu-dot {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.menu-dot.none {
+  border: 1px dashed var(--line);
+  box-shadow: none;
 }
 .tab .x {
   color: var(--dim);
@@ -488,6 +749,12 @@ input {
   background: none;
   color: var(--text);
   font-size: 12px;
+}
+/* a dialog's field styling must not draw a second box inside the filter chip */
+.dialog .filter input {
+  border: 0;
+  background: none;
+  padding: 0;
 }
 .filter input::placeholder {
   color: var(--dim);
@@ -707,6 +974,44 @@ input {
   color: var(--dim);
   font-size: 11.5px;
 }
+.selinfo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.selinfo .selname {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.selinfo .sel-date,
+.selinfo .sel-mode {
+  direction: ltr;
+}
+.selinfo .sel-mode {
+  font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+}
+.sel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sel-label i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.sel-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #e0b13f;
+}
 .keys {
   opacity: 0.92;
   overflow: hidden;
@@ -878,6 +1183,11 @@ input {
 }
 .props-id {
   min-width: 0;
+}
+.props-icon-btn {
+  margin-top: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
 }
 .props-name {
   overflow: hidden;
@@ -1316,6 +1626,43 @@ input {
   background: var(--accent-soft);
   color: var(--accent);
 }
+.seg button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* colour-theme picker: a wrapped grid keeps ten swatches readable on a narrow row */
+.theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 336px;
+}
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: 11.5px;
+}
+.theme-chip:hover {
+  color: var(--text);
+}
+.theme-chip.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.theme-dot {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
 .field {
   display: flex;
   flex-direction: column;
@@ -1422,8 +1769,20 @@ input {
 }
 .winbtns {
   display: flex;
+  align-items: center;
   gap: 2px;
-  margin-inline-start: 6px;
+  /* the strip keeps a physical order even in an RTL document */
+  direction: ltr;
+}
+/* left side = mac order (close at the outer edge); right side stays min/max/close */
+.winbtns.side-left .winbtn.close {
+  order: 1;
+}
+.winbtns.side-left .winbtn.min {
+  order: 2;
+}
+.winbtns.side-left .winbtn.max {
+  order: 3;
 }
 .winbtn {
   width: 30px;
@@ -1433,11 +1792,92 @@ input {
   border-radius: 6px;
   color: var(--dim);
 }
-.winbtn:hover {
+
+/* default: the quiet line-icon buttons the app shipped with */
+.winbtns-default .winbtn:hover {
   background: var(--panel-3);
   color: var(--text);
 }
-.winbtn.close:hover {
+.winbtns-default .winbtn.close:hover {
+  background: #c0392b;
+  color: #fff;
+}
+
+/* McMojave: macOS traffic lights; symbols appear when the pointer enters the strip */
+.winbtns-mcmojave {
+  gap: 12px;
+  padding-inline: 5px;
+}
+.winbtns-mcmojave .winbtn {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border-radius: 50%;
+  color: #4d0000;
+}
+.winbtns-mcmojave .winbtn.min {
+  background: #febc2e;
+  color: #5a3c00;
+}
+.winbtns-mcmojave .winbtn.max {
+  background: #28c840;
+  color: #0b3b0b;
+}
+.winbtns-mcmojave .winbtn.close {
+  background: #ff5f57;
+  color: #4d0000;
+}
+.winbtns-mcmojave .winbtn svg {
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.winbtns-mcmojave:hover .winbtn svg {
+  opacity: 0.85;
+}
+.winbtns-mcmojave .winbtn:hover {
+  filter: brightness(1.08);
+}
+
+/* Windows: full-height caption cells, strong red close */
+.winbtns-windows {
+  gap: 0;
+  align-self: stretch;
+  height: 36px;
+}
+.winbtns-windows .winbtn {
+  width: 44px;
+  height: 36px;
+  border-radius: 0;
+}
+.winbtns-windows .winbtn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.winbtns-windows .winbtn.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* minimal: small round dots, icons fade in on hover */
+.winbtns-minimal {
+  gap: 6px;
+}
+.winbtns-minimal .winbtn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--panel-3);
+  color: var(--text);
+}
+.winbtns-minimal .winbtn svg {
+  opacity: 0.55;
+}
+.winbtns-minimal .winbtn:hover svg {
+  opacity: 1;
+}
+.winbtns-minimal .winbtn.close:hover {
   background: #c0392b;
   color: #fff;
 }
@@ -1597,12 +2037,18 @@ html[data-rounded='0'] .app {
 }
 /* the dialog keeps one height on both tabs; only the icon grid scrolls */
 .folder-dialog {
-  width: 560px;
+  width: 640px;
+  max-height: 88vh;
 }
 .folder-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  height: min(70vh, 520px);
+  min-height: 340px;
+}
+/* the colour tab is only a preview + dots; no need for the icon grid's height */
+.folder-body.center {
   height: 340px;
 }
 .folder-body.center {
@@ -1633,6 +2079,21 @@ html[data-rounded='0'] .app {
 .folder-dialog .filter {
   height: 30px;
 }
+.icon-toolbar {
+  display: grid;
+  grid-template-columns: 1.15fr 0.9fr 1.2fr;
+  gap: 8px;
+  align-items: end;
+}
+.icon-toolbar .field,
+.icon-toolbar .filter {
+  min-width: 0;
+}
+.icon-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
 .folder-dialog .field select {
   padding: 0 8px;
 }
@@ -1645,6 +2106,12 @@ html[data-rounded='0'] .app {
   flex: 1;
   max-height: none;
   min-height: 0;
+}
+.icon-count {
+  margin-inline-start: auto;
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
 }
 .swatch {
   width: 26px;
@@ -1693,6 +2160,35 @@ html[data-rounded='0'] .app {
   width: 22px;
   height: 22px;
   object-fit: contain;
+}
+/* the picker can show the same pack at three sizes; CSS keeps the grid honest */
+.iconbar.size-s {
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+}
+.iconbar.size-s .icell {
+  height: 36px;
+}
+.iconbar.size-m {
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+}
+.iconbar.size-m .icell {
+  height: 50px;
+}
+.iconbar.size-m .icell img,
+.iconbar.size-m .icell svg {
+  width: 34px;
+  height: 34px;
+}
+.iconbar.size-l {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+}
+.iconbar.size-l .icell {
+  height: 66px;
+}
+.iconbar.size-l .icell img,
+.iconbar.size-l .icell svg {
+  width: 52px;
+  height: 52px;
 }
 .row-gap {
   display: flex;
@@ -1791,6 +2287,73 @@ html[data-rounded='0'] .app {
   height: 1px;
   margin: 4px 6px;
   background: var(--line);
+}
+/* quick icon row at the bottom (cut/copy/paste/delete), Windows-style */
+.ctx-quick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 2px 4px 3px;
+}
+.ctx-quick-btn {
+  width: 34px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text);
+  opacity: 0.85;
+}
+.ctx-quick-btn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+  opacity: 1;
+}
+.ctx-quick-btn.danger:hover {
+  background: #c0392b;
+  color: #fff;
+}
+.ctx-quick-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ctx-quick-btn:disabled:hover {
+  background: none;
+  color: var(--text);
+  opacity: 0.35;
+}
+/* folder-colour dots under the quick actions */
+.ctx-colors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  padding: 2px 8px 7px;
+}
+.ctx-color {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  transition: transform 0.1s ease;
+}
+.ctx-color:hover {
+  transform: scale(1.15);
+}
+.ctx-color.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ctx-color.none {
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  border: 1px dashed var(--line);
+  color: var(--dim);
+  font-size: 11px;
+  box-shadow: none;
 }
 
 /* ---------- preview panel ---------- */
@@ -2029,13 +2592,19 @@ html[data-rounded='0'] .app {
   padding: 10px 8px;
   background: var(--panel-2);
   border-inline-end: 1px solid var(--line);
+  /* a short screen must scroll the page list instead of clipping the lower entries */
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 .prefs-title {
+  flex: none;
   font-weight: 600;
   font-size: 12.5px;
   padding: 4px 9px 9px;
 }
 .prefs-tab {
+  flex: none;
   text-align: start;
   padding: 6px 9px;
   border-radius: 6px;
@@ -2211,17 +2780,27 @@ html[data-rounded='0'] .app {
   color: var(--accent);
   opacity: 0.95;
 }
-.logo-mark svg {
-  width: 17px;
-  height: 17px;
+.logo-mark svg,
+.logo-mark img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 .winbtns {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-inline-start: 6px;
-  padding-inline-start: 6px;
-  border-inline-start: 1px solid var(--line);
+}
+/* the divider sits on the inner edge — mirrored, never at the outer window end */
+.winbtns.side-right {
+  border-left: 1px solid var(--line);
+  padding-left: 6px;
+  margin-left: 6px;
+}
+.winbtns.side-left {
+  border-right: 1px solid var(--line);
+  padding-right: 6px;
+  margin-right: 6px;
 }
 
 /* ---------- configurable command toolbar ---------- */
@@ -2740,6 +3319,25 @@ html[data-rounded='0'] .app {
 }
 
 /* ---------- coloured labels ---------- */
+.file-color {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.tile-name-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+}
+.tile-name-row .tile-name {
+  width: auto;
+  min-width: 0;
+}
 .lbl {
   width: 8px;
   height: 8px;

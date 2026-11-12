@@ -1,7 +1,7 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { api, type Chrome, type DirRef, type Entry, type FolderMeta, type Job } from './api'
-import { ContextMenu, type MenuItem } from './ContextMenu'
+import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
 import { DiffDialog } from './DiffDialog'
@@ -29,10 +29,13 @@ import {
   type Prefs
 } from './prefs'
 import { PURE_ICON_SET } from './pure-icons'
+import { PURE_URL_BY_NAME } from './pure-set'
+import { FOLDER_COLORS } from './folder-colors'
 import { PaneTree } from './PaneTree'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
+import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
 import { COMMANDS, type CommandId } from './commands'
@@ -42,13 +45,17 @@ import {
   defaultSearchRoots,
   dirOf,
   fa,
+  fmtDate,
   fmtSize,
+  modeString,
   isArchiveName,
   isImage,
   joinPath,
+  menuTargets,
   navIndex,
   opensInEditor,
   orderEntries,
+  typeLabel,
   type NavMove,
   type SortKey
 } from './format'
@@ -66,6 +73,8 @@ import {
   DriveIcon,
   DupeIcon,
   CopyIcon,
+  CutIcon,
+  PasteIcon,
   EyeIcon,
   EyeOffIcon,
   FolderIcon,
@@ -73,6 +82,9 @@ import {
   GaugeIcon,
   GridIcon,
   LayersIcon,
+  LinkIcon,
+  LockIcon,
+  UnlockIcon,
   ListIcon,
   MenuIcon,
   MoonIcon,
@@ -87,6 +99,7 @@ import {
   SplitIcon,
   SunIcon,
   TrashIcon,
+  TrashXIcon,
   XIcon,
   UndoIcon,
   ConfirmIcon
@@ -95,6 +108,8 @@ import {
 const newPane = (dir: string): PaneState => ({
   tabs: [dir],
   ti: 0,
+  tabNames: {},
+  tabLocks: {},
   pinCount: 0,
   hist: [dir],
   hi: 0,
@@ -122,7 +137,7 @@ const OP_LABEL: Record<string, string> = {
   delete: 'حذف'
 }
 
-const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext']
+const SORT_KEYS: SortKey[] = ['name', 'size', 'mtime', 'ext', 'mode', 'owner', 'links', 'dims', 'rating']
 
 /**
  * The OS preference, live. `theme: 'system'` follows it without a restart; an
@@ -149,11 +164,20 @@ export default function App() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'name', asc: true })
   const [marks, setMarks] = useState<string[]>([])
+  /** bookmark path → folder colour/icon, so the sidebar shows the folder's own glyph */
+  const [markIcons, setMarkIcons] = useState<Record<string, { color?: string; icon?: string }>>({})
+  /** folder path → own colour/icon for the tab strip */
+  const [tabIcons, setTabIcons] = useState<Record<string, { color?: string; icon?: string }>>({})
+  const [tabIconTick, setTabIconTick] = useState(0)
   const [sizes, setSizes] = useState<Record<string, string>>({})
   const [jobs, setJobs] = useState<Job[]>([])
   const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
+  const [tabPrompt, setTabPrompt] = useState<{ pane: number; path: string; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
+  const [symlinkFor, setSymlinkFor] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  /** in-app file clipboard for the quick cut/copy/paste row */
+  const [clip, setClip] = useState<{ paths: string[]; cut: boolean } | null>(null)
   const [home, setHome] = useState('')
   const [free, setFree] = useState<number | null>(null)
   const [confirmAsk, setConfirmAsk] = useState<{ kind: 'trash' | 'delete'; paths: string[] } | null>(null)
@@ -209,6 +233,8 @@ export default function App() {
     null
   )
   const [booted, setBooted] = useState(false)
+  /** a path from the shell or a second launch, kept until the restored session is ready */
+  const [openTarget, setOpenTarget] = useState<string | null>(null)
   /** kind → icon file of the desktop icon theme (Pure first); empty means line glyphs */
   const [iconSet, setIconSet] = useState<Record<string, string>>({})
   const filterEls = useRef<(HTMLInputElement | null)[]>([])
@@ -257,7 +283,12 @@ export default function App() {
     updatePrefs({ showHidden: typeof f === 'function' ? f(prefs.showHidden) : f })
   const setSortFor = (i: number, next: { key: SortKey; asc: boolean }) => {
     setSort(next)
-    setPanes((p) => (p && p[i]?.fmt ? patch(p, i, { fmt: { ...p[i].fmt!, ...next } }) : p))
+    const pane = panes?.[i]
+    if (!pane) return
+    const fmt: FolderView = { ...(pane.fmt ?? {}), sortKey: next.key, sortAsc: next.asc }
+    setPanes((p) => p && patch(p, i, { fmt }))
+    // remember this folder's sort in its own .mfm.json, not just for this session
+    if (!pane.virtual) void api.setFormat(tabOf(pane), fmt).catch(() => undefined)
   }
   const chrome = { customTitlebar: prefs.titlebar === 'app', rounded: prefs.rounded }
   const ui = {
@@ -274,6 +305,41 @@ export default function App() {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
+  useEffect(() => {
+    document.documentElement.dataset.colorTheme = prefs.colorTheme
+  }, [prefs.colorTheme])
+
+  useEffect(() => {
+    if (!marks.length) {
+      setMarkIcons({})
+      return
+    }
+    let live = true
+    void Promise.all(marks.map(async (m) => [m, await api.folderLook(m)] as const))
+      .then((rows) => {
+        if (live) setMarkIcons(Object.fromEntries(rows))
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [marks])
+
+  const tabPathsKey = (panes ?? []).map((p) => p.tabs.join('\u0000')).join('\u0001')
+  useEffect(() => {
+    if (!panes) return
+    const paths = [...new Set(panes.flatMap((p) => p.tabs))]
+    let live = true
+    void Promise.all(paths.map(async (p) => [p, await api.folderLook(p)] as const))
+      .then((rows) => {
+        if (live) setTabIcons(Object.fromEntries(rows))
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [tabPathsKey, tabIconTick])
+
   // rounded corners are CSS on a transparent frameless window; nothing else can round it
   useEffect(() => {
     const on = chrome.customTitlebar && chrome.rounded
@@ -288,42 +354,72 @@ export default function App() {
       setHome(home)
       void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
-      setPrefs(mergePrefs(s.prefs ?? migrateLegacy(s)))
+      const p = mergePrefs(s.prefs ?? migrateLegacy(s))
+      setPrefs(p)
       if (s.sort && SORT_KEYS.includes(s.sort.key as SortKey)) {
         setSort({ key: s.sort.key as SortKey, asc: !!s.sort.asc })
       }
       if (Array.isArray(s.marks)) setMarks(s.marks.filter((m: unknown) => typeof m === 'string' && m))
       if (s.active === 1) setActive(1)
-      const mk = (p?: { tabs?: string[]; ti?: number; pinCount?: number }): PaneState => {
+      const mk = (p?: {
+        tabs?: string[]
+        ti?: number
+        pinCount?: number
+        names?: Record<string, string>
+        locks?: Record<string, boolean>
+      }): PaneState => {
         const tabs = (p?.tabs ?? []).filter((t) => typeof t === 'string' && t)
         const list = tabs.length ? tabs : [s.prefs?.startFolder || home]
         const ti = Math.min(Math.max(p?.ti ?? 0, 0), list.length - 1)
         const pinCount = Math.min(Math.max(p?.pinCount ?? 0, 0), list.length)
-        return { ...newPane(list[ti]), tabs: list, ti, pinCount }
+        const names: Record<string, string> = {}
+        for (const [k, v] of Object.entries(p?.names ?? {})) {
+          if (typeof v === 'string' && v.trim()) names[k] = v
+        }
+        const locks: Record<string, boolean> = {}
+        for (const [k, v] of Object.entries(p?.locks ?? {})) {
+          if (v === true) locks[k] = true
+        }
+        return { ...newPane(list[ti]), tabs: list, ti, pinCount, tabNames: names, tabLocks: locks }
       }
-      setPanes([mk(s.panes?.[0]), mk(s.panes?.[1])])
+      const start = p.startFolder.trim() || home
+      setPanes(
+        p.startup === 'folder'
+          ? [mk({ tabs: [start] }), mk({ tabs: [start] })]
+          : [mk(s.panes?.[0]), mk(s.panes?.[1])]
+      )
+      // the launcher's path must win over the restored session; apply it only after boot settles
+      void api.app.launchPath().then((p) => {
+        if (p) setOpenTarget(p)
+      })
       setBooted(true)
     })
   }, [])
 
   // a path handed over by the shell ("open with…") or by a second launch
   useEffect(() => {
-    return api.app.onOpenPath((p) => {
-      void api
-        .list(p, prefs.showHidden, prefs.columns.includes('dims'))
-        .then((l) => go(active, l.path))
-        .catch(() => {
-          // it was a file: show its folder and select it, the way a file manager should
-          const parent = dirOf(p)
-          if (!parent) return
-          go(active, parent)
-          setTimeout(() => {
-            setPanes((cur) => (cur ? patch(cur, active, { sel: [p] }) : cur))
-            if (prefs.doubleClick === 'preview') setPreviewPath(p)
-          }, 350)
-        })
-    })
-  })
+    return api.app.onOpenPath((p) => setOpenTarget(p))
+  }, [])
+
+  // apply the launch path after the session has loaded, so restoring the old tabs cannot win
+  useEffect(() => {
+    if (!openTarget || !booted || !panes) return
+    const p = openTarget
+    setOpenTarget(null)
+    void api
+      .list(p, prefs.showHidden, prefs.columns.includes('dims'))
+      .then((l) => go(active, l.path))
+      .catch(() => {
+        // it was a file: show its folder and select it, the way a file manager should
+        const parent = dirOf(p)
+        if (!parent) return
+        go(active, parent)
+        setTimeout(() => {
+          setPanes((cur) => (cur ? patch(cur, active, { sel: [p] }) : cur))
+          if (prefs.doubleClick === 'preview') setPreviewPath(p)
+        }, 350)
+      })
+  }, [openTarget, booted, panes, active, prefs.showHidden, prefs.columns, prefs.doubleClick])
 
   // an image in the clipboard becomes a real file in the active folder
   useEffect(() => {
@@ -387,7 +483,13 @@ export default function App() {
     if (!booted || !panes) return
     const t = setTimeout(() => {
       void api.state.set({
-        panes: panes.map((p) => ({ tabs: p.tabs, ti: p.ti, pinCount: p.pinCount })),
+        panes: panes.map((p) => ({
+          tabs: p.tabs,
+          ti: p.ti,
+          pinCount: p.pinCount,
+          names: p.tabNames,
+          locks: p.tabLocks
+        })),
         active,
         sort,
         marks,
@@ -520,6 +622,16 @@ export default function App() {
     setLang(prefs.lang)
   }, [prefs.lang])
 
+  // tray behaviour follows the prefs; main ignores it when single instance is off
+  useEffect(() => {
+    void api.window.setTray({
+      minimize: prefs.minimizeToTray && prefs.singleInstance,
+      close: prefs.closeToTray && prefs.singleInstance,
+      show: t('نمایش پنجره'),
+      quit: t('خروج از برنامه')
+    })
+  }, [prefs.minimizeToTray, prefs.closeToTray, prefs.singleInstance, prefs.lang])
+
   // the body font comes from one CSS variable, so a new family applies everywhere at once
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', fontStack(prefs.fontFamily))
@@ -555,6 +667,22 @@ export default function App() {
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
+      // a locked tab keeps its folder; the destination opens in a fresh tab
+      if (s.tabLocks[s.tabs[s.ti]] && dir !== s.tabs[s.ti]) {
+        const at =
+          prefs.newTabPos === 'next' ? Math.min(s.tabs.length, Math.max(s.pinCount, s.ti + 1)) : s.tabs.length
+        const tabs = [...s.tabs]
+        tabs.splice(at, 0, dir)
+        return patch(p, i, {
+          tabs,
+          ti: at,
+          sel: [],
+          hist: [dir],
+          hi: 0,
+          virtual: null,
+          results: null
+        })
+      }
       const hist = [...s.hist.slice(0, s.hi + 1), dir]
       return patch(p, i, {
         tabs: s.tabs.map((t, j) => (j === s.ti ? dir : t)),
@@ -572,6 +700,21 @@ export default function App() {
       const s = p[i]
       const hi = s.hi + delta
       if (hi < 0 || hi >= s.hist.length) return p
+      if (s.tabLocks[s.tabs[s.ti]] && s.hist[hi] !== s.tabs[s.ti]) {
+        const at =
+          prefs.newTabPos === 'next' ? Math.min(s.tabs.length, Math.max(s.pinCount, s.ti + 1)) : s.tabs.length
+        const tabs = [...s.tabs]
+        tabs.splice(at, 0, s.hist[hi])
+        return patch(p, i, {
+          tabs,
+          ti: at,
+          sel: [],
+          hist: [s.hist[hi]],
+          hi: 0,
+          virtual: null,
+          results: null
+        })
+      }
       return patch(p, i, {
         hi,
         tabs: s.tabs.map((t, j) => (j === s.ti ? s.hist[hi] : t)),
@@ -655,6 +798,19 @@ export default function App() {
       setSizes((s) => ({ ...s, [t]: fmtSize(r.bytes, false) + (r.capped ? '…' : '') }))
     }
     setNote(t('اندازهٔ {n} مورد محاسبه شد', { n: fa(targets.length) }))
+  }
+
+  const applyTabName = () => {
+    if (!tabPrompt) return
+    const { pane, path, value } = tabPrompt
+    setTabPrompt(null)
+    setPanes((p) => {
+      if (!p) return p
+      const names = { ...p[pane].tabNames }
+      if (value.trim()) names[path] = value.trim()
+      else delete names[path]
+      return patch(p, pane, { tabNames: names })
+    })
   }
 
   const submitPrompt = async () => {
@@ -770,12 +926,34 @@ export default function App() {
     setPreviewOn(true)
   }
 
+  /** Open a file with the user's per-extension app, else the OS default. */
+  const openExternal = (p: string): void => {
+    const ext = p.includes('.') ? (p.split('.').pop() ?? '').toLowerCase() : ''
+    const app = ext ? prefs.defaultApps[ext] : undefined
+    const fallback = (): void => {
+      void api.open(p).then((r) => {
+        if ('error' in r) {
+          setNote(t('برنامهٔ پیش‌فرض این فایل را باز نکرد'))
+          setOpenWith(p)
+        }
+      })
+    }
+    if (!app) {
+      fallback()
+      return
+    }
+    void api.apps.launch(app.id, p).then((r) => {
+      if ('error' in r) fallback()
+    })
+  }
+
   const openEntry = (i: number, p: string) => {
     const e =
       panes?.[i].listing?.entries.find((x) => x.path === p) ??
       panes?.[i].results?.find((x) => x.path === p)
     if (!e) return
     if (e.dir) go(i, e.path)
+    else if (prefs.defaultApps[e.ext]) openExternal(e.path)
     else if (isArchiveName(e.name)) void openArchive(i, e.path)
     else if (prefs.doubleClick === 'preview') {
       openPreview(e.path)
@@ -785,14 +963,7 @@ export default function App() {
     } else if (isImage(e.ext) && prefs.doubleClick === 'gallery') openGallery(i, e.path)
     // text files belong in the built-in editor; an archive listing is virtual, so nothing to read
     else if (opensInEditor(e) && !panes?.[i].archive) openEditor(e.path)
-    else {
-      void api.open(e.path).then((r) => {
-        if ('error' in r) {
-          setNote(t('برنامهٔ پیش‌فرض این فایل را باز نکرد'))
-          setOpenWith(e.path)
-        }
-      })
-    }
+    else openExternal(e.path)
   }
 
   /** A starred folder is the selected one when a single folder is selected, else the open folder. */
@@ -923,6 +1094,7 @@ export default function App() {
     if (!folderLook) return
     const metas = await Promise.all(folderLook.dirs.map((d) => api.setMeta(d, patch)))
     setFolderLook({ ...folderLook, meta: metas[0] ?? null })
+    setTabIconTick((n) => n + 1)
     reloadAll()
   }
 
@@ -1016,6 +1188,10 @@ export default function App() {
       setNote(t('تب سنجاق‌شده بسته نمی‌شود'))
       return
     }
+    if (s.tabLocks[s.tabs[idx]]) {
+      setNote(t('تب قفل شده بسته نمی‌شود'))
+      return
+    }
     if (s.tabs.length <= 1) return
     reopenStack.current.push({ pane: i, path: s.tabs[idx] })
     setPanes((p) => {
@@ -1035,6 +1211,7 @@ export default function App() {
       const cur = p[i]
       const keep = cur.tabs.filter((_, j) => {
         if (j < cur.pinCount) return true
+        if (cur.tabLocks[cur.tabs[j]]) return true
         return mode === 'others' ? j === idx : j <= idx
       })
       const activePath = cur.tabs[cur.ti]
@@ -1088,6 +1265,19 @@ export default function App() {
       return patch(p, active, { ti: n, sel: [] })
     })
 
+  const pasteClipboard = async (dest: string): Promise<void> => {
+    if (!clip?.paths.length) return
+    const cut = clip.cut
+    await api.jobs.start(cut ? 'move' : 'copy', clip.paths, dest)
+    setNote(
+      t('{op} برای {n} مورد آغاز شد', {
+        op: cut ? t('انتقال') : t('کپی'),
+        n: fa(clip.paths.length)
+      })
+    )
+    if (cut) setClip(null)
+  }
+
   const pickMenu = (id: string) => {
     if (!menu || !panes) return
     if (id.startsWith('script:')) {
@@ -1109,7 +1299,42 @@ export default function App() {
     const me = panes[active]
     const path = menu.path
     const tabIdx = menu.tab
+    if (id.startsWith('tabColor:')) {
+      if (tabIdx != null) {
+        const tab = me.tabs[tabIdx]
+        const color = id.slice(9)
+        const next = { ...prefs.tabColors }
+        if (color) next[tab] = color
+        else delete next[tab]
+        updatePrefs({ tabColors: next })
+      }
+      return
+    }
     switch (id) {
+      case 'tabRename': {
+        if (tabIdx != null) {
+          const tabPath = me.tabs[tabIdx]
+          setTabPrompt({
+            pane: active,
+            path: tabPath,
+            value: me.tabNames[tabPath] ?? baseName(tabPath)
+          })
+        }
+        break
+      }
+      case 'tabLock': {
+        if (tabIdx != null) {
+          const tabPath = me.tabs[tabIdx]
+          setPanes((p) =>
+            p
+              ? patch(p, active, {
+                  tabLocks: { ...p[active].tabLocks, [tabPath]: !p[active].tabLocks[tabPath] }
+                })
+              : p
+          )
+        }
+        break
+      }
       case 'tabPin':
         if (tabIdx != null) togglePin(active, tabIdx)
         break
@@ -1154,6 +1379,33 @@ export default function App() {
       case 'extract':
         openExtract(active, path ?? undefined)
         break
+      case 'quickCut':
+      case 'quickCopy': {
+        const targets = menuTargets(me.sel, path)
+        if (targets.length) setClip({ paths: targets, cut: id === 'quickCut' })
+        break
+      }
+      case 'quickPaste': {
+        if (!clip?.paths.length) break
+        const dirEntry = path ? entryOf(active, path) : null
+        const dest = dirEntry?.dir && path ? path : tabOf(me)
+        void pasteClipboard(dest)
+        break
+      }
+      case 'quickDelete': {
+        const targets = menuTargets(me.sel, path)
+        if (!targets.length) break
+        if (prefs.confirmDelete) setConfirmAsk({ kind: 'trash', paths: targets })
+        else void runRemove('trash', targets)
+        break
+      }
+      case 'quickDeleteForever': {
+        const targets = menuTargets(me.sel, path)
+        if (!targets.length) break
+        if (prefs.confirmDelete) setConfirmAsk({ kind: 'delete', paths: targets })
+        else void runRemove('delete', targets)
+        break
+      }
       case 'copy':
         void runSel(active, 'copy')
         break
@@ -1174,6 +1426,9 @@ export default function App() {
         break
       case 'copyPath':
         if (path) void copyText(path)
+        break
+      case 'symlink':
+        if (path) setSymlinkFor(path)
         break
       case 'sha':
         void shaOf(me.sel.length ? me.sel : path ? [path] : [])
@@ -1405,7 +1660,19 @@ export default function App() {
     if (menu?.tab != null) {
       const idx = menu.tab
       const pinned = idx < me.pinCount
+      const tabPath = me.tabs[idx]
+      const locked = !!me.tabLocks[tabPath]
       return [
+        {
+          id: 'tabRename',
+          label: t('تغییر نام تب…'),
+          icon: <RenameIcon />
+        },
+        {
+          id: 'tabLock',
+          label: locked ? t('باز کردن قفل') : t('قفل تب'),
+          icon: locked ? <UnlockIcon /> : <LockIcon />
+        },
         { id: 'tabPin', label: pinned ? t('برداشتن سنجاق') : t('سنجاق‌کردن تب'), icon: <PinIcon filled={pinned} /> },
         { id: 'tabDup', label: t('تب تکراری'), icon: <PlusIcon /> },
         { sep: true },
@@ -1414,11 +1681,28 @@ export default function App() {
           label: t('بستن تب'),
           key: 'Ctrl+W',
           icon: <XIcon size={12} />,
-          disabled: pinned || me.tabs.length <= 1
+          disabled: pinned || locked || me.tabs.length <= 1
         },
         { id: 'tabCloseOthers', label: t('بستن بقیه'), icon: <XIcon size={12} /> },
         { id: 'tabCloseRight', label: t('بستن تب‌های بعدی'), icon: <XIcon size={12} /> },
         { sep: true },
+        {
+          id: 'group-tab-color',
+          label: t('رنگ تب'),
+          icon: <PaletteIcon />,
+          children: [
+            {
+              id: 'tabColor:',
+              label: t('بدون رنگ'),
+              icon: <span className="menu-dot none" />
+            },
+            ...palette.map((p) => ({
+              id: 'tabColor:' + p.color,
+              label: t(p.name),
+              icon: <span className="menu-dot" style={{ background: p.color }} />
+            }))
+          ]
+        },
         { id: 'tabCopyPath', label: t('کپی مسیر'), icon: <CopyIcon /> }
       ]
     }
@@ -1431,7 +1715,7 @@ export default function App() {
         { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
         { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
-        { id: 'look', label: t('رنگ و آیکون این پوشه'), icon: <PaletteIcon /> },
+        { id: 'look', label: t('آیکون این پوشه'), icon: <PaletteIcon /> },
         { id: 'columns', label: t('ستون‌ها و اطلاعات…'), icon: <LayersIcon /> },
         { sep: true },
         { id: 'tabNew', label: t('تب نو'), icon: <PlusIcon /> }
@@ -1492,7 +1776,7 @@ export default function App() {
             { id: 'openTab', label: t('باز کردن در تب نو'), icon: <PlusIcon /> },
             { id: 'tabHere', label: t('تب نو در این پوشه'), icon: <PlusIcon /> },
             { id: 'size', label: t('محاسبهٔ اندازه'), key: 'F9', icon: <GaugeIcon /> },
-            { id: 'look', label: t('رنگ و آیکون پوشه'), icon: <PaletteIcon /> },
+            { id: 'look', label: t('آیکون پوشه'), icon: <PaletteIcon /> },
             {
               id: 'bookmarkDir',
               label:
@@ -1516,6 +1800,7 @@ export default function App() {
 
     const systemItems: MenuItem[] = [
       { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
+      { id: 'symlink', label: t('ایجاد پیوند نمادین…'), icon: <LinkIcon /> },
       { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
       { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> },
@@ -1586,6 +1871,74 @@ export default function App() {
           { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> }
         ]
       }
+    ]
+  }
+
+  /** Icon-only row at the bottom of the context menu, Windows-style. */
+  const quickActions = (): MenuAction[] => {
+    if (!panes || menu?.tab != null) return []
+    const me = panes[active]
+    const path = menu?.path ?? null
+    const targets = menuTargets(me.sel, path)
+    const dirEntry = path ? entryOf(active, path) : null
+    const dest = dirEntry?.dir && path ? path : tabOf(me)
+    const canPaste =
+      !!clip?.paths.length && !(clip.cut && clip.paths.every((p) => dirOf(p) === dest))
+    return [
+      { id: 'quickCut', label: t('بریدن'), icon: <CutIcon />, disabled: !targets.length },
+      { id: 'quickCopy', label: t('کپی'), icon: <CopyIcon />, disabled: !targets.length },
+      { id: 'quickPaste', label: t('جایگذاری'), icon: <PasteIcon />, disabled: !canPaste },
+      { id: 'quickDelete', label: t('حذف'), icon: <TrashIcon />, danger: true, disabled: !targets.length },
+      {
+        id: 'quickDeleteForever',
+        label: t('حذف قطعی'),
+        icon: <TrashXIcon />,
+        danger: true,
+        disabled: !targets.length
+      }
+    ]
+  }
+
+  /** Entries the colour dots apply to: the clicked row(s), or the open folder on blank space. */
+  const colorTargets = (): string[] => {
+    if (!panes || menu?.tab != null) return []
+    const me = panes[active]
+    const path = menu?.path ?? null
+    if (!path) return [tabOf(me)]
+    return menuTargets(me.sel, path)
+  }
+
+  const applyEntryColor = (color: string): void => {
+    const targets = colorTargets()
+    if (!targets.length) return
+    const dirs = targets.filter((p) => entryOf(active, p)?.dir)
+    const files = targets.filter((p) => {
+      const e = entryOf(active, p)
+      return !!e && !e.dir
+    })
+    void Promise.all([
+      ...dirs.map((d) => api.setMeta(d, { color })),
+      ...files.map((f) => api.setEntryColor(dirOf(f), baseName(f), color))
+    ]).then(() => {
+      setTabIconTick((n) => n + 1)
+      reloadAll()
+      setNote(color ? t('رنگ اعمال شد') : t('رنگ برداشته شد'))
+    })
+  }
+
+  const colorSwatches = (): { value: string; label: string; active?: boolean }[] | undefined => {
+    const dirs = colorTargets()
+    if (!dirs.length) return undefined
+    const path = menu?.path ?? null
+    const colors = path ? dirs.map((d) => entryOf(active, d)?.color ?? '') : []
+    const activeColor = colors.length && colors.every((c) => c === colors[0]) ? colors[0] : null
+    return [
+      { value: '', label: t('بدون رنگ'), active: activeColor === '' },
+      ...FOLDER_COLORS.map((c) => ({
+        value: c.value,
+        label: t(c.name),
+        active: activeColor === c.value
+      }))
     ]
   }
 
@@ -1939,6 +2292,20 @@ export default function App() {
         RUN[c.id]()
         return
       }
+      // typing over the list starts a live name filter (type-ahead, no shortcut needed)
+      if (
+        !typing &&
+        !ev.ctrlKey &&
+        !ev.altKey &&
+        !ev.metaKey &&
+        !ev.isComposing &&
+        ev.key.length === 1 &&
+        ev.key !== ' '
+      ) {
+        ev.preventDefault()
+        setPanes((p) => p && patch(p, active, { filter: ev.key }))
+        setFilterTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n)))
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1965,6 +2332,13 @@ export default function App() {
     return source.filter((e) => me.sel.includes(e.path)).reduce((n, e) => n + e.size, 0)
   })()
   const running = jobs.filter((j) => j.state === 'running' || j.state === 'paused').length
+  const selEntry =
+    panes[active].sel.length === 1 ? entryOf(active, panes[active].sel[0]) : undefined
+  const selName = selEntry ? baseName(selEntry.path) : ''
+  const selRating = selName ? (panes[active].listing?.ratings?.[selName] ?? 0) : 0
+  const selLabel = selName
+    ? palette.find((l) => l.id === panes[active].listing?.labels?.[selName])
+    : undefined
 
   const searchRoots = prefs.searchRoots.length ? prefs.searchRoots : defaultSearchRoots(home)
 
@@ -1984,7 +2358,7 @@ export default function App() {
     <PreviewPanel
       entry={entryOf(active, previewPath) ?? null}
       maxKB={prefs.previewMaxKB}
-      onOpen={(p) => void api.open(p)}
+      onOpen={(p) => openExternal(p)}
       onClose={() => setPreviewOn(false)}
     />
   ) : null
@@ -2011,7 +2385,11 @@ export default function App() {
         }}
       >
         <span className="logo-mark" title={t(t('مدیر فایل مکس'))}>
-          <FolderIcon />
+          {PURE_URL_BY_NAME['org.kde.dolphin'] ? (
+            <img src={PURE_URL_BY_NAME['org.kde.dolphin']} alt="" draggable={false} />
+          ) : (
+            <FolderIcon />
+          )}
         </span>
         <button
           className={'tb' + (ui.sidebarOpen ? ' on' : '')}
@@ -2070,7 +2448,17 @@ export default function App() {
         >
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
-        {chrome.customTitlebar && <WindowButtons />}
+        {chrome.customTitlebar && (
+          <WindowButtons
+            theme={prefs.titlebarButtons}
+            side={prefs.titlebarSide}
+            // physical left is order -1 in LTR and the last slot in RTL (and vice versa)
+            style={{
+              order:
+                (prefs.titlebarSide === 'left') !== (document.documentElement.dir === 'rtl') ? -1 : 99
+            }}
+          />
+        )}
       </header>
 
       {prefs.toolbar.length > 0 && (
@@ -2102,6 +2490,8 @@ export default function App() {
             onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
             roots={roots}
             marks={marks}
+            markIcons={markIcons}
+            iconSet={iconSetFor()}
             activePath={curPath}
             showHidden={hidden}
             floating={prefs.sidebar === 'float'}
@@ -2203,6 +2593,9 @@ export default function App() {
             onTabMove={(from, to) => moveTab(i, from, to)}
             middleClickClosesTab={prefs.middleClickClosesTab}
             palette={palette}
+            tabColors={prefs.tabColors}
+            tabIcons={tabIcons}
+            showTabIcons={prefs.tabIcons}
             typeColors={prefs.fileTypes}
             onOp={(kind) => {
               if (kind === 'mkdir') setPrompt({ kind: 'mkdir', value: '' })
@@ -2312,6 +2705,8 @@ export default function App() {
                 onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
                 roots={roots}
                 marks={marks}
+                markIcons={markIcons}
+                iconSet={iconSetFor()}
                 activePath={curPath}
                 showHidden={hidden}
                 floating={prefs.sidebar === 'float'}
@@ -2355,10 +2750,39 @@ export default function App() {
                 : t('فهرستی نیست')}
         </span>
         <span>
-          {panes[active].sel.length
-            ? t('{n} انتخاب‌شده · {size}', { n: fa(panes[active].sel.length), size: fmtSize(selSize, false, prefs.sizeFormat) })
+          {panes[active].sel.length > 1
+            ? t('{n} انتخاب‌شده · {size}', {
+                n: fa(panes[active].sel.length),
+                size: fmtSize(selSize, false, prefs.sizeFormat)
+              })
             : ''}
         </span>
+        {selEntry && (
+          <span className="selinfo" title={selEntry.path}>
+            <span className="selname" dir="auto">
+              {selName}
+            </span>
+            <span>{typeLabel(selEntry)}</span>
+            {!selEntry.dir && <span>{fmtSize(selEntry.size, false, prefs.sizeFormat)}</span>}
+            <span className="sel-date" dir="ltr">
+              {fmtDate(selEntry.mtime, prefs.dateFormat, prefs.showSeconds)}
+            </span>
+            {selEntry.mode != null && <span className="sel-mode">{modeString(selEntry.mode)}</span>}
+            {selLabel && (
+              <span className="sel-label">
+                <i style={{ background: selLabel.color }} />
+                {t(selLabel.name)}
+              </span>
+            )}
+            {selRating > 0 && (
+              <span className="sel-rate">
+                <StarIcon filled size={11} />
+                {fa(selRating)}
+              </span>
+            )}
+            {selEntry.link && <span>{t('پیوند نمادین')}</span>}
+          </span>
+        )}
         {free != null && <span>{t('آزاد:')} {fmtSize(free, false, prefs.sizeFormat)}</span>}
         {update?.newer && (
           <button
@@ -2403,7 +2827,7 @@ export default function App() {
           }}
           onOpen={(hit) => {
             setSearchOpen(false)
-            void api.open(hit.path)
+            openExternal(hit.path)
           }}
         />
       )}
@@ -2660,6 +3084,9 @@ export default function App() {
           x={menu.x}
           y={menu.y}
           items={menuItems(menu.path)}
+          actions={quickActions()}
+          swatches={colorSwatches()}
+          onSwatch={applyEntryColor}
           onPick={pickMenu}
           onClose={() => setMenu(null)}
         />
@@ -2695,6 +3122,11 @@ export default function App() {
           onUpdate={() => {
             if (panes) void load(active, tabOf(panes[active]))
           }}
+          onChangeIcon={() => {
+            const target = propsFor
+            setPropsFor(null)
+            if (target) void openFolderLookAt(target)
+          }}
         />
       )}
 
@@ -2720,6 +3152,18 @@ export default function App() {
         />
       )}
 
+      {symlinkFor && (
+        <SymlinkDialog
+          target={symlinkFor}
+          onDone={(link) => {
+            setSymlinkFor(null)
+            reloadAll()
+            setNote(`${t('پیوند ساخته شد')}: ${baseName(link)}`)
+          }}
+          onClose={() => setSymlinkFor(null)}
+        />
+      )}
+
       {renameTargets && (
         <RenameDialog
           paths={renameTargets}
@@ -2735,6 +3179,28 @@ export default function App() {
             reloadAll()
           }}
         />
+      )}
+
+      {tabPrompt && (
+        <div className="modal" onMouseDown={() => setTabPrompt(null)}>
+          <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="dlg-title">{t('نام تازهٔ تب')}</div>
+            <input
+              autoFocus
+              dir="auto"
+              value={tabPrompt.value}
+              onChange={(e) => setTabPrompt({ ...tabPrompt, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyTabName()
+                if (e.key === 'Escape') setTabPrompt(null)
+              }}
+            />
+            <div className="dlg-actions">
+              <button onClick={applyTabName}>{t('ذخیره')}</button>
+              <button onClick={() => setTabPrompt(null)}>{t('انصراف')}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {prompt && (

@@ -79,13 +79,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('meta:setNote', { dir, name, text }),
   setLabel: (dir: string, name: string, label: string | null) =>
     ipcRenderer.invoke('meta:setLabel', { dir, name, label }),
+  setEntryColor: (dir: string, name: string, color: string) =>
+    ipcRenderer.invoke('meta:setEntryColor', { dir, name, color }),
   togglePin: (dir: string, name: string, on?: boolean) =>
     ipcRenderer.invoke('meta:togglePin', { dir, name, on }),
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),
   iconThemes: (extra: string[]) => ipcRenderer.invoke('icons:themes', extra),
   iconsIn: (themeDir: string) => ipcRenderer.invoke('icons:in', themeDir),
   iconSet: () => ipcRenderer.invoke('icons:set'),
+  folderLook: (p: string) => ipcRenderer.invoke('icons:folderLook', p),
   mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
+  symlink: (target: string, linkPath: string) =>
+    ipcRenderer.invoke('fs:symlink', target, linkPath),
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
   clipboard: {
@@ -120,7 +125,8 @@ contextBridge.exposeInMainWorld('api', {
       const fn = (_e: unknown, p: string) => cb(p)
       ipcRenderer.on('app:open-path', fn)
       return () => ipcRenderer.removeListener('app:open-path', fn)
-    }
+    },
+    launchPath: () => ipcRenderer.invoke('app:launchPath')
   },
   undo: { run: () => ipcRenderer.invoke('undo:run'), depth: () => ipcRenderer.invoke('undo:depth') },
   window: {
@@ -132,6 +138,8 @@ contextBridge.exposeInMainWorld('api', {
     getChrome: () => ipcRenderer.invoke('window:getChrome'),
     setChrome: (c: { customTitlebar: boolean; rounded: boolean }) =>
       ipcRenderer.invoke('window:setChrome', c),
+    setTray: (a: { minimize: boolean; close: boolean; show: string; quit: string }) =>
+      ipcRenderer.invoke('window:setTray', a),
     onMaximized: (cb: (max: boolean) => void) => {
       const fn = (_e: unknown, max: boolean) => cb(max)
       ipcRenderer.on('window:maximized', fn)
