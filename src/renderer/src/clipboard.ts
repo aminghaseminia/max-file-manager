@@ -15,6 +15,10 @@ const blobFromDataUrl = (dataUrl: string): Blob => {
 
 /** Copies the picture itself (not its path) so it can be pasted into a chat or document. */
 export async function copyImageContent(path: string, editedDataUrl?: string): Promise<void> {
+  // a file-list owner from an earlier Ctrl+C must not keep the old file on the clipboard;
+  // give the compositor a moment to drop the old source before claiming it with the image
+  await api.clipboard.releaseFiles().catch(() => undefined)
+  await new Promise((r) => setTimeout(r, 150))
   const source = editedDataUrl ?? (await api.imageData(path)).dataUrl
   if (!source) throw new Error('read')
   const bmp = await createImageBitmap(blobFromDataUrl(source))

@@ -74,7 +74,7 @@ import {
   type McpMode
 } from './mcp.ts'
 import { randomBytes } from 'node:crypto'
-import { copyFilesToClipboard } from './fileclip.ts'
+import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
@@ -1392,6 +1392,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('clipboard:copyFiles', (_e, a: { paths?: string[]; cut?: boolean }) =>
     copyFilesToClipboard((a?.paths ?? []).filter((p) => path.isAbsolute(p)), !!a?.cut)
   )
+  ipcMain.handle('clipboard:releaseFiles', () => {
+    releaseFileClipboard()
+    return true
+  })
   ipcMain.handle('clipboard:writeText', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''))
     return true

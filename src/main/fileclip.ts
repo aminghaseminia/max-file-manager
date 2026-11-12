@@ -1,78 +1,187 @@
 /**
- * File list on the system clipboard. Electron 45's clipboard cannot write `text/uri-list`, so a
- * small detached PySide process owns the selection with `QMimeData.setUrls`. It is detached and
- * lives for ten minutes: Wayland transfers the clipboard on demand, so the owner must outlive the
- * copy (and even the app). The fallback is the paths as plain text.
+ * File list on the system clipboard. Electron 45 cannot write `text/uri-list`, so one detached
+ * PySide process owns the selection with `QMimeData.setUrls`. It stays alive and receives new
+ * paths over stdin: replacing the owner on every copy raced with the compositor and left the
+ * previous file on the clipboard. Its pid is kept per profile so a new app run can retire a
+ * stale owner. Without Python/PySide the paths go to the clipboard as plain text.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { clipboard } from 'electron'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { app, clipboard } from 'electron'
 
 const SCRIPT = String.raw`
-import sys
+import sys, json, select
 from PySide6.QtCore import QMimeData, QTimer, QUrl
 from PySide6.QtWidgets import QApplication
-args = sys.argv[1:]
-cut = '--cut' in args
-paths = [p for p in args if p != '--cut']
-urls = [QUrl.fromLocalFile(p) for p in paths if p]
 app = QApplication([])
-md = QMimeData()
-md.setUrls(urls)
-if urls:
-    md.setData('x-special/gnome-copied-files', (('cut' if cut else 'copy') + '\n' + '\n'.join(u.toString() for u in urls)).encode())
-    md.setData('application/x-kde-cutselection', b'1' if cut else b'0')
 cb = app.clipboard()
-cb.setMimeData(md)
-# a new copy (file list, image, or text) takes the selection; this owner must not linger and
-# keep serving the old file. Ignore the change our own setMimeData just caused.
-armed = [False]
-QTimer.singleShot(600, lambda: armed.__setitem__(0, True))
-def lost(_mode=None):
-    if armed[0]:
-        app.quit()
-cb.dataChanged.connect(lost)
+def apply(msg):
+    if msg.get('clear'):
+        cb.clear()
+        return
+    paths = [p for p in (msg.get('paths') or []) if p]
+    urls = [QUrl.fromLocalFile(p) for p in paths]
+    md = QMimeData()
+    md.setUrls(urls)
+    if urls:
+        cut = bool(msg.get('cut'))
+        md.setData('x-special/gnome-copied-files', (('cut' if cut else 'copy') + '\n' + '\n'.join(u.toString() for u in urls)).encode())
+        md.setData('application/x-kde-cutselection', b'1' if cut else b'0')
+    cb.setMimeData(md)
+def poll():
+    while select.select([sys.stdin], [], [], 0)[0]:
+        line = sys.stdin.readline()
+        if not line:
+            return  # the app went away; keep owning the selection until the timer fires
+        try:
+            apply(json.loads(line))
+            print('ok', flush=True)
+        except Exception as e:
+            print('err', str(e), flush=True)
+t = QTimer()
+t.timeout.connect(poll)
+t.start(40)
+print('ready', flush=True)
 QTimer.singleShot(600000, app.quit)
 app.exec()
 `
 
 let child: ChildProcess | null = null
+let starting: Promise<boolean> | null = null
+let ack: (() => void) | null = null
+let out = ''
 
-/** Replaces the previous owner so the newest copy is the one every app pastes. */
-export function copyFilesToClipboard(paths: string[], cut = false): Promise<'files' | 'text'> {
-  const list = paths.filter((p) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p))
-  if (!list.length) return Promise.resolve('text')
-  child?.kill()
-  child = null
+const ownerFile = () => path.join(app.getPath('userData'), 'clipboard-owner')
+
+const isOurHelper = (pid: number): boolean => {
   try {
-    child = spawn('python3', ['-c', SCRIPT, ...(cut ? ['--cut'] : []), ...list], {
-      detached: true,
-      stdio: 'ignore'
-    })
+    return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('PySide6')
   } catch {
-    clipboard.writeText(list.join('\n'))
-    return Promise.resolve('text')
+    return false
   }
-  const proc = child
-  return new Promise((resolve) => {
-    let done = false
-    const finish = (kind: 'files' | 'text') => {
-      if (done) return
-      done = true
-      resolve(kind)
+}
+
+/** Retire an owner left by an earlier run (the pid file is per profile). */
+function killOwner(): void {
+  try {
+    const pid = Number(readFileSync(ownerFile(), 'utf8'))
+    if (Number.isInteger(pid) && pid > 0 && isOurHelper(pid)) process.kill(pid, 'SIGTERM')
+  } catch {
+    // no live owner
+  }
+  try {
+    rmSync(ownerFile(), { force: true })
+  } catch {
+    // ignore
+  }
+}
+
+function startHelper(): Promise<boolean> {
+  if (child) return Promise.resolve(true)
+  if (starting) return starting
+  starting = new Promise<boolean>((resolve) => {
+    let proc: ChildProcess
+    try {
+      proc = spawn('python3', ['-c', SCRIPT], {
+        detached: true,
+        stdio: ['pipe', 'pipe', 'ignore']
+      })
+    } catch {
+      starting = null
+      resolve(false)
+      return
     }
-    proc.once('spawn', () => {
-      proc.unref()
-      finish('files')
+    child = proc
+    let settled = false
+    const done = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      starting = null
+      resolve(ok)
+    }
+    proc.stdout?.on('data', (buf: Buffer) => {
+      out += String(buf)
+      for (;;) {
+        const nl = out.indexOf('\n')
+        if (nl < 0) break
+        const line = out.slice(0, nl)
+        out = out.slice(nl + 1)
+        if (line === 'ready') {
+          try {
+            writeFileSync(ownerFile(), String(proc.pid ?? ''))
+          } catch {
+            // the clipboard works without the pid file
+          }
+          done(true)
+        } else if (line === 'ok' || line === 'err') {
+          ack?.()
+          ack = null
+        }
+      }
     })
     proc.once('error', () => {
-      clipboard.writeText(list.join('\n'))
-      finish('text')
+      child = null
+      done(false)
     })
-    setTimeout(() => finish(proc.pid ? 'files' : 'text'), 800)
+    proc.once('exit', () => {
+      child = null
+      done(false)
+    })
+    // the Qt import can be slow on the first run; do not fail the copy for that
+    setTimeout(() => done(true), 4000)
+  })
+  return starting
+}
+
+async function send(msg: Record<string, unknown>): Promise<boolean> {
+  if (!child) {
+    killOwner()
+    if (!(await startHelper()) || !child) return false
+  }
+  const proc = child
+  return new Promise<boolean>((resolve) => {
+    let settled = false
+    const finish = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      ack = null
+      resolve(ok)
+    }
+    ack = () => finish(true)
+    try {
+      proc.stdin?.write(JSON.stringify(msg) + '\n')
+    } catch {
+      finish(false)
+      return
+    }
+    setTimeout(() => finish(false), 5000)
   })
 }
 
-/** The owner is detached on purpose; only a new copy (or its ten-minute timeout) replaces it. */
+/** Resolves to `files` only after the helper confirms that the selection is set. */
+export async function copyFilesToClipboard(paths: string[], cut = false): Promise<'files' | 'text'> {
+  const list = paths.filter((p) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p))
+  if (!list.length) return 'text'
+  if (await send({ paths: list, cut })) return 'files'
+  clipboard.writeText(list.join('\n'))
+  return 'text'
+}
+
+/** Clear a file-list selection before the renderer writes an image (the helper stays alive). */
+export function releaseFileClipboard(): void {
+  if (child) {
+    try {
+      child.stdin?.write(JSON.stringify({ clear: true }) + '\n')
+    } catch {
+      // ignore
+    }
+  } else {
+    killOwner()
+  }
+}
+
 export function stopFileClipboard(): void {
+  child?.kill()
   child = null
 }
