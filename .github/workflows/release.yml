@@ -101,6 +101,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          name: "Max File Manager ${{ github.ref_name }} — Linux Edition"
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
