@@ -107,25 +107,40 @@ import {
   ConfirmIcon
 } from './Icons'
 
-const newPane = (dir: string): PaneState => ({
-  tabs: [dir],
-  ti: 0,
-  tabNames: {},
-  tabLocks: {},
-  pinCount: 0,
-  hist: [dir],
-  hi: 0,
-  sel: [],
-  filter: '',
-  listing: null,
-  virtual: null,
-  results: null,
-  archive: null,
-  preview: null,
-  error: '',
-  loading: true,
-  fmt: null
-})
+let tabCounter = 1
+export const newTabId = () => 'tab_' + Date.now().toString(36) + '_' + (tabCounter++)
+
+export const ensureTabIds = (tabs: string[], ids?: string[]): string[] => {
+  const res = ids ? [...ids] : []
+  while (res.length < tabs.length) {
+    res.push(newTabId())
+  }
+  return res.slice(0, tabs.length)
+}
+
+const newPane = (dir: string): PaneState => {
+  const id = newTabId()
+  return {
+    tabs: [dir],
+    tabIds: [id],
+    ti: 0,
+    tabNames: {},
+    tabLocks: {},
+    pinCount: 0,
+    hist: [dir],
+    hi: 0,
+    sel: [],
+    filter: '',
+    listing: null,
+    virtual: null,
+    results: null,
+    archive: null,
+    preview: null,
+    error: '',
+    loading: true,
+    fmt: null
+  }
+}
 
 const patch = (panes: PaneState[], i: number, p: Partial<PaneState>): PaneState[] =>
   panes.map((x, j) => (j === i ? { ...x, ...p } : x))
@@ -180,6 +195,11 @@ export default function App() {
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [symlinkFor, setSymlinkFor] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  useEffect(() => {
+    if (!note) return
+    const t = setTimeout(() => setNote(''), 3500)
+    return () => clearTimeout(t)
+  }, [note])
   /** in-app file clipboard for the quick cut/copy/paste row */
   const [clip, setClip] = useState<{ paths: string[]; cut: boolean } | null>(null)
   const [home, setHome] = useState('')
@@ -321,6 +341,10 @@ export default function App() {
   }, [prefs.colorTheme])
 
   useEffect(() => {
+    document.documentElement.dataset.sidebarTone = String(prefs.sidebarTone || 1)
+  }, [prefs.sidebarTone])
+
+  useEffect(() => {
     if (!marks.length) {
       setMarkIcons({})
       return
@@ -374,6 +398,7 @@ export default function App() {
       if (s.active === 1) setActive(1)
       const mk = (p?: {
         tabs?: string[]
+        tabIds?: string[]
         ti?: number
         pinCount?: number
         names?: Record<string, string>
@@ -383,15 +408,25 @@ export default function App() {
         const list = tabs.length ? tabs : [s.prefs?.startFolder || home]
         const ti = Math.min(Math.max(p?.ti ?? 0, 0), list.length - 1)
         const pinCount = Math.min(Math.max(p?.pinCount ?? 0, 0), list.length)
+        const tabIds = list.map((_, idx) => (typeof p?.tabIds?.[idx] === 'string' ? p.tabIds[idx] : newTabId()))
         const names: Record<string, string> = {}
         for (const [k, v] of Object.entries(p?.names ?? {})) {
           if (typeof v === 'string' && v.trim()) names[k] = v
         }
         const locks: Record<string, boolean> = {}
         for (const [k, v] of Object.entries(p?.locks ?? {})) {
-          if (v === true) locks[k] = true
+          if (v === true) {
+            if (tabIds.includes(k)) {
+              locks[k] = true
+            } else {
+              const matchIdx = list.indexOf(k)
+              if (matchIdx !== -1 && tabIds[matchIdx]) {
+                locks[tabIds[matchIdx]] = true
+              }
+            }
+          }
         }
-        return { ...newPane(list[ti]), tabs: list, ti, pinCount, tabNames: names, tabLocks: locks }
+        return { ...newPane(list[ti]), tabs: list, tabIds, ti, pinCount, tabNames: names, tabLocks: locks }
       }
       const start = p.startFolder.trim() || home
       setPanes(
@@ -496,6 +531,7 @@ export default function App() {
       void api.state.set({
         panes: panes.map((p) => ({
           tabs: p.tabs,
+          tabIds: p.tabIds,
           ti: p.ti,
           pinCount: p.pinCount,
           names: p.tabNames,
@@ -569,23 +605,111 @@ export default function App() {
     window.addEventListener('pointerup', up)
   }
 
+  /** Drag the splitter between docked sidebar and the pane to resize sidebar. */
+  const startDockedSidebarResize = (ev: React.PointerEvent) => {
+    ev.preventDefault()
+    const splitter = ev.currentTarget as HTMLElement
+    try {
+      splitter.setPointerCapture(ev.pointerId)
+    } catch {}
+    const sideEl = splitter.previousElementSibling as HTMLElement | null
+    if (!sideEl) return
+    const rect = sideEl.getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+
+    let curWidth = prefs.sidebarWidth
+    const move = (e: PointerEvent) => {
+      const raw = rtl ? rect.right - e.clientX : e.clientX - rect.left
+      const clamped = Math.min(600, Math.max(160, Math.round(raw)))
+      if (clamped !== curWidth) {
+        curWidth = clamped
+        setPrefs((p) => ({ ...p, sidebarWidth: clamped }))
+      }
+    }
+    const up = (e: PointerEvent) => {
+      try {
+        splitter.releasePointerCapture(e.pointerId)
+      } catch {}
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      updatePrefs({ sidebarWidth: curWidth })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   /** Drag the edge of the floating sidebar to resize it. */
   const startFloatSidebarResize = (ev: React.PointerEvent) => {
     ev.preventDefault()
-    const panel = ev.currentTarget.parentElement as HTMLElement | null
+    ev.stopPropagation()
+    const handle = ev.currentTarget as HTMLElement
+    try {
+      handle.setPointerCapture(ev.pointerId)
+    } catch {}
+    const panel = handle.parentElement as HTMLElement | null
     if (!panel) return
     const rect = panel.getBoundingClientRect()
     const rtl = document.documentElement.dir === 'rtl'
+
+    let curWidth = prefs.sidebarWidth
     const move = (e: PointerEvent) => {
-      const width = rtl ? rect.right - e.clientX : e.clientX - rect.left
-      updatePrefs({ sidebarWidth: Math.min(600, Math.max(160, Math.round(width))) })
+      const raw = rtl ? rect.right - e.clientX : e.clientX - rect.left
+      const clamped = Math.min(600, Math.max(160, Math.round(raw)))
+      if (clamped !== curWidth) {
+        curWidth = clamped
+        setPrefs((p) => ({ ...p, sidebarWidth: clamped }))
+      }
     }
-    const up = () => {
+    const up = (e: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(e.pointerId)
+      } catch {}
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      updatePrefs({ sidebarWidth: curWidth })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const [floatPos, setFloatPos] = useState({ x: 0, y: 0 })
+  const [floatDragging, setFloatDragging] = useState(false)
+
+  const startFloatDrag = (ev: React.PointerEvent) => {
+    if (ev.button !== 0) return
+    ev.preventDefault()
+    const target = ev.currentTarget as HTMLElement
+    try {
+      target.setPointerCapture(ev.pointerId)
+    } catch {}
+    setFloatDragging(true)
+    const startX = ev.clientX
+    const startY = ev.clientY
+    const origX = floatPos.x
+    const origY = floatPos.y
+
+    const move = (e: PointerEvent) => {
+      setFloatPos({
+        x: origX + (e.clientX - startX),
+        y: origY + (e.clientY - startY)
+      })
+    }
+    const up = (e: PointerEvent) => {
+      try {
+        target.releasePointerCapture(e.pointerId)
+      } catch {}
+      setFloatDragging(false)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+  }
+
+  const handleToggleSidebarSection = (id: string) => {
+    const list = prefs.sidebarCollapsed || []
+    const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+    updatePrefs({ sidebarCollapsed: next })
   }
 
   useEffect(() => {
@@ -760,14 +884,19 @@ export default function App() {
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
+      const curTabId = s.tabIds?.[s.ti] ?? ('t_' + s.ti)
       // a locked tab keeps its folder; the destination opens in a fresh tab
-      if (s.tabLocks[s.tabs[s.ti]] && dir !== s.tabs[s.ti]) {
+      if (s.tabLocks[curTabId] && dir !== s.tabs[s.ti]) {
         const at =
           prefs.newTabPos === 'next' ? Math.min(s.tabs.length, Math.max(s.pinCount, s.ti + 1)) : s.tabs.length
         const tabs = [...s.tabs]
+        const tabIds = ensureTabIds(s.tabs, s.tabIds)
+        const newId = newTabId()
         tabs.splice(at, 0, dir)
+        tabIds.splice(at, 0, newId)
         return patch(p, i, {
           tabs,
+          tabIds,
           ti: at,
           sel: [],
           hist: [dir],
@@ -793,13 +922,18 @@ export default function App() {
       const s = p[i]
       const hi = s.hi + delta
       if (hi < 0 || hi >= s.hist.length) return p
-      if (s.tabLocks[s.tabs[s.ti]] && s.hist[hi] !== s.tabs[s.ti]) {
+      const curTabId = s.tabIds?.[s.ti] ?? ('t_' + s.ti)
+      if (s.tabLocks[curTabId] && s.hist[hi] !== s.tabs[s.ti]) {
         const at =
           prefs.newTabPos === 'next' ? Math.min(s.tabs.length, Math.max(s.pinCount, s.ti + 1)) : s.tabs.length
         const tabs = [...s.tabs]
+        const tabIds = ensureTabIds(s.tabs, s.tabIds)
+        const newId = newTabId()
         tabs.splice(at, 0, s.hist[hi])
+        tabIds.splice(at, 0, newId)
         return patch(p, i, {
           tabs,
+          tabIds,
           ti: at,
           sel: [],
           hist: [s.hist[hi]],
@@ -1279,12 +1413,16 @@ export default function App() {
       if (!p) return p
       const s = p[i]
       const tabs = [...s.tabs]
+      const tabIds = ensureTabIds(s.tabs, s.tabIds)
+      const newId = newTabId()
       let at = tabs.length
       if (opts.pinned) at = s.pinCount
       else if (prefs.newTabPos === 'next') at = Math.max(s.pinCount, Math.min(s.ti + 1, tabs.length))
       tabs.splice(at, 0, dir)
+      tabIds.splice(at, 0, newId)
       return patch(p, i, {
         tabs,
+        tabIds,
         ti: at,
         pinCount: s.pinCount + (opts.pinned ? 1 : 0),
         sel: [],
@@ -1298,11 +1436,14 @@ export default function App() {
   const closeTab = (i: number, idx: number) => {
     const s = panes?.[i]
     if (!s) return
+    const curIds = ensureTabIds(s.tabs, s.tabIds)
+    if (idx < 0 || idx >= s.tabs.length) return
     if (idx < s.pinCount) {
       setNote(t('تب سنجاق‌شده بسته نمی‌شود'))
       return
     }
-    if (s.tabLocks[s.tabs[idx]]) {
+    const tabId = curIds[idx]
+    if (s.tabLocks[tabId]) {
       setNote(t('تب قفل شده بسته نمی‌شود'))
       return
     }
@@ -1311,9 +1452,14 @@ export default function App() {
     setPanes((p) => {
       if (!p) return p
       const cur = p[i]
+      const ids = ensureTabIds(cur.tabs, cur.tabIds)
+      const removingId = ids[idx]
       const tabs = cur.tabs.filter((_, j) => j !== idx)
-      const ti = cur.ti === idx ? Math.max(0, idx - 1) : cur.ti > idx ? cur.ti - 1 : cur.ti
-      return patch(p, i, { tabs, ti: Math.min(ti, tabs.length - 1), sel: [] })
+      const tabIds = ids.filter((_, j) => j !== idx)
+      const locks = { ...cur.tabLocks }
+      delete locks[removingId]
+      const nextTi = cur.ti > idx ? cur.ti - 1 : Math.min(cur.ti, tabs.length - 1)
+      return patch(p, i, { tabs, tabIds, tabLocks: locks, ti: Math.max(0, nextTi), sel: [] })
     })
   }
 
@@ -1323,14 +1469,40 @@ export default function App() {
     setPanes((p) => {
       if (!p) return p
       const cur = p[i]
-      const keep = cur.tabs.filter((_, j) => {
-        if (j < cur.pinCount) return true
-        if (cur.tabLocks[cur.tabs[j]]) return true
-        return mode === 'others' ? j === idx : j <= idx
+      const ids = ensureTabIds(cur.tabs, cur.tabIds)
+      const keepIndices: number[] = []
+      cur.tabs.forEach((_, j) => {
+        if (j < cur.pinCount) {
+          keepIndices.push(j)
+          return
+        }
+        const jId = ids[j]
+        if (cur.tabLocks[jId]) {
+          keepIndices.push(j)
+          return
+        }
+        if (mode === 'others' ? j === idx : j <= idx) {
+          keepIndices.push(j)
+        }
+      })
+      const tabs = keepIndices.map((j) => cur.tabs[j])
+      const tabIds = keepIndices.map((j) => ids[j])
+      const locks: Record<string, boolean> = {}
+      tabIds.forEach((id) => {
+        if (cur.tabLocks[id]) locks[id] = true
       })
       const activePath = cur.tabs[cur.ti]
-      const ti = Math.max(0, keep.indexOf(activePath))
-      return patch(p, i, { tabs: keep, ti, sel: [], pinCount: Math.min(cur.pinCount, keep.length) })
+      const activeId = ids[cur.ti]
+      const tiById = tabIds.indexOf(activeId)
+      const ti = tiById >= 0 ? tiById : Math.max(0, tabs.indexOf(activePath))
+      return patch(p, i, {
+        tabs,
+        tabIds,
+        tabLocks: locks,
+        ti: Math.min(ti, tabs.length - 1),
+        sel: [],
+        pinCount: Math.min(cur.pinCount, tabs.length)
+      })
     })
   }
 
@@ -1339,14 +1511,18 @@ export default function App() {
       if (!p) return p
       const s = p[i]
       const tabs = [...s.tabs]
+      const tabIds = ensureTabIds(s.tabs, s.tabIds)
       const [path] = tabs.splice(idx, 1)
+      const [id] = tabIds.splice(idx, 1)
       if (idx < s.pinCount) {
         const at = Math.max(0, s.pinCount - 1)
         tabs.splice(at, 0, path)
-        return patch(p, i, { tabs, pinCount: s.pinCount - 1, ti: at })
+        tabIds.splice(at, 0, id)
+        return patch(p, i, { tabs, tabIds, pinCount: s.pinCount - 1, ti: at })
       }
       tabs.splice(s.pinCount, 0, path)
-      return patch(p, i, { tabs, pinCount: s.pinCount + 1, ti: s.pinCount })
+      tabIds.splice(s.pinCount, 0, id)
+      return patch(p, i, { tabs, tabIds, pinCount: s.pinCount + 1, ti: s.pinCount })
     })
 
   const moveTab = (i: number, from: number, to: number) =>
@@ -1357,9 +1533,12 @@ export default function App() {
       // a pinned tab stays in the pinned region and vice versa
       if (from < s.pinCount !== to < s.pinCount) return p
       const tabs = [...s.tabs]
+      const tabIds = ensureTabIds(s.tabs, s.tabIds)
       const [moved] = tabs.splice(from, 1)
+      const [movedId] = tabIds.splice(from, 1)
       tabs.splice(to, 0, moved)
-      return patch(p, i, { tabs, ti: s.ti === from ? to : s.ti })
+      tabIds.splice(to, 0, movedId)
+      return patch(p, i, { tabs, tabIds, ti: s.ti === from ? to : s.ti })
     })
 
   const reopenTab = () => {
@@ -1456,11 +1635,11 @@ export default function App() {
       }
       case 'tabLock': {
         if (tabIdx != null) {
-          const tabPath = me.tabs[tabIdx]
+          const tabId = me.tabIds?.[tabIdx] ?? ('t_' + tabIdx)
           setPanes((p) =>
             p
               ? patch(p, active, {
-                  tabLocks: { ...p[active].tabLocks, [tabPath]: !p[active].tabLocks[tabPath] }
+                  tabLocks: { ...p[active].tabLocks, [tabId]: !p[active].tabLocks[tabId] }
                 })
               : p
           )
@@ -1803,7 +1982,8 @@ export default function App() {
       const idx = menu.tab
       const pinned = idx < me.pinCount
       const tabPath = me.tabs[idx]
-      const locked = !!me.tabLocks[tabPath]
+      const tabId = me.tabIds?.[idx] ?? ('t_' + idx)
+      const locked = !!me.tabLocks[tabId]
       return [
         {
           id: 'tabRename',
@@ -2101,10 +2281,7 @@ export default function App() {
 
   const openGallery = (i: number, path?: string) => {
     const images = imagesOf(i)
-    if (!images.length) {
-      setNote(t('تصویری در این پوشه نیست'))
-      return
-    }
+    if (!images.length) return
     const start = path ?? panes?.[i].sel[0] ?? images[0].path
     setGallery({ images, start: images.some((x) => x.path === start) ? start : images[0].path })
   }
@@ -2458,9 +2635,12 @@ export default function App() {
         else if (action === 'lock')
           setPanes((p) => {
             if (!p) return p
-            const locks = { ...p[pane].tabLocks }
-            if (a.on === false) delete locks[target]
-            else locks[target] = true
+            const curPane = p[pane]
+            const targetIdx = typeof a.tab === 'number' ? a.tab : curPane.ti
+            const tabId = curPane.tabIds?.[targetIdx] ?? ('t_' + targetIdx)
+            const locks = { ...curPane.tabLocks }
+            if (a.on === false) delete locks[tabId]
+            else locks[tabId] = true
             return patch(p, pane, { tabLocks: locks })
           })
         else if (action === 'color') {
@@ -2508,8 +2688,23 @@ export default function App() {
       const el = ev.target as HTMLElement | null
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
       if (!panes) return
+      if (confirmAsk) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault()
+          const ask = confirmAsk
+          setConfirmAsk(null)
+          void runRemove(ask.kind, ask.paths)
+          return
+        }
+        if (ev.key === 'Escape') {
+          ev.preventDefault()
+          setConfirmAsk(null)
+          return
+        }
+        return
+      }
       // a modal owns the keyboard: deleting behind the properties sheet would be invisible
-      if (editor || gallery || menu || columnMenu || marksMenu || settingsOpen || openWith || propsFor) return
+      if (editor || gallery || menu || columnMenu || marksMenu || settingsOpen || openWith || propsFor || confirmAsk) return
       const me = panes[active]
 
       if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
@@ -2722,7 +2917,6 @@ export default function App() {
           <SettingsIcon />
         </button>
         <span className="spacer" />
-        <span className="note">{note}</span>
         <button
           className={'tb' + (prefs.layout === 'dual' ? ' on' : '')}
           title={prefs.layout === 'dual' ? t('تک‌پنجره') : t('دوپنجره')}
@@ -2802,25 +2996,37 @@ export default function App() {
 
       <div className="body" onMouseDown={() => settingsOpen && setSettingsOpen(false)}>
         {ui.sidebarOpen && ui.sidebar === 'docked' && (
-          <Sidebar
-            labels={labelCounts}
-            onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
-            roots={roots}
-            marks={marks}
-            markIcons={markIcons}
-            iconSet={iconSetFor()}
-            activePath={curPath}
-            showHidden={hidden}
-            floating={prefs.sidebar === 'float'}
-            onToggleFloat={() => updatePrefs({ sidebar: prefs.sidebar === 'float' ? 'docked' : 'float' })}
-            onNav={(d) => go(active, d)}
-            onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
-            onMarkDrop={addMarks}
-            drives={drives}
-            onMountDrive={handleMountDrive}
-            onUnmountDrive={handleUnmountDrive}
-            darker={prefs.sidebarDarker}
-          />
+          <>
+            <Sidebar
+              style={{ width: prefs.sidebarWidth }}
+              labels={labelCounts}
+              onPickLabel={(id) => setPanes((p) => p && patch(p, active, { filter: '#' + id }))}
+              roots={roots}
+              marks={marks}
+              markIcons={markIcons}
+              iconSet={iconSetFor()}
+              activePath={curPath}
+              showHidden={hidden}
+              floating={false}
+              onToggleFloat={() => updatePrefs({ sidebar: 'float' })}
+              onNav={(d) => go(active, d)}
+              onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
+              onMarkDrop={addMarks}
+              drives={drives}
+              onMountDrive={handleMountDrive}
+              onUnmountDrive={handleUnmountDrive}
+              collapsed={prefs.sidebarCollapsed}
+              onToggleSection={handleToggleSidebarSection}
+            />
+            <div
+              className="side-split"
+              role="separator"
+              aria-orientation="vertical"
+              title={t('تغییر عرض سایدبار')}
+              onPointerDown={startDockedSidebarResize}
+              onDoubleClick={() => updatePrefs({ sidebarWidth: 208 })}
+            />
+          </>
         )}
 
         {(prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
@@ -2897,19 +3103,8 @@ export default function App() {
               if (mode === 'set') followEditor(i, paths)
             }}
             onFilter={(q) => setPanes((p) => p && patch(p, i, { filter: q }))}
-            onTabNew={() =>
-              setPanes(
-                (p) => p && patch(p, i, { tabs: [...p[i].tabs, tabOf(p[i])], ti: p[i].tabs.length })
-              )
-            }
-            onTabClose={(idx) =>
-              setPanes((p) => {
-                if (!p) return p
-                const tabs = p[i].tabs.filter((_, j) => j !== idx)
-                if (!tabs.length) return p
-                return patch(p, i, { tabs, ti: Math.min(p[i].ti, tabs.length - 1) })
-              })
-            }
+            onTabNew={() => addTab(i, tabOf(panes![i]))}
+            onTabClose={(idx) => closeTab(i, idx)}
             onTabPick={(idx) => setPanes((p) => p && patch(p, i, { ti: idx, sel: [] }))}
             onTabMenu={(idx, x, y) => setMenu({ path: null, tab: idx, x, y })}
             onTabMove={(from, to) => moveTab(i, from, to)}
@@ -3023,8 +3218,14 @@ export default function App() {
         {ui.sidebarOpen && ui.sidebar === 'float' && (
           <div className="side-float">
             <div
-              className={'side-float-panel' + (prefs.sidebarDarker ? ' darker' : '')}
-              style={{ width: prefs.sidebarWidth }}
+              className={'side-float-panel' + (floatDragging ? ' dragging' : '')}
+              style={{
+                width: prefs.sidebarWidth,
+                transform:
+                  floatPos.x !== 0 || floatPos.y !== 0
+                    ? `translate(${floatPos.x}px, ${floatPos.y}px)`
+                    : undefined
+              }}
             >
               <Sidebar
                 labels={labelCounts}
@@ -3035,10 +3236,8 @@ export default function App() {
                 iconSet={iconSetFor()}
                 activePath={curPath}
                 showHidden={hidden}
-                floating={prefs.sidebar === 'float'}
-                onToggleFloat={() =>
-                  updatePrefs({ sidebar: prefs.sidebar === 'float' ? 'docked' : 'float' })
-                }
+                floating={true}
+                onToggleFloat={() => updatePrefs({ sidebar: 'docked' })}
                 onNav={(d) => {
                   go(active, d)
                   setUi((u) => ({ ...u, sidebarOpen: false }))
@@ -3048,7 +3247,10 @@ export default function App() {
                 drives={drives}
                 onMountDrive={handleMountDrive}
                 onUnmountDrive={handleUnmountDrive}
-                darker={prefs.sidebarDarker}
+                onPointerDownHead={startFloatDrag}
+                onDoubleClickHead={() => setFloatPos({ x: 0, y: 0 })}
+                collapsed={prefs.sidebarCollapsed}
+                onToggleSection={handleToggleSidebarSection}
               />
               <div
                 className="side-float-resize"
@@ -3059,7 +3261,11 @@ export default function App() {
             </div>
             <div
               className="side-float-backdrop"
-              onMouseDown={() => setUi((u) => ({ ...u, sidebarOpen: false }))}
+              onMouseDown={() => {
+                if (!floatDragging) {
+                  setUi((u) => ({ ...u, sidebarOpen: false }))
+                }
+              }}
             />
           </div>
         )}
@@ -3148,6 +3354,7 @@ export default function App() {
           </span>
         )}
         <span className="spacer" />
+        {note && <span className="status-note">{note}</span>}
       </footer>
 
       {searchOpen && (
@@ -3385,13 +3592,17 @@ export default function App() {
             </div>
             <div className="dlg-actions">
               <button
+                autoFocus
+                className={confirmAsk.kind === 'delete' ? 'danger' : ''}
                 onClick={() => {
                   const ask = confirmAsk
                   setConfirmAsk(null)
                   void runRemove(ask.kind, ask.paths)
                 }}
-              >{t('بله')}</button>
-              <button onClick={() => setConfirmAsk(null)}>{t(t('انصراف'))}</button>
+              >
+                {t('بله')}
+              </button>
+              <button onClick={() => setConfirmAsk(null)}>{t('انصراف')}</button>
             </div>
           </div>
         </div>

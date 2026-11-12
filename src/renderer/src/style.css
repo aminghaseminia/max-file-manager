@@ -25,6 +25,42 @@
   --c-sheet: #57bf7a;
   --c-slides: #ea9a5c;
   --c-file: #7c8494;
+
+  /* sidebar tone levels (1 = ultra-mild default, 6 = most vivid) */
+  --side-tint: 0.6%;
+  --side-hover: 4%;
+  --side-border: 5%;
+}
+
+:root[data-sidebar-tone='1'] {
+  --side-tint: 0.6%;
+  --side-hover: 4%;
+  --side-border: 5%;
+}
+:root[data-sidebar-tone='2'] {
+  --side-tint: 2%;
+  --side-hover: 6%;
+  --side-border: 8%;
+}
+:root[data-sidebar-tone='3'] {
+  --side-tint: 4.5%;
+  --side-hover: 9%;
+  --side-border: 12%;
+}
+:root[data-sidebar-tone='4'] {
+  --side-tint: 7%;
+  --side-hover: 12%;
+  --side-border: 16%;
+}
+:root[data-sidebar-tone='5'] {
+  --side-tint: 11%;
+  --side-hover: 16%;
+  --side-border: 22%;
+}
+:root[data-sidebar-tone='6'] {
+  --side-tint: 16%;
+  --side-hover: 22%;
+  --side-border: 28%;
 }
 
 :root[data-theme='light'] {
@@ -426,21 +462,33 @@ input {
 
 /* ---------- sidebar ---------- */
 .side {
-  width: 186px;
+  width: var(--sidebar-w, 208px);
+  min-width: 160px;
+  max-width: 600px;
   flex: none;
   padding: 8px 6px;
-  background: var(--panel);
-  border-inline-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) var(--side-tint, 0.6%), var(--bg));
+  border-inline-end: 1px solid color-mix(in srgb, var(--accent) var(--side-border, 5%), var(--line));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.side.darker {
-  background: color-mix(in srgb, #000 6%, var(--panel));
+.side .tree-row:hover {
+  background: color-mix(in srgb, var(--accent) var(--side-hover, 4%), var(--bg));
 }
-.side.darker .tree-row:hover {
-  background: color-mix(in srgb, #000 11%, var(--panel));
+.side-split {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+  background: color-mix(in srgb, var(--accent) var(--side-border, 8%), var(--line));
+  transition: background 0.15s;
+  z-index: 2;
+}
+.side-split:hover,
+.side-split:active {
+  background: var(--accent);
 }
 .side-head {
   display: flex;
@@ -479,11 +527,68 @@ input {
 .side-title {
   margin: 8px 8px 4px;
   font-size: 11px;
-  color: var(--dim);
-  letter-spacing: 0.2px;
+  color: color-mix(in srgb, var(--accent) 55%, var(--dim));
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 .side-head .side-title {
   margin: 0;
+}
+.side-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 4px 2px;
+  padding: 0 4px;
+}
+.side-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  margin: 0;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--accent) 55%, var(--dim));
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-align: start;
+  user-select: none;
+  transition: color 0.12s, background 0.12s;
+}
+.side-section-toggle:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.side-section-toggle .side-title {
+  margin: 0;
+  color: inherit;
+}
+.side-twisty {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  color: inherit;
+  opacity: 0.75;
+  flex: none;
+}
+.side-section-toggle:hover .side-twisty {
+  opacity: 1;
+}
+.side-section-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--dim);
+  opacity: 0.8;
+  margin-inline-start: auto;
+  padding-inline-end: 2px;
 }
 /* float/dock the sidebar without a trip to settings */
 .side-pin {
@@ -492,11 +597,11 @@ input {
   justify-content: center;
   padding: 2px;
   border-radius: 4px;
-  color: var(--dim);
+  color: color-mix(in srgb, var(--accent) 45%, var(--dim));
 }
 .side-pin:hover {
-  color: var(--text);
-  background: var(--panel-3);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg));
 }
 .side-pin.on {
   color: var(--accent);
@@ -1071,6 +1176,14 @@ input {
   border-top: 1px solid var(--line);
   color: var(--dim);
   font-size: 11.5px;
+}
+.status-note {
+  color: var(--accent);
+  font-weight: 500;
+  margin-inline-start: auto;
+  padding: 1px 8px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px;
 }
 .selinfo {
   display: flex;
@@ -1902,9 +2015,9 @@ input {
 }
 
 /* McMojave: macOS traffic lights; symbols appear when the pointer enters the strip */
-.winbtns-mcmojave {
-  gap: 12px;
-  padding-inline: 5px;
+.winbtns.winbtns-mcmojave {
+  gap: 10px;
+  padding-inline: 6px;
 }
 .winbtns-mcmojave .winbtn {
   width: 13px;
@@ -1959,8 +2072,9 @@ input {
 }
 
 /* minimal: small round dots, icons fade in on hover */
-.winbtns-minimal {
-  gap: 6px;
+.winbtns.winbtns-minimal {
+  gap: 9px;
+  padding-inline: 4px;
 }
 .winbtns-minimal .winbtn {
   width: 18px;
@@ -2047,33 +2161,47 @@ html[data-rounded='0'] .app {
   max-width: calc(100vw - 32px);
   flex: none;
   height: 100%;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) var(--side-tint, 0.6%), var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) var(--side-border, 5%), var(--line));
   border-radius: 10px;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   display: flex;
 }
-.side-float-panel.darker {
-  background: color-mix(in srgb, #000 6%, var(--panel));
+.side-float-panel .side-head {
+  cursor: grab;
+  user-select: none;
+}
+.side-float-panel.dragging .side-head {
+  cursor: grabbing;
 }
 .side-float-resize {
   position: absolute;
   inset-inline-end: 0;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 10px;
   cursor: col-resize;
   touch-action: none;
-  z-index: 5;
+  z-index: 10;
+}
+.side-float-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 1px;
+  width: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
   transition: background 0.15s;
 }
-.side-float-resize:hover,
-.side-float-resize:active {
+.side-float-resize:hover::after,
+.side-float-resize:active::after {
   background: var(--accent);
 }
 .side-float-panel .side {
-  width: 100%;
+  width: 100% !important;
+  max-width: none;
   height: 100%;
   border: 0;
   background: transparent;
@@ -2633,6 +2761,17 @@ html[data-rounded='0'] .app {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  touch-action: none;
+}
+.gallery-stage.can-pan {
+  cursor: grab;
+}
+.gallery-stage.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+.gallery-stage.panning .gallery-img {
+  transition: none;
 }
 .gallery-img {
   max-width: 100%;
@@ -2894,11 +3033,6 @@ html[data-rounded='0'] .app {
   width: 18px;
   height: 18px;
   object-fit: contain;
-}
-.winbtns {
-  display: flex;
-  align-items: center;
-  gap: 2px;
 }
 /* the divider sits on the inner edge — mirrored, never at the outer window end */
 .winbtns.side-right {

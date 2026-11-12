@@ -198,7 +198,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
     </div>
   )
 
-  const seg = <T extends string>(
+  const seg = <T extends string | number>(
     value: T,
     options: { v: T; label: string }[],
     key: keyof Prefs,
@@ -207,7 +207,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
     <div className="seg">
       {options.map((o) => (
         <button
-          key={o.v}
+          key={String(o.v)}
           className={value === o.v ? 'on' : ''}
           disabled={disabled}
           onClick={() => onChange({ [key]: o.v } as Partial<Prefs>)}
@@ -678,11 +678,21 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                 null,
                 seg(prefs.sidebar, [{ v: 'docked', label: t('چسبیده') }, { v: 'float', label: t('شناور') }], 'sidebar')
               )}
-              {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
               {row(
-                t('رنگ تیره‌تر برای سایدبار'),
-                t('پس‌زمینهٔ سایدبار برای تفکیک بهتر کمی تیره‌تر نمایش داده شود'),
-                check(prefs.sidebarDarker, 'sidebarDarker')
+                t('سطح رنگ تم سایدبار'),
+                t('تنظیم میزان غلظت رنگ تم روی سایدبار در ۶ سطح (۱ = کمترین رنگ، ۶ = پررنگ‌ترین)'),
+                seg(
+                  prefs.sidebarTone,
+                  [
+                    { v: 1, label: fa(1) },
+                    { v: 2, label: fa(2) },
+                    { v: 3, label: fa(3) },
+                    { v: 4, label: fa(4) },
+                    { v: 5, label: fa(5) },
+                    { v: 6, label: fa(6) }
+                  ],
+                  'sidebarTone'
+                )
               )}
               {row(
                 t('پنهان‌کردن نوار تب با یک تب'),

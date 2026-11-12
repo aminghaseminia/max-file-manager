@@ -69,6 +69,9 @@ export function Gallery({
   const [zoom, setZoom] = useState(1)
   const [rot, setRot] = useState(0)
   const [fit, setFit] = useState(true)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [panning, setPanning] = useState(false)
+  const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const [slide, setSlide] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
   const [crop, setCrop] = useState<Rect | null>(null)
@@ -99,6 +102,7 @@ export function Gallery({
     setZoom(1)
     setRot(0)
     setFit(true)
+    setPan({ x: 0, y: 0 })
   }
 
   const go = (d: number) => {
@@ -243,7 +247,7 @@ export function Gallery({
     onChanged()
   }
 
-  const ratio = (ev: React.MouseEvent) => {
+  const ratio = (ev: React.MouseEvent | React.PointerEvent) => {
     const el = imgRef.current
     if (!el) return null
     const b = el.getBoundingClientRect()
@@ -254,23 +258,63 @@ export function Gallery({
     }
   }
 
-  const onStageDown = (ev: React.MouseEvent) => {
-    if (!cropping) return
-    const p = ratio(ev)
-    if (!p) return
-    setDrag(p)
-    setCrop({ x: p.x, y: p.y, w: 0, h: 0 })
+  const onStageDown = (ev: React.PointerEvent) => {
+    if ((ev.target as HTMLElement).closest('.gallery-nav, .gallery-bar, button, input')) return
+    if (cropping) {
+      const p = ratio(ev)
+      if (!p) return
+      setDrag(p)
+      setCrop({ x: p.x, y: p.y, w: 0, h: 0 })
+      return
+    }
+    if (ev.button !== 0 && ev.button !== 1) return
+    panStart.current = {
+      x: ev.clientX,
+      y: ev.clientY,
+      panX: pan.x,
+      panY: pan.y
+    }
+    setPanning(true)
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    } catch {}
   }
-  const onStageMove = (ev: React.MouseEvent) => {
-    if (!cropping || !drag) return
-    const p = ratio(ev)
-    if (!p) return
-    setCrop({
-      x: Math.min(drag.x, p.x),
-      y: Math.min(drag.y, p.y),
-      w: Math.abs(p.x - drag.x),
-      h: Math.abs(p.y - drag.y)
-    })
+
+  const onStageMove = (ev: React.PointerEvent) => {
+    if (cropping) {
+      if (!drag) return
+      const p = ratio(ev)
+      if (!p) return
+      setCrop({
+        x: Math.min(drag.x, p.x),
+        y: Math.min(drag.y, p.y),
+        w: Math.abs(p.x - drag.x),
+        h: Math.abs(p.y - drag.y)
+      })
+      return
+    }
+    if (panStart.current) {
+      const dx = ev.clientX - panStart.current.x
+      const dy = ev.clientY - panStart.current.y
+      setPan({
+        x: panStart.current.panX + dx,
+        y: panStart.current.panY + dy
+      })
+    }
+  }
+
+  const onStageUp = (ev: React.PointerEvent) => {
+    if (cropping) {
+      setDrag(null)
+      return
+    }
+    if (panStart.current) {
+      try {
+        (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId)
+      } catch {}
+      panStart.current = null
+      setPanning(false)
+    }
   }
 
   useEffect(() => {
@@ -491,15 +535,20 @@ export function Gallery({
       )}
 
       <div
-        className={'gallery-stage' + (cropping ? ' cropping' : '')}
-        onMouseDown={onStageDown}
-        onMouseMove={onStageMove}
-        onMouseUp={() => setDrag(null)}
+        className={
+          'gallery-stage' +
+          (cropping ? ' cropping' : '') +
+          (panning ? ' panning' : !cropping && (!fit || zoom > 1 || pan.x !== 0 || pan.y !== 0) ? ' can-pan' : '')
+        }
+        onPointerDown={onStageDown}
+        onPointerMove={onStageMove}
+        onPointerUp={onStageUp}
+        onPointerCancel={onStageUp}
         onWheel={(e) => {
           if (cropping) return
           e.preventDefault()
           setFit(false)
-          setZoom((z) => Math.min(8, Math.max(0.1, z * (e.deltaY < 0 ? 1.1 : 0.9))))
+          setZoom((z) => Math.min(8, Math.max(0.1, z * (e.deltaY < 0 ? 1.15 : 0.85))))
         }}
       >
         <button className="gallery-nav prev" title={t(t('قبلی (←)'))} onClick={() => go(-1)}>
@@ -515,14 +564,26 @@ export function Gallery({
               draggable={false}
               style={
                 fit
-                  ? { maxWidth: '100%', maxHeight: '100%' }
+                  ? {
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rot}deg)`
+                    }
                   : {
                       maxWidth: 'none',
                       maxHeight: 'none',
-                      transform: `scale(${zoom}) rotate(${rot}deg)`
+                      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rot}deg)`
                     }
               }
-              onDoubleClick={() => !cropping && (setFit((f) => !f), setZoom(1))}
+              onDoubleClick={() => {
+                if (cropping) return
+                if (!fit || zoom !== 1 || pan.x !== 0 || pan.y !== 0) {
+                  resetView()
+                } else {
+                  setFit(false)
+                  setZoom(2)
+                }
+              }}
             />
             {cropping && crop && (
               <div

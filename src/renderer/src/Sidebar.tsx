@@ -1,10 +1,10 @@
 import { t } from './i18n.ts'
 import { useEffect, useRef, useState } from 'react'
 import { api, type DirRef, type Drive } from './api'
-import { baseName } from './format'
+import { baseName, fa } from './format'
 import { clearDragPaths, keepDragPaths, lastDragPaths } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
 
@@ -71,7 +71,11 @@ type Props = {
   drives?: Drive[]
   onMountDrive?(device: string): void
   onUnmountDrive?(deviceOrMount: string): void
-  darker?: boolean
+  style?: React.CSSProperties
+  onPointerDownHead?(ev: React.PointerEvent): void
+  onDoubleClickHead?(): void
+  collapsed?: string[]
+  onToggleSection?(id: string): void
 }
 
 export function Sidebar({
@@ -91,8 +95,27 @@ export function Sidebar({
   drives,
   onMountDrive,
   onUnmountDrive,
-  darker
+  style,
+  onPointerDownHead,
+  onDoubleClickHead,
+  collapsed,
+  onToggleSection
 }: Props) {
+  const [localCollapsed, setLocalCollapsed] = useState<Set<string>>(() => new Set())
+  const isCollapsed = (id: string) =>
+    collapsed ? collapsed.includes(id) : localCollapsed.has(id)
+  const toggleSection = (id: string) => {
+    if (onToggleSection) {
+      onToggleSection(id)
+    } else {
+      setLocalCollapsed((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    }
+  }
   const [over, setOver] = useState(false)
   const ref = useRef<HTMLElement>(null)
   const lastOver = useRef<{ x: number; y: number; at: number } | null>(null)
@@ -186,14 +209,30 @@ export function Sidebar({
   return (
     <aside
       ref={ref}
-      className={'side' + (over ? ' drop' : '') + (darker ? ' darker' : '')}
+      style={style}
+      className={'side' + (over ? ' drop' : '')}
       onDragEnter={handleDragEnter}
       onDragOver={acceptDrag}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="side-head">
-        <span className="side-title">{t(t('مکان‌ها'))}</span>
+      <div
+        className="side-head"
+        onPointerDown={onPointerDownHead}
+        onDoubleClick={onDoubleClickHead}
+      >
+        <button
+          type="button"
+          className="side-section-toggle"
+          onClick={() => toggleSection('places')}
+          aria-expanded={!isCollapsed('places')}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="side-twisty">
+            {!isCollapsed('places') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+          </span>
+          <span className="side-title">{t('مکان‌ها')}</span>
+        </button>
         <button
           type="button"
           className={'side-pin' + (floating ? ' on' : '')}
@@ -201,6 +240,7 @@ export function Sidebar({
           aria-label={floating ? t('چسباندن سایدبار') : t('شناور کردن سایدبار')}
           aria-pressed={floating}
           onClick={onToggleFloat}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <PinIcon filled={floating} />
         </button>
@@ -211,18 +251,104 @@ export function Sidebar({
           <span>{t('پوشه را رها کن تا نشان شود')}</span>
         </div>
       )}
-      {roots.map((r) => (
-        <TreeNode
-          key={r.path}
-          node={r}
-          depth={0}
-          activePath={activePath}
-          showHidden={showHidden}
-          onNav={onNav}
-          onDragOver={acceptDrag}
-          onDrop={handleDrop}
-        />
-      ))}
+      {!isCollapsed('places') &&
+        roots.map((r) => {
+          const active = activePath === r.path
+          const Glyph = r.name === '~' ? HomeIcon : DriveIcon
+          const label = r.name === '~' ? t('خانه') : r.name === '/' ? t('ریشه') : r.name
+          return (
+            <div
+              key={r.path}
+              className={'tree-row' + (active ? ' on' : '')}
+              draggable
+              onDragStart={(ev) => {
+                keepDragPaths([r.path])
+                dragLog(`place start ${r.path}`)
+                ev.dataTransfer.setData('application/x-mfm-mark', JSON.stringify([r.path]))
+                ev.dataTransfer.effectAllowed = 'all'
+              }}
+              onDragOver={acceptDrag}
+              onDrop={handleDrop}
+            >
+              <span className="twisty" />
+              <button className="tree-name" dir="auto" title={r.path} onClick={() => onNav(r.path)}>
+                <Glyph />
+                <span>{label}</span>
+              </button>
+            </div>
+          )
+        })}
+
+      {(marks.length > 0 || over) && (
+        <div className="side-section-head">
+          <button
+            type="button"
+            className="side-section-toggle"
+            onClick={() => toggleSection('bookmarks')}
+            aria-expanded={!isCollapsed('bookmarks')}
+          >
+            <span className="side-twisty">
+              {!isCollapsed('bookmarks') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+            </span>
+            <span className="side-title">{t('نشان‌شده‌ها')}</span>
+            {marks.length > 0 && <span className="side-section-badge">{fa(marks.length)}</span>}
+          </button>
+        </div>
+      )}
+      {!isCollapsed('bookmarks') &&
+        marks.map((m) => (
+          <div key={m} className={'tree-row mark' + (activePath === m ? ' on' : '')}>
+            <span className="twisty" />
+            <button className="tree-name" dir="auto" title={m} onClick={() => onNav(m)}>
+              <EntryIcon
+                size={14}
+                iconSet={iconSet}
+                entry={{
+                  name: baseName(m),
+                  path: m,
+                  dir: true,
+                  size: 0,
+                  mtime: 0,
+                  ext: '',
+                  color: markIcons[m]?.color,
+                  icon: markIcons[m]?.icon
+                }}
+              />
+              <span>{baseName(m)}</span>
+            </button>
+            <button className="x" title={t('حذف نشان')} onClick={() => onUnmark(m)}>
+              <XIcon size={12} />
+            </button>
+          </div>
+        ))}
+
+      {labels.length > 0 && (
+        <div className="side-section-head">
+          <button
+            type="button"
+            className="side-section-toggle"
+            onClick={() => toggleSection('labels')}
+            aria-expanded={!isCollapsed('labels')}
+          >
+            <span className="side-twisty">
+              {!isCollapsed('labels') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+            </span>
+            <span className="side-title">{t('برچسب‌ها')}</span>
+            <span className="side-section-badge">{fa(labels.length)}</span>
+          </button>
+        </div>
+      )}
+      {!isCollapsed('labels') &&
+        labels.map((l) => (
+          <div key={l.id} className="tree-row">
+            <span className="twisty" />
+            <button className="tree-name" onClick={() => onPickLabel(l.id)} title={`${t('فیلتر')}: ${t(l.name)}`}>
+              <span className="lbl" style={{ background: l.color }} />
+              <span>{t(l.name)}</span>
+              <span className="dim count">{fa(l.count)}</span>
+            </button>
+          </div>
+        ))}
 
       {drives && drives.length > 0 && <div className="side-title">{t('حافظه‌های جانبی')}</div>}
       {drives?.map((d) => {
@@ -272,106 +398,6 @@ export function Sidebar({
           </div>
         )
       })}
-
-      {labels.length > 0 && <div className="side-title">{t(t('برچسب‌ها'))}</div>}
-      {labels.map((l) => (
-        <div key={l.id} className="tree-row">
-          <span className="twisty" />
-          <button className="tree-name" onClick={() => onPickLabel(l.id)} title={`${t('فیلتر')}: ${t(l.name)}`}>
-            <span className="lbl" style={{ background: l.color }} />
-            <span>{t(l.name)}</span>
-            <span className="dim count">{l.count}</span>
-          </button>
-        </div>
-      ))}
-
-      {(marks.length > 0 || over) && <div className="side-title">{t(t('نشان‌شده‌ها'))}</div>}
-      {marks.map((m) => (
-        <div key={m} className={'tree-row mark' + (activePath === m ? ' on' : '')}>
-          <span className="twisty" />
-          <button className="tree-name" dir="auto" title={m} onClick={() => onNav(m)}>
-            <EntryIcon
-              size={14}
-              iconSet={iconSet}
-              entry={{
-                name: baseName(m),
-                path: m,
-                dir: true,
-                size: 0,
-                mtime: 0,
-                ext: '',
-                color: markIcons[m]?.color,
-                icon: markIcons[m]?.icon
-              }}
-            />
-            <span>{baseName(m)}</span>
-          </button>
-          <button className="x" title={t(t('حذف نشان'))} onClick={() => onUnmark(m)}>
-            <XIcon size={12} />
-          </button>
-        </div>
-      ))}
     </aside>
-  )
-}
-
-/** Lazily loaded folder tree: children are fetched only when a node opens. */
-function TreeNode({ node, depth, activePath, onNav, showHidden, onDragOver, onDrop }: {
-  node: DirRef
-  depth: number
-  activePath: string
-  showHidden: boolean
-  onNav(dir: string): void
-  onDragOver?(ev: React.DragEvent): void
-  onDrop?(ev: React.DragEvent): void
-}) {
-  const [open, setOpen] = useState(false)
-  const [kids, setKids] = useState<DirRef[] | null>(null)
-
-  useEffect(() => {
-    if (open && !kids) void api.dirs(node.path, showHidden).then(setKids).catch(() => setKids([]))
-  }, [open, kids, node.path, showHidden])
-
-  const active = activePath === node.path
-  const Glyph = depth === 0 ? (node.name === '~' ? HomeIcon : DriveIcon) : FolderIcon
-  const label = node.name === '~' ? t('خانه') : node.name === '/' ? t('ریشه') : node.name
-
-  return (
-    <>
-      <div
-        className={'tree-row' + (active ? ' on' : '')}
-        style={{ paddingInlineStart: 6 + depth * 12 }}
-        draggable
-        onDragStart={(ev) => {
-          // its own type: dropping it on a pane must not copy the folder, only the sidebar listens
-          keepDragPaths([node.path])
-          dragLog(`tree start ${node.path}`)
-          ev.dataTransfer.setData('application/x-mfm-mark', JSON.stringify([node.path]))
-          ev.dataTransfer.effectAllowed = 'all'
-        }}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-      >
-        <button className="twisty" onClick={() => setOpen((o) => !o)} aria-label={t(t('باز/بسته'))}>
-          {open ? <ChevronDownIcon size={12} /> : <ChevronLeftIcon size={12} />}
-        </button>
-        <button className="tree-name" dir="auto" title={node.path} onClick={() => onNav(node.path)}>
-          <Glyph />
-          <span>{label}</span>
-        </button>
-      </div>
-      {open && kids?.map((k) => (
-        <TreeNode
-          key={k.path}
-          node={k}
-          depth={depth + 1}
-          activePath={activePath}
-          showHidden={showHidden}
-          onNav={onNav}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-        />
-      ))}
-    </>
   )
 }

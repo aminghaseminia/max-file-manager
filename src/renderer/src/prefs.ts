@@ -92,7 +92,10 @@ export type Prefs = {
   sidebar: 'docked' | 'float'
   sidebarOpen: boolean
   sidebarWidth: number
-  sidebarDarker: boolean
+  /** 1 = ultra mild (default), 2 = soft, 3 = gentle, 4 = medium, 5 = pronounced, 6 = vivid */
+  sidebarTone: 1 | 2 | 3 | 4 | 5 | 6
+  /** ids of sidebar sections currently collapsed ('places' | 'bookmarks' | 'labels') */
+  sidebarCollapsed: string[]
   /** command id → accelerator text; '' means the command has no key */
   shortcuts: Record<string, string>
   /** command ids shown as buttons in the toolbar, in order */
@@ -205,7 +208,8 @@ export const DEFAULTS: Prefs = {
   sidebar: 'docked',
   sidebarOpen: true,
   sidebarWidth: 208,
-  sidebarDarker: false,
+  sidebarTone: 1,
+  sidebarCollapsed: [],
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
@@ -418,7 +422,14 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
       typeof p.sidebarWidth === 'number' && Number.isFinite(p.sidebarWidth)
         ? Math.min(600, Math.max(160, Math.round(p.sidebarWidth)))
         : 208,
-    sidebarDarker: p.sidebarDarker === true,
+    sidebarTone:
+      typeof p.sidebarTone === 'number' && [1, 2, 3, 4, 5, 6].includes(p.sidebarTone)
+        ? (p.sidebarTone as 1 | 2 | 3 | 4 | 5 | 6)
+        : 1,
+    sidebarCollapsed:
+      Array.isArray(p.sidebarCollapsed)
+        ? p.sidebarCollapsed.filter((x): x is string => typeof x === 'string')
+        : [],
     shortcuts,
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
@@ -493,7 +504,11 @@ export function migrateLegacy(s: any): Partial<Prefs> {
     if (s.ui.sidebar === 'float') p.sidebar = 'float'
     if (s.ui.sidebarOpen === false) p.sidebarOpen = false
     if (typeof s.ui.sidebarWidth === 'number') p.sidebarWidth = s.ui.sidebarWidth
-    if (typeof s.ui.sidebarDarker === 'boolean') p.sidebarDarker = s.ui.sidebarDarker
+    if (typeof s.ui.sidebarTone === 'number' && [1, 2, 3, 4, 5, 6].includes(s.ui.sidebarTone)) {
+      p.sidebarTone = s.ui.sidebarTone as 1 | 2 | 3 | 4 | 5 | 6
+    } else if (s.ui.sidebarDarker === true) {
+      p.sidebarTone = 4
+    }
     if (Array.isArray(s.ui.iconDirs)) p.iconDirs = s.ui.iconDirs.filter((d: unknown) => typeof d === 'string')
     if (typeof s.ui.iconTheme === 'string') p.iconTheme = s.ui.iconTheme
   }

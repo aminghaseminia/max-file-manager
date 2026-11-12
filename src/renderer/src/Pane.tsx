@@ -51,6 +51,7 @@ export type FolderView = { view?: View; columns?: string[]; sortKey?: string; so
 
 export type PaneState = {
   tabs: string[]
+  tabIds?: string[]
   ti: number
   /** custom tab titles keyed by folder path */
   tabNames: Record<string, string>
@@ -544,13 +545,14 @@ export function Pane(props: Props) {
       {showTabs && (
       <div className="tabs">
         {pane.tabs.map((tabPath, i) => {
+          const tabId = pane.tabIds?.[i] ?? ('t_' + i)
           const pinned = i < pane.pinCount
-          const locked = pane.tabLocks[tabPath] === true
+          const locked = pane.tabLocks[tabId] === true
           const title = pane.tabNames[tabPath] || tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath
           const tabColor = props.tabColors[tabPath]
           return (
             <div
-              key={tabPath + i}
+              key={tabId}
               className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
               style={
                 tabColor && i === pane.ti
