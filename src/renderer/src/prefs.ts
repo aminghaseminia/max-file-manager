@@ -159,9 +159,18 @@ export type Prefs = {
   startFolder: string
   /** extension → app that opens it, overriding the OS default */
   defaultApps: Record<string, { id: string; name: string }>
+  /** custom background commands with %f substitution for file extensions or folders */
+  customCommands: CustomCommand[]
   // icon packs (folder look)
   iconDirs: string[]
   iconTheme: string
+}
+
+export type CustomCommand = {
+  id: string
+  label: string
+  pattern: string
+  command: string
 }
 
 export const DEFAULT_FONT_FAMILY = "Vazirmatn, system-ui, 'Noto Sans', sans-serif"
@@ -249,6 +258,7 @@ export const DEFAULTS: Prefs = {
   hotkeyEnabled: false,
   startFolder: '',
   defaultApps: {},
+  customCommands: [],
   iconDirs: [],
   iconTheme: ''
 }
@@ -363,6 +373,27 @@ function cleanDefaultApps(raw: unknown): Record<string, { id: string; name: stri
     out[ext] = { id: app.id, name: app.name.trim().slice(0, 120) }
   }
   return out
+}
+
+function cleanCustomCommands(raw: unknown): CustomCommand[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is CustomCommand =>
+      Boolean(
+        x &&
+        typeof x === 'object' &&
+        typeof (x as CustomCommand).label === 'string' &&
+        typeof (x as CustomCommand).pattern === 'string' &&
+        typeof (x as CustomCommand).command === 'string'
+      )
+    )
+    .map((x, i) => ({
+      id: typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `cmd_${Date.now()}_${i}`,
+      label: x.label.trim().slice(0, 100),
+      pattern: x.pattern.trim().slice(0, 100),
+      command: x.command.trim().slice(0, 1000)
+    }))
+    .filter((x) => x.label && x.pattern && x.command)
 }
 
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
@@ -489,6 +520,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     hotkeyEnabled: p.hotkeyEnabled === true,
     startFolder: typeof p.startFolder === 'string' ? p.startFolder : '',
     defaultApps: cleanDefaultApps(p.defaultApps),
+    customCommands: cleanCustomCommands(p.customCommands),
     iconDirs: Array.isArray(p.iconDirs) ? p.iconDirs.filter((d) => typeof d === 'string' && d) : [],
     iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : ''
   }

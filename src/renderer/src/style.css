@@ -659,6 +659,44 @@ input {
   opacity: 1;
 }
 
+/* draggable bookmarks */
+.tree-row.mark {
+  position: relative;
+  cursor: grab;
+  user-select: none;
+  transition: opacity 0.15s ease, background 0.1s ease;
+}
+.tree-row.mark:active {
+  cursor: grabbing;
+}
+.tree-row.mark .tree-name {
+  cursor: grab;
+}
+.tree-row.mark .tree-name:active {
+  cursor: grabbing;
+}
+.tree-row.mark.dragging {
+  opacity: 0.35;
+}
+.tree-row.mark.drop-before::before,
+.tree-row.mark.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+.tree-row.mark.drop-before::before {
+  top: -1px;
+}
+.tree-row.mark.drop-after::after {
+  bottom: -1px;
+}
+
 /* removable drives in sidebar */
 .tree-row.side-drive {
   position: relative;

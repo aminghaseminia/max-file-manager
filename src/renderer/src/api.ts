@@ -216,6 +216,7 @@ export type Api = {
     path?: string,
     dir?: string
   ): Promise<{ ok: true; output: string } | { error: string }>
+  runCustomCommand(command: string, path: string): Promise<{ ok: true } | { error: string }>
   openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   isDefaultFileManager(): Promise<boolean>

@@ -80,6 +80,7 @@ type Props = {
   onDoubleClickHead?(): void
   collapsed?: string[]
   onToggleSection?(id: string): void
+  onReorderMarks?(from: number, to: number, place: 'before' | 'after'): void
 }
 
 export function Sidebar({
@@ -103,8 +104,11 @@ export function Sidebar({
   onPointerDownHead,
   onDoubleClickHead,
   collapsed,
-  onToggleSection
+  onToggleSection,
+  onReorderMarks
 }: Props) {
+  const [dragMarkIdx, setDragMarkIdx] = useState<number | null>(null)
+  const [dropMarkTarget, setDropMarkTarget] = useState<{ idx: number; place: 'before' | 'after' } | null>(null)
   const [localCollapsed, setLocalCollapsed] = useState<Set<string>>(() => new Set())
   const isCollapsed = (id: string) =>
     collapsed ? collapsed.includes(id) : localCollapsed.has(id)
@@ -132,6 +136,7 @@ export function Sidebar({
   /** Enter and over both count: a drop must work even if the pointer stops moving. */
   const acceptDrag = (ev: React.DragEvent) => {
     const types = ev.dataTransfer.types
+    if (types.includes('application/x-mfm-bookmark')) return
     const ours = types.includes('application/x-mfm') || types.includes('application/x-mfm-mark')
     const outside = types.includes('Files') || types.includes('text/uri-list') || types.includes('text/plain')
     if (!ours && !outside && !lastDragPaths().length) return
@@ -301,31 +306,107 @@ export function Sidebar({
         </div>
       )}
       {!isCollapsed('bookmarks') &&
-        marks.map((m) => (
-          <div key={m} className={'tree-row mark' + (activePath === m ? ' on' : '')}>
-            <span className="twisty" />
-            <button className="tree-name" dir="auto" title={m} onClick={() => onNav(m)}>
-              <EntryIcon
-                size={14}
-                iconSet={iconSet}
-                entry={{
-                  name: baseName(m),
-                  path: m,
-                  dir: true,
-                  size: 0,
-                  mtime: 0,
-                  ext: '',
-                  color: markIcons[m]?.color,
-                  icon: markIcons[m]?.icon
+        marks.map((m, idx) => {
+          const isDragging = dragMarkIdx === idx
+          const isTarget = dropMarkTarget?.idx === idx && dragMarkIdx !== idx
+          const dropPlace = isTarget ? dropMarkTarget?.place : null
+          const targetClass = dropPlace ? ` drop-${dropPlace}` : ''
+          return (
+            <div
+              key={m}
+              className={
+                'tree-row mark' +
+                (activePath === m ? ' on' : '') +
+                (isDragging ? ' dragging' : '') +
+                targetClass
+              }
+              draggable
+              onDragStart={(ev) => {
+                ev.dataTransfer.setData('application/x-mfm-bookmark', String(idx))
+                ev.dataTransfer.setData('application/x-mfm', JSON.stringify([m]))
+                ev.dataTransfer.setData('text/plain', m)
+                ev.dataTransfer.effectAllowed = 'move'
+                setDragMarkIdx(idx)
+              }}
+              onDragOver={(ev) => {
+                if (ev.dataTransfer.types.includes('application/x-mfm-bookmark')) {
+                  ev.preventDefault()
+                  ev.stopPropagation()
+                  ev.dataTransfer.dropEffect = 'move'
+                  const rect = ev.currentTarget.getBoundingClientRect()
+                  const place: 'before' | 'after' =
+                    ev.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+                  if (
+                    !dropMarkTarget ||
+                    dropMarkTarget.idx !== idx ||
+                    dropMarkTarget.place !== place
+                  ) {
+                    setDropMarkTarget({ idx, place })
+                  }
+                }
+              }}
+              onDragLeave={(ev) => {
+                if (
+                  dropMarkTarget?.idx === idx &&
+                  !ev.currentTarget.contains(ev.relatedTarget as Node | null)
+                ) {
+                  setDropMarkTarget(null)
+                }
+              }}
+              onDrop={(ev) => {
+                const raw = ev.dataTransfer.getData('application/x-mfm-bookmark')
+                if (raw !== '') {
+                  ev.preventDefault()
+                  ev.stopPropagation()
+                  const fromIdx = Number(raw)
+                  const target = dropMarkTarget
+                  setDragMarkIdx(null)
+                  setDropMarkTarget(null)
+                  if (!Number.isNaN(fromIdx) && onReorderMarks) {
+                    const place = target?.place ?? (fromIdx < idx ? 'after' : 'before')
+                    onReorderMarks(fromIdx, idx, place)
+                  }
+                }
+              }}
+              onDragEnd={() => {
+                setDragMarkIdx(null)
+                setDropMarkTarget(null)
+              }}
+            >
+              <span className="twisty" />
+              <button className="tree-name" dir="auto" title={m} onClick={() => onNav(m)}>
+                <EntryIcon
+                  size={14}
+                  iconSet={iconSet}
+                  entry={{
+                    name: baseName(m),
+                    path: m,
+                    dir: true,
+                    size: 0,
+                    mtime: 0,
+                    ext: '',
+                    color: markIcons[m]?.color,
+                    icon: markIcons[m]?.icon
+                  }}
+                />
+                <span>{baseName(m)}</span>
+              </button>
+              <button
+                className="x"
+                title={t('حذف نشان')}
+                draggable={false}
+                onPointerDown={(e) => e.stopPropagation()}
+                onDragStart={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
                 }}
-              />
-              <span>{baseName(m)}</span>
-            </button>
-            <button className="x" title={t('حذف نشان')} onClick={() => onUnmark(m)}>
-              <XIcon size={12} />
-            </button>
-          </div>
-        ))}
+                onClick={() => onUnmark(m)}
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          )
+        })}
 
       {labels.length > 0 && (
         <div className="side-section-head">

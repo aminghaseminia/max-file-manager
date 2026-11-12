@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, sortEntries, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -350,3 +350,38 @@ test('downloadUrl hands browser drop zones a real file payload', () => {
     'application/octet-stream:a_b.txt:file:///tmp/a%3Ab.txt'
   )
 })
+
+test('reorderItem: shifts elements correctly before and after', () => {
+  const items = ['a', 'b', 'c', 'd']
+  // Move 0 ('a') to before 2 ('c') -> ['b', 'a', 'c', 'd']
+  assert.deepEqual(reorderItem(items, 0, 2, 'before'), ['b', 'a', 'c', 'd'])
+  // Move 0 ('a') to after 2 ('c') -> ['b', 'c', 'a', 'd']
+  assert.deepEqual(reorderItem(items, 0, 2, 'after'), ['b', 'c', 'a', 'd'])
+  // Move 3 ('d') to before 1 ('b') -> ['a', 'd', 'b', 'c']
+  assert.deepEqual(reorderItem(items, 3, 1, 'before'), ['a', 'd', 'b', 'c'])
+  // Move 3 ('d') to after 1 ('b') -> ['a', 'b', 'd', 'c']
+  assert.deepEqual(reorderItem(items, 3, 1, 'after'), ['a', 'b', 'd', 'c'])
+  // Move to same index or out of bounds returns unchanged
+  assert.deepEqual(reorderItem(items, 1, 1, 'before'), items)
+  assert.deepEqual(reorderItem(items, -1, 2, 'before'), items)
+  assert.deepEqual(reorderItem(items, 0, 5, 'after'), items)
+})
+
+test('matchCustomCommand: matches file extensions and folder patterns accurately', () => {
+  // Extension matching
+  assert.equal(matchCustomCommand({ pattern: 'pdf' }, '/docs/invoice.pdf', false), true)
+  assert.equal(matchCustomCommand({ pattern: '.pdf' }, '/docs/invoice.PDF', false), true)
+  assert.equal(matchCustomCommand({ pattern: 'jpg, png, webp' }, '/img/photo.PNG', false), true)
+  assert.equal(matchCustomCommand({ pattern: 'jpg, png, webp' }, '/img/photo.gif', false), false)
+  // Folder matching
+  assert.equal(matchCustomCommand({ pattern: 'folder' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'dir' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'directory' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'پوشه' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'folder' }, '/home/user/file.txt', false), false)
+  assert.equal(matchCustomCommand({ pattern: 'txt' }, '/home/user/myfolder', true), false)
+  // Wildcard matching
+  assert.equal(matchCustomCommand({ pattern: '*' }, '/home/user/file.xyz', false), true)
+  assert.equal(matchCustomCommand({ pattern: '*' }, '/home/user/myfolder', true), true)
+})
+

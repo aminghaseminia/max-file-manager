@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('api', {
   registerHotkey: (accel: string) => ipcRenderer.invoke('hotkey:register', accel),
   runScript: (command: string, path?: string, dir?: string) =>
     ipcRenderer.invoke('app:runScript', { command, path, dir }),
+  runCustomCommand: (command: string, path: string) =>
+    ipcRenderer.invoke('app:runCustomCommand', { command, path }),
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   isDefaultFileManager: () => ipcRenderer.invoke('desktop:isDefaultFileManager'),

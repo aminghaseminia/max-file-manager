@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api, type SearchProgress } from './api'
-import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, mergePrefs, type ColId, type Prefs } from './prefs'
+import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, mergePrefs, type ColId, type CustomCommand, type Prefs } from './prefs'
 import { fa } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
@@ -86,6 +86,64 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
   const [indexSt, setIndexSt] = useState<SearchProgress | null>(null)
   const [ioBusy, setIoBusy] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState('')
+  const [cmdIdDraft, setCmdIdDraft] = useState<string | null>(null)
+  const [cmdLabel, setCmdLabel] = useState('')
+  const [cmdPattern, setCmdPattern] = useState('')
+  const [cmdType, setCmdType] = useState<'ext' | 'folder'>('ext')
+  const [cmdLine, setCmdLine] = useState('')
+
+  const handleSaveCmd = () => {
+    const label = cmdLabel.trim()
+    const pattern = (cmdType === 'folder' ? 'folder' : cmdPattern.trim()).toLowerCase().replace(/^\./, '')
+    const command = cmdLine.trim()
+    if (!label || !pattern || !command) return
+
+    const list = [...(prefs.customCommands ?? [])]
+    if (cmdIdDraft) {
+      const idx = list.findIndex((c) => c.id === cmdIdDraft)
+      if (idx >= 0) {
+        list[idx] = { id: cmdIdDraft, label, pattern, command }
+      } else {
+        list.push({ id: cmdIdDraft, label, pattern, command })
+      }
+    } else {
+      list.push({
+        id: `cmd_${Date.now()}`,
+        label,
+        pattern,
+        command
+      })
+    }
+    onChange({ customCommands: list })
+    setCmdIdDraft(null)
+    setCmdLabel('')
+    setCmdPattern('')
+    setCmdLine('')
+  }
+
+  const handleEditCmd = (c: CustomCommand) => {
+    setCmdIdDraft(c.id)
+    setCmdLabel(c.label)
+    setCmdLine(c.command)
+    if (c.pattern === 'folder' || c.pattern === 'dir' || c.pattern === 'directory' || c.pattern === 'پوشه') {
+      setCmdType('folder')
+      setCmdPattern('folder')
+    } else {
+      setCmdType('ext')
+      setCmdPattern(c.pattern)
+    }
+  }
+
+  const handleDeleteCmd = (id: string) => {
+    const list = (prefs.customCommands ?? []).filter((c) => c.id !== id)
+    onChange({ customCommands: list })
+    if (cmdIdDraft === id) {
+      setCmdIdDraft(null)
+      setCmdLabel('')
+      setCmdPattern('')
+      setCmdLine('')
+    }
+  }
 
   // the index page shows the live run, so «is it indexing?» is answerable without guessing
   useEffect(() => {
@@ -957,6 +1015,107 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   : appExt.trim()
                     ? t('برنامه‌ای برای این پسوند پیدا نشد')
                     : t('بدون نقطه؛ مثلاً png')}
+              </div>
+
+              <div className="pref-section-title" style={{ marginTop: 24 }}>
+                {t('دستورهای سفارشی (Open with)')}
+              </div>
+              <div className="hint">
+                {t(
+                  'برای پسوندها یا پوشه‌ها دستور سفارشی تعریف کن که در پس‌زمینه اجرا شود. %f با مسیر فایل یا پوشه جایگزین می‌شود.'
+                )}
+              </div>
+              {(prefs.customCommands ?? []).map((cmd) => (
+                <div className="pref-row" key={cmd.id}>
+                  <div className="pref-label">
+                    <span className="badge" dir="ltr" style={{ fontWeight: 600 }}>
+                      {cmd.pattern === 'folder' ? t('پوشه') : cmd.pattern === '*' ? t('همه') : `.${cmd.pattern}`}
+                    </span>
+                    <span>{cmd.label}</span>
+                    <span className="hint" dir="ltr" style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                      {cmd.command}
+                    </span>
+                  </div>
+                  <div className="pref-control">
+                    <button className="btn ghost mini" onClick={() => handleEditCmd(cmd)}>
+                      {t('ویرایش')}
+                    </button>
+                    <button className="btn ghost mini" onClick={() => handleDeleteCmd(cmd.id)}>
+                      {t('حذف')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="preset-save" style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <button
+                    type="button"
+                    className={'btn mini' + (cmdType === 'ext' ? ' primary' : ' ghost')}
+                    onClick={() => setCmdType('ext')}
+                  >
+                    {t('پسوند فایل')}
+                  </button>
+                  <button
+                    type="button"
+                    className={'btn mini' + (cmdType === 'folder' ? ' primary' : ' ghost')}
+                    onClick={() => {
+                      setCmdType('folder')
+                      setCmdPattern('folder')
+                    }}
+                  >
+                    {t('پوشه')}
+                  </button>
+                </div>
+                <input
+                  className="pref-input"
+                  style={{ minWidth: 160 }}
+                  placeholder={t('عنوان در منو (مثلاً باز کردن در کد)')}
+                  value={cmdLabel}
+                  onChange={(e) => setCmdLabel(e.target.value)}
+                />
+                {cmdType === 'ext' && (
+                  <input
+                    className="pref-input"
+                    dir="ltr"
+                    style={{ width: 110 }}
+                    placeholder={t('پسوند (مثلاً pdf)')}
+                    value={cmdPattern}
+                    onChange={(e) => setCmdPattern(e.target.value)}
+                  />
+                )}
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  style={{ flex: 1, minWidth: 180 }}
+                  placeholder={t('دستور با %f (مثلاً code %f)')}
+                  value={cmdLine}
+                  onChange={(e) => setCmdLine(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!cmdLabel.trim() || !cmdLine.trim() || (cmdType === 'ext' && !cmdPattern.trim())}
+                  onClick={handleSaveCmd}
+                >
+                  {cmdIdDraft ? t('به‌روزرسانی') : t('افزودن')}
+                </button>
+                {cmdIdDraft && (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      setCmdIdDraft(null)
+                      setCmdLabel('')
+                      setCmdPattern('')
+                      setCmdLine('')
+                    }}
+                  >
+                    {t('انصراف')}
+                  </button>
+                )}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {t('راهنما: %f با مسیر فایل یا پوشه جایگزین می‌شود. مثال: code %f یا subl %f یا python %f')}
               </div>
             </>
           )}

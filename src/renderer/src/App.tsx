@@ -52,10 +52,12 @@ import {
   isArchiveName,
   isImage,
   joinPath,
+  matchCustomCommand,
   menuTargets,
   navIndex,
   opensInEditor,
   orderEntries,
+  reorderItem,
   typeLabel,
   type NavMove,
   type SortKey
@@ -549,6 +551,17 @@ export default function App() {
 
   const path0 = panes ? tabOf(panes[0]) : ''
   const path1 = panes ? tabOf(panes[1]) : ''
+  const curPath = panes ? tabOf(panes[active]) : ''
+
+  useEffect(() => {
+    const appName = t('مدیر فایل مکس')
+    const cur = curPath ? baseName(curPath) || curPath : ''
+    document.title = cur ? `${cur} — ${appName}` : appName
+  }, [curPath, prefs.lang])
+
+  const handleReorderMarks = (from: number, to: number, place: 'before' | 'after') => {
+    setMarks((m) => reorderItem(m, from, to, place))
+  }
 
   /** A folder format overrides the app default only while that folder is loaded. */
   const viewOf = (i: number): View => (panes?.[i]?.fmt?.view ?? view) as View
@@ -1599,13 +1612,27 @@ export default function App() {
       const cmd = prefs.scripts[name]
       const p = menu.path ?? tabOf(panes[active])
       if (cmd) {
-        setNote(`اجرای ${name}…`)
+        setNote(t('در حال اجرای {name}…', { name }))
         void api.runScript(cmd, p, dirOf(p)).then((r) => {
           setNote(
             'error' in r
               ? `${name}: ${r.error.slice(0, 120)}`
               : `${name}: ${(r.output || t('انجام شد')).slice(0, 120)}`
           )
+        })
+      }
+      return
+    }
+    if (id.startsWith('customCmd:')) {
+      const cmdId = id.slice(10)
+      const cmd = prefs.customCommands?.find((c) => c.id === cmdId)
+      const p = menu.path ?? tabOf(panes[active])
+      if (cmd && p) {
+        setNote(t('در حال اجرای {name}…', { name: cmd.label }))
+        void api.runCustomCommand(cmd.command, p).then((r) => {
+          if ('error' in r) {
+            setNote(`${cmd.label}: ${r.error}`)
+          }
         })
       }
       return
@@ -1881,7 +1908,9 @@ export default function App() {
         addTab(active, tabOf(me))
         break
       case 'openWith':
+      case 'openWithDialog':
         if (path) setOpenWith(path)
+        else if (curPath) setOpenWith(curPath)
         break
       case 'properties':
         if (path) setPropsFor(path)
@@ -2033,9 +2062,27 @@ export default function App() {
     }
     const entry = entryOf(active, path)
     if (!path) {
+      const folderCustom = (prefs.customCommands ?? []).filter((cmd) => matchCustomCommand(cmd, curPath, true))
+      const folderOpenWith: MenuItem[] =
+        folderCustom.length > 0
+          ? [
+              {
+                id: 'openWithFolder',
+                label: t('دستورهای این پوشه'),
+                icon: <PlayIcon />,
+                children: folderCustom.map((c) => ({
+                  id: `customCmd:${c.id}`,
+                  label: c.label,
+                  icon: <PlayIcon />
+                }))
+              },
+              { sep: true }
+            ]
+          : []
       return [
         { id: 'mkdir', label: t('پوشهٔ نو'), key: 'F7', icon: <FolderPlusIcon /> },
         { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
+        ...folderOpenWith,
         { sep: true },
         { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
         { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
@@ -2046,9 +2093,30 @@ export default function App() {
         { id: 'tabNew', label: t('تب نو'), icon: <PlusIcon /> }
       ]
     }
+    const matchingCustom = entry
+      ? (prefs.customCommands ?? []).filter((cmd) => matchCustomCommand(cmd, entry.path, entry.dir))
+      : []
+    const openWithItem: MenuItem =
+      matchingCustom.length > 0
+        ? {
+            id: 'openWith',
+            label: t('باز کردن با…'),
+            icon: <PlayIcon />,
+            children: [
+              ...matchingCustom.map((c) => ({
+                id: `customCmd:${c.id}`,
+                label: c.label,
+                icon: <PlayIcon />
+              })),
+              { sep: true },
+              { id: 'openWithDialog', label: t('سایر برنامه‌ها…'), icon: <PlayIcon /> }
+            ]
+          }
+        : { id: 'openWith', label: t('باز کردن با…'), icon: <PlayIcon /> }
+
     const entryMenu: MenuItem[] = [
       { id: 'open', label: entry?.dir ? t('باز کردن') : t('اجرا کردن'), icon: <PlayIcon /> },
-      { id: 'openWith', label: t('باز کردن با…'), icon: <PlayIcon /> },
+      openWithItem,
       { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
       { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
       { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
@@ -2827,7 +2895,6 @@ export default function App() {
   }
 
   const visible = visibleOf(active)
-  const curPath = tabOf(panes[active])
   const labelCounts = (() => {
     const labels = panes?.[active]?.listing?.labels ?? {}
     const counts: Record<string, number> = {}
@@ -3015,6 +3082,7 @@ export default function App() {
               onNav={(d) => go(active, d)}
               onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
               onMarkDrop={addMarks}
+              onReorderMarks={handleReorderMarks}
               drives={drives}
               onMountDrive={handleMountDrive}
               onUnmountDrive={handleUnmountDrive}
@@ -3248,6 +3316,7 @@ export default function App() {
                 }}
                 onUnmark={(m) => setMarks((x) => x.filter((y) => y !== m))}
                 onMarkDrop={addMarks}
+                onReorderMarks={handleReorderMarks}
                 drives={drives}
                 onMountDrive={handleMountDrive}
                 onUnmountDrive={handleUnmountDrive}
@@ -3670,7 +3739,13 @@ export default function App() {
       )}
 
       {openWith && (
-        <OpenWithDialog path={openWith} onClose={() => setOpenWith(null)} onNote={setNote} />
+        <OpenWithDialog
+          path={openWith}
+          customCommands={prefs.customCommands}
+          isDir={entryOf(active, openWith)?.dir}
+          onClose={() => setOpenWith(null)}
+          onNote={setNote}
+        />
       )}
 
       {propsFor && (

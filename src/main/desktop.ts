@@ -80,3 +80,54 @@ export async function startFileDrag(wc: WebContents, files: string[]): Promise<{
     return { error: err instanceof Error ? err.message : String(err) }
   }
 }
+
+/**
+ * Executes a custom command in the background with %f substituted by the quoted file/folder path.
+ * Detached and unreferenced so GUI apps and background jobs run independently.
+ */
+export async function runCustomCommand(
+  cmdTemplate: string,
+  targetPath: string
+): Promise<{ ok: true } | { error: string }> {
+  const cmd = String(cmdTemplate ?? '').trim()
+  if (!cmd) return { error: 'دستوری تعریف نشده' }
+  if (!path.isAbsolute(targetPath)) return { error: 'مسیر نامعتبر' }
+
+  const isWin = process.platform === 'win32'
+  const quote = (p: string) => (isWin ? `"${p.replace(/"/g, '""')}"` : `'${p.replace(/'/g, `'\\''`)}'`)
+  const quoted = quote(targetPath)
+  const dir = path.dirname(targetPath)
+  const quotedDir = quote(dir)
+
+  let line = cmd
+  if (line.includes('%f') || line.includes('{path}')) {
+    line = line.replace(/%f|\{path\}/g, quoted)
+  } else {
+    line = `${line} ${quoted}`
+  }
+  line = line.replace(/%d|\{dir\}/g, quotedDir)
+
+  return new Promise((resolve) => {
+    try {
+      const child = isWin
+        ? spawn('cmd.exe', ['/c', line], {
+            cwd: dir,
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+          })
+        : spawn('sh', ['-c', line], {
+            cwd: dir,
+            detached: true,
+            stdio: 'ignore'
+          })
+      child.once('error', (e: Error) => resolve({ error: e.message }))
+      child.once('spawn', () => {
+        child.unref()
+        resolve({ ok: true })
+      })
+    } catch (e) {
+      resolve({ error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+}

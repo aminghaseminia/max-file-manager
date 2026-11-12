@@ -382,3 +382,35 @@ export function defaultSearchRoots(home: string): string[] {
   if (!home) return []
   return ['Documents', 'Downloads', 'Desktop', 'Pictures', 'Music', 'Videos'].map((d) => joinPath(home, d))
 }
+
+/** Reorders an item in an array by placing it before or after a target index. */
+export function reorderItem<T>(list: T[], from: number, to: number, place: 'before' | 'after'): T[] {
+  if (from < 0 || from >= list.length || to < 0 || to >= list.length) return list
+  if (from === to) return list
+  const next = [...list]
+  const [item] = next.splice(from, 1)
+  let targetIndex = to
+  if (from < to) {
+    targetIndex = place === 'before' ? to - 1 : to
+  } else {
+    targetIndex = place === 'before' ? to : to + 1
+  }
+  targetIndex = Math.max(0, Math.min(next.length, targetIndex))
+  next.splice(targetIndex, 0, item)
+  return next
+}
+
+/** Matches a file or directory path against a custom command pattern (extension, folder, or wildcard). */
+export function matchCustomCommand(cmd: { pattern: string }, targetPath: string, isDir: boolean): boolean {
+  if (!cmd?.pattern) return false
+  const rawPatterns = cmd.pattern
+    .split(/[,;\s]+/)
+    .map((p) => p.trim().toLowerCase().replace(/^\./, ''))
+    .filter(Boolean)
+  if (isDir) {
+    return rawPatterns.some((p) => p === 'folder' || p === 'dir' || p === 'directory' || p === '*' || p === 'پوشه')
+  }
+  const ext = targetPath.split('.').pop()?.toLowerCase() ?? ''
+  return rawPatterns.some((p) => p === ext || p === '*' || p === 'all' || p === 'file')
+}
+

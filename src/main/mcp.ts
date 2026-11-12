@@ -109,6 +109,7 @@ const TOOLS: McpTool[] = [
   { name: 'undo', description: 'undo the last transfer', read: false, input: {} },
   { name: 'sync_apply', description: 'apply a synchronisation plan (deletes go to trash)', read: false, input: { left: 'string', right: 'string', rows: 'object[]', mode: 'string', deleteExtra: 'boolean?' } },
   { name: 'run_script', description: 'run the user\'s script with {path}/{dir} substituted', read: false, input: { command: 'string', path: 'string?', dir: 'string?' } },
+  { name: 'run_custom_command', description: 'run a custom command in background with %f/{path} substituted', read: false, input: { command: 'string', path: 'string' } },
   { name: 'search_index', description: 'index folders; wait:false returns at once, then poll search_status', read: false, input: { roots: 'string[]', exclude: 'string[]?', wait: 'boolean?' } },
   { name: 'search_clear', description: 'empty the search index (settings are kept)', read: false, input: {} },
   { name: 'prefs_set', description: 'change preferences; everything is written to SQLite', read: false, input: { patch: 'object' } },

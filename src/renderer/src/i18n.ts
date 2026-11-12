@@ -16,6 +16,7 @@ export const setLang = (l: Lang): void => {
   if (typeof document !== 'undefined') {
     document.documentElement.lang = lang
     document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr'
+    document.title = lang === 'fa' ? 'مدیر فایل مکس' : 'Max File Manager'
   }
   if (changed) for (const fn of listeners) fn()
 }
@@ -117,6 +118,20 @@ const EN: Record<string, string> = {
   'این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است': 'This app is the default file manager for opening folders',
   'باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود': 'Make this app handle folders opened from other applications',
   'پیش‌فرض است': 'Default',
+  'دستورهای سفارشی (Open with)': 'Custom Commands (Open with)',
+  'برای پسوندها یا پوشه‌ها دستور سفارشی تعریف کن که در پس‌زمینه اجرا شود. %f با مسیر فایل یا پوشه جایگزین می‌شود.': 'Define custom background commands for extensions or folders. %f is replaced with the file or folder path.',
+  'عنوان در منو (مثلاً باز کردن در کد)': 'Menu label (e.g. Open in Code)',
+  'پسوند (مثلاً pdf)': 'Extension (e.g. pdf)',
+  'دستور با %f (مثلاً code %f)': 'Command with %f (e.g. code %f)',
+  'راهنما: %f با مسیر فایل یا پوشه جایگزین می‌شود. مثال: code %f یا subl %f یا python %f': 'Tip: %f is replaced with the file or folder path. Example: code %f or subl %f or python %f',
+  'پسوند فایل': 'File extension',
+  'به‌روزرسانی': 'Update',
+  'دستورهای این پوشه': 'Folder Commands',
+  'سایر برنامه‌ها…': 'Other Applications…',
+  'در حال اجرای {name}…': 'Running {name}…',
+  'دستورهای سفارشی': 'Custom Commands',
+  'ویرایش': 'Edit',
+  'همه': 'All',
   'تنظیم به عنوان پیش‌فرض': 'Set as default',
   'در حال تنظیم…': 'Setting…',
   'تصویر کلیپ‌بورد ذخیره نشد': 'The clipboard image could not be saved',

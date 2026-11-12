@@ -148,3 +148,21 @@ test('global search moves to Ctrl+K once, then a deliberate old binding is kept'
   assert.equal(mergePrefs(old).shortcuts.searchIndex, 'Ctrl+K')
   assert.equal(mergePrefs({ ...old, prefsVersion: 2 }).shortcuts.searchIndex, 'Ctrl+Shift+K')
 })
+
+test('customCommands: valid entries keep, invalid/empty entries rejected', () => {
+  assert.deepEqual(mergePrefs({}).customCommands, [])
+  const p = mergePrefs({
+    customCommands: [
+      { id: 'c1', label: 'Open in Code', pattern: 'py, js', command: 'code %f' },
+      { id: 'c2', label: 'Open in Terminal', pattern: 'folder', command: 'kitty --directory %f' },
+      { id: 'bad1', label: '', pattern: 'pdf', command: 'evince %f' },
+      { id: 'bad2', label: 'Bad Command', pattern: '', command: 'test' },
+      'not-an-object' as any
+    ]
+  })
+  assert.equal(p.customCommands.length, 2)
+  assert.equal(p.customCommands[0].label, 'Open in Code')
+  assert.equal(p.customCommands[0].pattern, 'py, js')
+  assert.equal(p.customCommands[0].command, 'code %f')
+  assert.equal(p.customCommands[1].pattern, 'folder')
+})

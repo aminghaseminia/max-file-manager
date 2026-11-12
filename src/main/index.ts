@@ -48,7 +48,7 @@ import {
   openWithDefault,
   setDefaultFileManager
 } from './apps.ts'
-import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
+import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
 import { clearThumbs, thumbFor } from './thumbs.ts'
@@ -370,8 +370,8 @@ async function runScriptCommand(a: { command?: string; path?: string; dir?: stri
   const dir = path.isAbsolute(a?.dir ?? '') ? a!.dir! : os.homedir()
   const target = a?.path && path.isAbsolute(a.path) ? a.path : ''
   const line = cmd
-    .replace(/\{path\}/g, target ? `'${target.replace(/'/g, `'\\''`)}'` : '')
-    .replace(/\{dir\}/g, `'${dir.replace(/'/g, `'\\''`)}'`)
+    .replace(/\{path\}|%f/g, target ? `'${target.replace(/'/g, `'\\''`)}'` : '')
+    .replace(/\{dir\}|%d/g, `'${dir.replace(/'/g, `'\\''`)}'`)
   return new Promise<Record<string, unknown>>((resolve) => {
     execFile('sh', ['-c', line], { cwd: dir, timeout: 60_000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
       const out = `${stdout ?? ''}${stderr ?? ''}`.trim().slice(0, 2000)
@@ -571,6 +571,7 @@ function createWindow(): BrowserWindow {
   const transparent = frameless && chrome.rounded
   const saved = readBounds()
   const w = new BrowserWindow({
+    title: 'Max File Manager',
     ...windowBounds(),
     minWidth: 780,
     minHeight: 480,
@@ -770,6 +771,9 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('hotkey:register', (_e, accel: string) => registerHotkey(accel))
   ipcMain.handle('app:runScript', (_e, a: { command?: string; path?: string; dir?: string }) => runScriptCommand(a))
+  ipcMain.handle('app:runCustomCommand', (_e, a: { command?: string; path?: string }) =>
+    runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
+  )
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
@@ -1159,6 +1163,8 @@ app.whenReady().then(async () => {
           path: abs(args.path) ?? undefined,
           dir: abs(args.dir) ?? undefined
         })
+      case 'run_custom_command':
+        return runCustomCommand(String(args.command ?? ''), needAbs(args.path))
       case 'clipboard_image':
         return saveClipboardImage(needAbs(args.dir), String(args.name ?? 'clipboard.png'), Buffer.from(String(args.base64 ?? ''), 'base64'))
       case 'window': {
