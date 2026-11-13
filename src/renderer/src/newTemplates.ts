@@ -226,6 +226,40 @@ export const NEW_CATEGORIES: NewCategory[] = [
         content: '# Environment Variables\n'
       }
     ]
+  },
+  {
+    id: 'project',
+    label: 'پروژه و مستندات',
+    icon: 'file',
+    templates: [
+      {
+        id: 'readme',
+        label: 'راهنمای پروژه (README.md)',
+        ext: '.md',
+        defaultName: 'README.md',
+        icon: 'doc',
+        content:
+          '# عنوان پروژه\n\nیک پاراگراف دربارهٔ این پروژه بنویس.\n\n## نصب\n\n```bash\nnpm install\n```\n\n## اجرا\n\n```bash\nnpm run dev\n```\n\n## مجوز\n\nMIT\n'
+      },
+      {
+        id: 'agents',
+        label: 'راهنمای عامل‌ها (AGENTS.md)',
+        ext: '.md',
+        defaultName: 'AGENTS.md',
+        icon: 'doc',
+        content:
+          '# AGENTS.md\n\nراهنمای عامل‌های هوش مصنوعی که روی این مخزن کار می‌کنند.\n\n## دستورها\n\n```bash\nnpm install\nnpm run dev\nnpm test\n```\n\n## قواعد کد\n\n- تغییرها حداقلی و هدفمند باشند.\n- پیش از هر تحویل تست و بیلد اجرا شود.\n'
+      },
+      {
+        id: 'gitignore',
+        label: 'نادیده‌های گیت (.gitignore)',
+        ext: '',
+        defaultName: '.gitignore',
+        icon: 'code',
+        content:
+          '# Dependencies\nnode_modules/\n\n# Build output\ndist/\nbuild/\nout/\n*.log\n\n# Environment\n.env\n.env.local\n\n# Editor and OS\n.idea/\n.vscode/\n.DS_Store\nThumbs.db\n'
+      }
+    ]
   }
 ]
 

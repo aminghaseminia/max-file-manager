@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { NEW_FILE_TEMPLATES, NEW_CATEGORIES } from './newTemplates.ts'
+import { hasTranslation } from './i18n.ts'
 
 test('NEW_CATEGORIES organizes templates by function', () => {
   const catIds = NEW_CATEGORIES.map((c) => c.id)
-  assert.deepEqual(catIds, ['office', 'design', 'code', 'config'])
+  assert.deepEqual(catIds, ['office', 'design', 'code', 'config', 'project'])
 
   for (const cat of NEW_CATEGORIES) {
     assert.ok(cat.label.length > 0, `${cat.id} has a label`)
@@ -37,12 +38,27 @@ test('NEW_FILE_TEMPLATES covers popular and ArtCraft extensions', () => {
   assert.ok(ids.includes('yaml'), 'includes yaml')
   assert.ok(ids.includes('env'), 'includes env')
   assert.ok(ids.includes('sql'), 'includes sql')
+  assert.ok(ids.includes('readme'), 'includes readme')
+  assert.ok(ids.includes('agents'), 'includes agents')
+  assert.ok(ids.includes('gitignore'), 'includes gitignore')
   assert.ok(ids.includes('empty'), 'includes empty')
+
+  // Dotfile defaults must not be mangled by an appended extension
+  const gitignore = NEW_FILE_TEMPLATES.find((t) => t.id === 'gitignore')
+  assert.equal(gitignore?.defaultName, '.gitignore')
+  assert.equal(gitignore?.ext, '')
+  for (const id of ['readme', 'agents']) {
+    assert.equal(NEW_FILE_TEMPLATES.find((t) => t.id === id)?.ext, '.md')
+  }
 
   for (const t of NEW_FILE_TEMPLATES) {
     assert.ok(t.label.length > 0, `${t.id} has a label`)
     assert.ok(t.defaultName.length > 0, `${t.id} has defaultName`)
     assert.ok(t.icon.length > 0, `${t.id} has an icon`)
+    assert.ok(hasTranslation(t.label), `${t.id} label has an English translation`)
+  }
+  for (const cat of NEW_CATEGORIES) {
+    assert.ok(hasTranslation(cat.label), `${cat.id} label has an English translation`)
   }
 
   // Check valid base64 for binary templates
