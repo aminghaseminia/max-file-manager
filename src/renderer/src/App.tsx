@@ -2224,7 +2224,6 @@ export default function App() {
           icon: <PlusIcon />,
           children: buildNewMenuItems(true)
         },
-        { id: 'mkdir', label: t('پوشهٔ نو'), key: 'F7', icon: <FolderPlusIcon /> },
         { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
         ...folderOpenWith,
         { sep: true },

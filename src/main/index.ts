@@ -141,7 +141,7 @@ let win: BrowserWindow | null = null
 const firstPath = targetPath(process.argv, app.getAppPath() || process.cwd())
 
 // single instance: a second launch focuses the window and opens the path it was given
-if (bootPrefs.singleInstance !== false) {
+if (bootPrefs.singleInstance !== false && !process.env['SMOKE_SHOT']) {
   if (!app.requestSingleInstanceLock()) {
     // Exit synchronously: app.quit() still let `whenReady` run and bind the MCP port that the
     // first instance owns, which surfaced as EADDRINUSE + a main-process error dialog.

@@ -9,7 +9,6 @@ export const DEFAULT_TOOLBAR = [
   'move',
   'edit',
   'rename',
-  'mkdir',
   'trash',
   'size',
   'look',
@@ -328,19 +327,15 @@ function normalFileTypes(raw: unknown): Record<string, string> {
 /** Only known commands survive; a missing or garbage value falls back to the default toolbar. */
 function normalToolbar(raw: unknown): string[] {
   if (!Array.isArray(raw)) return DEFAULT_TOOLBAR
-  const ids = raw.filter((id): id is string => typeof id === 'string' && !!COMMAND_BY_ID[id])
-  // the shipped toolbar before "newItem" or "newTab" existed: upgrade it once instead of leaving the button out
-  if (
-    ids.length === DEFAULT_TOOLBAR.length - 1 &&
-    ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newItem')[i])
-  ) {
-    return DEFAULT_TOOLBAR
+  let ids = raw.filter((id): id is string => typeof id === 'string' && !!COMMAND_BY_ID[id])
+  if (ids.length === 0) return DEFAULT_TOOLBAR
+
+  // Replace legacy 'mkdir' with 'newItem' (since 'newItem' already includes new folder)
+  if (ids.includes('mkdir')) {
+    ids = ids.filter((id) => id !== 'mkdir')
   }
-  if (
-    ids.length === DEFAULT_TOOLBAR.length - 1 &&
-    ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newTab')[i])
-  ) {
-    return DEFAULT_TOOLBAR
+  if (!ids.includes('newItem')) {
+    ids = ['newItem', ...ids]
   }
   return ids
 }
