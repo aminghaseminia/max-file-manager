@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld('api', {
   iconSet: () => ipcRenderer.invoke('icons:set'),
   folderLook: (p: string) => ipcRenderer.invoke('icons:folderLook', p),
   mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
+  createFile: (dir: string, name: string, content?: string) =>
+    ipcRenderer.invoke('fs:createFile', dir, name, content),
   symlink: (target: string, linkPath: string) =>
     ipcRenderer.invoke('fs:symlink', target, linkPath),
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),

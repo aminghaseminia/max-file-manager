@@ -4,6 +4,7 @@ import { DEFAULT_COLOR_THEME, isColorTheme } from './themes.ts'
 
 /** The toolbar the app ships with; the user can change it in preferences. */
 export const DEFAULT_TOOLBAR = [
+  'newItem',
   'copy',
   'move',
   'edit',
@@ -328,8 +329,17 @@ function normalFileTypes(raw: unknown): Record<string, string> {
 function normalToolbar(raw: unknown): string[] {
   if (!Array.isArray(raw)) return DEFAULT_TOOLBAR
   const ids = raw.filter((id): id is string => typeof id === 'string' && !!COMMAND_BY_ID[id])
-  // the shipped toolbar before "New tab" existed: upgrade it once instead of leaving the button out
-  if (ids.length === DEFAULT_TOOLBAR.length - 1 && ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newTab')[i])) {
+  // the shipped toolbar before "newItem" or "newTab" existed: upgrade it once instead of leaving the button out
+  if (
+    ids.length === DEFAULT_TOOLBAR.length - 1 &&
+    ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newItem')[i])
+  ) {
+    return DEFAULT_TOOLBAR
+  }
+  if (
+    ids.length === DEFAULT_TOOLBAR.length - 1 &&
+    ids.every((id, i) => id === DEFAULT_TOOLBAR.filter((x) => x !== 'newTab')[i])
+  ) {
     return DEFAULT_TOOLBAR
   }
   return ids

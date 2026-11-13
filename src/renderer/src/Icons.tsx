@@ -43,6 +43,18 @@ export const FileIcon = ({ size = 15 }: { size?: number }) => (
     <FileBase />
   </S>
 )
+export const FilePlusIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <FileBase />
+    <path d="M12 11v6M9 14h6" />
+  </S>
+)
+export const TerminalIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <polyline points="4 17 10 11 4 5" />
+    <line x1="12" y1="19" x2="20" y2="19" />
+  </S>
+)
 export const ImageIcon = ({ size = 15 }: { size?: number }) => (
   <S size={size}>
     <rect x="3" y="4" width="18" height="16" rx="2" />

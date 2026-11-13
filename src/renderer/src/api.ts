@@ -329,6 +329,7 @@ export type Api = {
   iconSet(): Promise<Record<string, string>>
   folderLook(p: string): Promise<{ color?: string; icon?: string }>
   mkdir(dir: string, name: string): Promise<Result>
+  createFile(dir: string, name: string, content?: string): Promise<Result>
   symlink(
     target: string,
     linkPath: string

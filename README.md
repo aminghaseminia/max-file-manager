@@ -82,11 +82,12 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 - **Desktop integration**: `Ctrl+Alt+T` terminal here (konsole/gnome-terminal/xfce4/x-terminal or `cmd`), reveal in the system file manager, dragging files **out** to VLC/Telegram and browser upload zones (`text/uri-list`, plus a real `File` with its bytes so web drop zones receive it), `%U` folder launches from the desktop, and `scripts/install-integration.sh` to become the default handler for folders
 - **Global hotkey** (X11; on Wayland bind it with KDE's “Add Command” — [docs/INTEGRATION.md](docs/INTEGRATION.md))
 - **Update check** against GitHub releases, shown as a status-bar chip
+- **Create new files & rich templates** (`Ctrl+N`, toolbar button, right-click menu): categorized templates with multi-level submenus for Documents & Office (valid ArtCraft formats: WordCraft `.docx`, GridCraft `.xlsx`, DeckCraft `.pptx`, PDFCraft `.pdf`, Markdown, CSV, TXT), Design & Graphics (VectorCraft `.svg`, FigCraft `.fig`, PhotoCraft `.png`), Code & Web (`.py`, `.js`, `.ts`, `.html`, `.css`, `.sh`, `.sql`), Data & Config (`.json`, `.yaml`, `.env`), and generic blank files, with full instant Undo support
 - Safety: `contextIsolation: true`, `nodeIntegration: false`, a CSP in `index.html`, no `fs` and no `file://` in the renderer — images and PDFs come over `mfm://`, which serves absolute paths only
 
 ## Keyboard
 
-- `F5` copy to the other pane · `F6` move · `F7` new folder · `F2` rename (batch when several are selected)
+- `F5` copy to the other pane · `F6` move · `F7` new folder · `Ctrl+N` new file template · `F2` rename (batch when several are selected)
 - `F8` trash · `Shift+F8` delete permanently · `F9` folder size · `F3` preview · `F4` editor · `Ctrl+Z` undo
 - `Alt+←` / `Alt+→` back / forward · `Backspace` up · `Tab` switch active pane · `Ctrl+L` inline address bar · just start typing to filter
 - `Ctrl+K` global search (or double-tap `Shift`) · `Ctrl+Shift+Y` sync · `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark
@@ -97,7 +98,7 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 ```sh
 npm install
 npm run dev        # dev window, hot reload
-npm test           # 133 unit tests: transfers, undo, search, archives, previews, hashes, folder meta, icon packs, keys, prefs, sorting, launch paths
+npm test           # 147 unit tests: transfers, undo, search, archives, previews, hashes, folder meta, icon packs, keys, prefs, sorting, templates, launch paths
 npm run typecheck
 npm run build && npm start
 ```
@@ -142,7 +143,8 @@ src/main/desktop.ts   terminal-here, reveal, drag-out, global hotkey, desktop en
 src/preload/index.ts  the only bridge into the renderer
 src/renderer/src/     React UI: App, Pane, Sidebar, Preferences, dialogs, Gallery, Editor,
                       PreviewPanel, WindowButtons, i18n.ts (Persian source strings + English catalogue),
-                      format.ts, prefs.ts, themes.ts, pure-icons.ts, pure-set.ts, folder-colors.ts
+                      newTemplates.ts, binaryTemplates.ts, format.ts, prefs.ts, themes.ts,
+                      pure-icons.ts, pure-set.ts, folder-colors.ts
 bin/mfm-mcp.mjs       dependency-free stdio MCP bridge
 docs/FEATURES.md      Directory Opus feature matrix and phases
 docs/PREFERENCES.md   settings roadmap derived from Opus / Krusader / FreeCommander

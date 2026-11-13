@@ -10,6 +10,7 @@ import {
   DupeIcon,
   EyeIcon,
   FileIcon,
+  FilePlusIcon,
   FolderPlusIcon,
   GaugeIcon,
   GridIcon,
@@ -35,6 +36,7 @@ import type { CommandId } from './commands'
 
 /** Icon per command, used by the toolbar and the function-key bar. */
 export const CMD_ICON: Record<CommandId, JSX.Element> = {
+  newItem: <FilePlusIcon />,
   copy: <CopyIcon />,
   copyFiles: <CopyIcon />,
   cutFiles: <CutIcon />,

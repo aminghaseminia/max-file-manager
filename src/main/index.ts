@@ -996,6 +996,8 @@ app.whenReady().then(async () => {
         return writeTextFile(needAbs(args.path), String(args.text ?? ''))
       case 'mkdir':
         return engine.makeDir(needAbs(args.dir), String(args.name ?? ''))
+      case 'create_file':
+        return engine.createFile(needAbs(args.dir), String(args.name ?? ''), typeof args.content === 'string' ? args.content : '')
       case 'rename': {
         const from = needAbs(args.path)
         return engine.renameMany([{ from, to: path.join(path.dirname(from), String(args.name ?? '')) }])
@@ -1372,6 +1374,9 @@ app.whenReady().then(async () => {
     return native.icon ? { icon: native.icon } : {}
   })
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
+  ipcMain.handle('fs:createFile', (_e, dir: string, name: string, content?: string) =>
+    engine.createFile(dir, name, content)
+  )
   ipcMain.handle('app:launchPath', () => firstPath)
   ipcMain.handle('fs:symlink', (_e, target: string, linkPath: string) =>
     typeof target === 'string' && typeof linkPath === 'string'

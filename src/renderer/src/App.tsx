@@ -41,6 +41,7 @@ import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
 import { COMMANDS, type CommandId } from './commands'
 import { matchAccel } from './keys'
+import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
 import {
   baseName,
   defaultSearchRoots,
@@ -68,12 +69,17 @@ import {
   ArchiveOpenIcon,
   AudioIcon,
   ChevronLeftIcon,
+  CodeIcon,
   DocIcon,
+  FileIcon,
   ImageIcon,
   InfoIcon,
   PdfIcon,
   PlayIcon,
+  SheetIcon,
+  SlidesIcon,
   StarIcon,
+  TerminalIcon,
   DriveIcon,
   DupeIcon,
   CopyIcon,
@@ -118,6 +124,66 @@ export const ensureTabIds = (tabs: string[], ids?: string[]): string[] => {
     res.push(newTabId())
   }
   return res.slice(0, tabs.length)
+}
+
+const renderNewTemplateIcon = (icon: NewIconName) => {
+  switch (icon) {
+    case 'folder':
+      return <FolderPlusIcon />
+    case 'doc':
+      return <DocIcon />
+    case 'sheet':
+      return <SheetIcon />
+    case 'slides':
+      return <SlidesIcon />
+    case 'pdf':
+      return <PdfIcon />
+    case 'palette':
+      return <PaletteIcon />
+    case 'layers':
+      return <LayersIcon />
+    case 'image':
+      return <ImageIcon />
+    case 'code':
+      return <CodeIcon />
+    case 'terminal':
+      return <TerminalIcon />
+    case 'file':
+    default:
+      return <FileIcon />
+  }
+}
+
+function buildNewMenuItems(includeFolder = true): MenuItem[] {
+  const items: MenuItem[] = []
+  if (includeFolder) {
+    items.push({
+      id: 'new:folder',
+      label: t('پوشهٔ نو'),
+      key: 'F7',
+      icon: <FolderPlusIcon />
+    })
+    items.push({ sep: true })
+  }
+  for (const cat of NEW_CATEGORIES) {
+    items.push({
+      id: `cat:${cat.id}`,
+      label: t(cat.label),
+      icon: renderNewTemplateIcon(cat.icon),
+      children: cat.templates.map((tmpl) => ({
+        id: `new:${tmpl.id}`,
+        label: t(tmpl.label),
+        icon: renderNewTemplateIcon(tmpl.icon)
+      }))
+    })
+  }
+  items.push({ sep: true })
+  items.push({
+    id: `new:${BLANK_TEMPLATE.id}`,
+    label: t(BLANK_TEMPLATE.label),
+    icon: renderNewTemplateIcon(BLANK_TEMPLATE.icon)
+  })
+  return items
 }
 
 const newPane = (dir: string): PaneState => {
@@ -192,7 +258,25 @@ export default function App() {
   const [sizes, setSizes] = useState<Record<string, string>>({})
   const [jobs, setJobs] = useState<Job[]>([])
   const [indexStatus, setIndexStatus] = useState<SearchProgress | null>(null)
-  const [prompt, setPrompt] = useState<{ kind: 'mkdir' | 'rename'; value: string } | null>(null)
+  const [prompt, setPrompt] = useState<{
+    kind: 'mkdir' | 'rename' | 'createFile'
+    value: string
+    content?: string
+    ext?: string
+  } | null>(null)
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null)
+  const promptInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!prompt || !promptInputRef.current) return
+    const input = promptInputRef.current
+    input.focus()
+    const dot = prompt.value.lastIndexOf('.')
+    if (dot > 0 && prompt.kind === 'createFile') {
+      input.setSelectionRange(0, dot)
+    } else {
+      input.select()
+    }
+  }, [prompt?.kind])
   const [tabPrompt, setTabPrompt] = useState<{ pane: number; path: string; value: string } | null>(null)
   const [renameTargets, setRenameTargets] = useState<string[] | null>(null)
   const [symlinkFor, setSymlinkFor] = useState<string | null>(null)
@@ -1055,21 +1139,33 @@ export default function App() {
 
   const submitPrompt = async () => {
     if (!panes || !prompt) return
-    const value = prompt.value.trim()
-    const { kind } = prompt
+    const { kind, content, ext } = prompt
+    const rawVal = prompt.value.trim()
     setPrompt(null)
-    if (!value) return
+    if (!rawVal) return
     const me = panes[active]
     if (kind === 'rename' && !me.sel[0]) {
       setNote(t('چیزی انتخاب نشده'))
       return
     }
+    let value = rawVal
+    if (kind === 'createFile' && ext && !value.includes('.')) {
+      value = `${value}${ext}`
+    }
     const res =
       kind === 'mkdir'
         ? await api.mkdir(tabOf(me), value)
-        : await api.renameMany([{ from: me.sel[0], to: joinPath(dirOf(me.sel[0]), value) }])
-    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${kind === 'mkdir' ? t('پوشهٔ نو') : t('تغییر نام')}: ${value}`)
+        : kind === 'createFile'
+          ? await api.createFile(tabOf(me), value, content ?? '')
+          : await api.renameMany([{ from: me.sel[0], to: joinPath(dirOf(me.sel[0]), value) }])
+    const kindLabel =
+      kind === 'mkdir' ? t('پوشهٔ نو') : kind === 'createFile' ? t('فایل نو') : t('تغییر نام')
+    setNote(res.errors.length ? `خطا — ${res.errors[0]}` : `${kindLabel}: ${value}`)
     await load(active, tabOf(me))
+    if (res.errors.length === 0 && (kind === 'createFile' || kind === 'mkdir')) {
+      const createdPath = joinPath(tabOf(me), value)
+      setPanes((p) => p && patch(p, active, { sel: [createdPath] }))
+    }
   }
 
   const openArchive = async (i: number, archive: string) => {
@@ -1605,7 +1701,50 @@ export default function App() {
     )
   }
 
+  const openNewMenu = (anchor?: { x: number; y: number }) => {
+    if (anchor) {
+      setNewMenu(anchor)
+      return
+    }
+    const paneEl = document.querySelectorAll('.pane')[active] as HTMLElement | undefined
+    const r = paneEl?.getBoundingClientRect()
+    const rtl = document.documentElement.dir === 'rtl'
+    const x = r ? (rtl ? r.right - 200 : r.left + 24) : 100
+    const y = r ? r.top + 60 : 100
+    setNewMenu({ x, y })
+  }
+
+  const handleNewPick = (id: string) => {
+    setNewMenu(null)
+    setMenu(null)
+    if (id === 'new:folder' || id === 'mkdir') {
+      setPrompt({ kind: 'mkdir', value: '' })
+      return
+    }
+    const key = id.startsWith('new:') ? id.slice(4) : id
+    const tmpl = NEW_FILE_TEMPLATES.find((t) => t.id === key)
+    if (tmpl) {
+      setPrompt({
+        kind: 'createFile',
+        value: tmpl.defaultName,
+        content: tmpl.content,
+        ext: tmpl.ext
+      })
+    } else {
+      setPrompt({
+        kind: 'createFile',
+        value: 'new-file.txt',
+        content: '',
+        ext: ''
+      })
+    }
+  }
+
   const pickMenu = (id: string) => {
+    if (id.startsWith('new:') || id === 'newMenu') {
+      if (id !== 'newMenu') handleNewPick(id)
+      return
+    }
     if (!menu || !panes) return
     if (id.startsWith('script:')) {
       const name = id.slice(7)
@@ -2075,11 +2214,16 @@ export default function App() {
                   label: c.label,
                   icon: <PlayIcon />
                 }))
-              },
-              { sep: true }
+              }
             ]
           : []
       return [
+        {
+          id: 'newMenu',
+          label: t('جدید'),
+          icon: <PlusIcon />,
+          children: buildNewMenuItems(true)
+        },
         { id: 'mkdir', label: t('پوشهٔ نو'), key: 'F7', icon: <FolderPlusIcon /> },
         { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
         ...folderOpenWith,
@@ -2231,6 +2375,12 @@ export default function App() {
 
     return [
       ...entryMenu,
+      {
+        id: 'newMenu',
+        label: t('جدید'),
+        icon: <PlusIcon />,
+        children: buildNewMenuItems(true)
+      },
       {
         id: 'group-operations',
         label: t('عملیات فایل'),
@@ -2493,6 +2643,7 @@ export default function App() {
   }
 
   const RUN: Record<CommandId, () => void> = {
+    newItem: () => openNewMenu(),
     sync: () => void openSync(),
     diff: () => void openDiff(),
     copy: () => void runSel(active, 'copy'),
@@ -3046,7 +3197,10 @@ export default function App() {
           items={prefs.toolbar as CommandId[]}
           mode={prefs.toolbarMode}
           shortcuts={prefs.shortcuts}
-          onRun={(id) => RUN[id]?.()}
+          onRun={(id, anchor) => {
+            if (id === 'newItem') openNewMenu(anchor)
+            else RUN[id]?.()
+          }}
         />
       )}
 
@@ -3844,8 +3998,15 @@ export default function App() {
       {prompt && (
         <div className="modal" onMouseDown={() => setPrompt(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="dlg-title">{prompt.kind === 'mkdir' ? t('نام پوشهٔ نو') : t('نام تازه')}</div>
+            <div className="dlg-title">
+              {prompt.kind === 'mkdir'
+                ? t('نام پوشهٔ نو')
+                : prompt.kind === 'createFile'
+                  ? t('نام فایل جدید')
+                  : t('نام تازه')}
+            </div>
             <input
+              ref={promptInputRef}
               autoFocus
               dir="auto"
               value={prompt.value}
@@ -3856,11 +4017,21 @@ export default function App() {
               }}
             />
             <div className="dlg-actions">
-              <button onClick={() => void submitPrompt()}>{t(t('تأیید'))}</button>
-              <button onClick={() => setPrompt(null)}>{t(t('انصراف'))}</button>
+              <button onClick={() => void submitPrompt()}>{t('تأیید')}</button>
+              <button onClick={() => setPrompt(null)}>{t('انصراف')}</button>
             </div>
           </div>
         </div>
+      )}
+
+      {newMenu && (
+        <ContextMenu
+          x={newMenu.x}
+          y={newMenu.y}
+          items={buildNewMenuItems(true)}
+          onPick={handleNewPick}
+          onClose={() => setNewMenu(null)}
+        />
       )}
     </div>
   )

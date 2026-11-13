@@ -11,7 +11,7 @@ type Props = {
   items: CommandId[]
   mode: ToolbarMode
   shortcuts: Record<string, string>
-  onRun(id: CommandId): void
+  onRun(id: CommandId, anchor?: { x: number; y: number }): void
 }
 
 const MORE = 34
@@ -51,9 +51,9 @@ export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
     return () => ro.disconnect()
   })
 
-  const press = (id: CommandId) => {
+  const press = (id: CommandId, anchor?: { x: number; y: number }) => {
     setMenu(null)
-    onRun(id)
+    onRun(id, anchor)
   }
 
   const button = (id: CommandId, hidden: boolean) => {
@@ -65,7 +65,10 @@ export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
         className="cmdb"
         title={`${labelOf(c)} (${formatAccel(shortcuts[id] ?? c.key)})`}
         tabIndex={hidden ? -1 : undefined}
-        onClick={() => press(id)}
+        onClick={(ev) => {
+          const r = ev.currentTarget.getBoundingClientRect()
+          press(id, { x: r.left, y: r.bottom + 2 })
+        }}
       >
         {CMD_ICON[id]}
         <span>{labelOf(c)}</span>
@@ -109,7 +112,7 @@ export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
           x={menu.x}
           y={menu.y}
           items={overflow}
-          onPick={(id) => press(id as CommandId)}
+          onPick={(id) => press(id as CommandId, menu ?? undefined)}
           onClose={() => setMenu(null)}
         />
       )}

@@ -69,6 +69,7 @@ const TOOLS: McpTool[] = [
   // ── writing files ──────────────────────────────────────────────────────────
   { name: 'write_text', description: 'write a text file atomically', read: false, input: { path: 'string', text: 'string' } },
   { name: 'mkdir', description: 'create a folder', read: false, input: { dir: 'string', name: 'string' } },
+  { name: 'create_file', description: 'create a new empty file or with text', read: false, input: { dir: 'string', name: 'string', content: 'string?' } },
   { name: 'rename', description: 'rename one file (never overwrites)', read: false, input: { path: 'string', name: 'string' } },
   { name: 'rename_many', description: 'rename many files in one batch', read: false, input: { pairs: 'object[]' } },
   { name: 'copy', description: 'queue a copy into a folder', read: false, input: { paths: 'string[]', dest: 'string', skipExisting: 'boolean?', newerOnly: 'boolean?', limitBps: 'number?' } },

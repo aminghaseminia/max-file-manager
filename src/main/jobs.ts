@@ -33,7 +33,7 @@ export type JobOpts = {
 }
 
 type Ctl = { paused: boolean; cancelled: boolean; limitBps?: number }
-type UndoRec = { label: string; pairs: [string, string][]; inverse: 'rename' | 'rmdir' }
+type UndoRec = { label: string; pairs: [string, string][]; inverse: 'rename' | 'rmdir' | 'unlink' }
 
 export type Engine = {
   start(kind: JobKind, sources: string[], dest: string, opts?: JobOpts): Job
@@ -44,6 +44,7 @@ export type Engine = {
   clear(): void
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   makeDir(dir: string, name: string): Promise<Result>
+  createFile(dir: string, name: string, content?: string): Promise<Result>
   undo(): Promise<{ done: number; label: string }>
   undoDepth(): number
 }
@@ -336,6 +337,22 @@ export function createEngine(emit: (job: Job) => void): Engine {
         return { done: 0, errors: [`${name}: ${e?.message ?? String(e)}`] }
       }
     },
+    createFile: async (dir, name, content = '') => {
+      try {
+        if (!path.isAbsolute(dir)) throw new Error('not an absolute path')
+        const target = path.join(dir, name)
+        const data =
+          typeof content === 'string' && content.startsWith('base64:')
+            ? Buffer.from(content.slice(7), 'base64')
+            : content
+        await fs.writeFile(target, data, { flag: 'wx' })
+        undoPush(`فایل ${name}`, [[target, target]], 'unlink')
+        return { done: 1, errors: [] }
+      } catch (e: any) {
+        const msg = e?.code === 'EEXIST' ? 'این نام از قبل وجود دارد' : (e?.message ?? String(e))
+        return { done: 0, errors: [`${name}: ${msg}`] }
+      }
+    },
     undo: async () => {
       const rec = undoStack.pop()
       if (!rec) return { done: 0, label: '' }
@@ -344,6 +361,8 @@ export function createEngine(emit: (job: Job) => void): Engine {
         try {
           if (rec.inverse === 'rmdir') {
             await fs.rmdir(from)
+          } else if (rec.inverse === 'unlink') {
+            await fs.unlink(from)
           } else {
             try {
               await fs.rename(to, from)

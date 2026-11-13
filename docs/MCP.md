@@ -86,6 +86,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | --- | --- | --- |
 | `write_text` | `path`, `text` | atomic (temp + rename), 8 MB cap |
 | `mkdir` | `dir`, `name` | |
+| `create_file` | `dir`, `name`, `content?` | create a new file (never overwrites) |
 | `rename` | `path`, `name` | never overwrites |
 | `rename_many` | `pairs[{from,to}]` | one batch, checked as a whole |
 | `copy` / `move` | `paths[]`, `dest`, `skipExisting?`, `newerOnly?`, `limitBps?` | queued as jobs |

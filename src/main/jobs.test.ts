@@ -108,6 +108,40 @@ test('makeDir creates and undo removes it', async () => {
   assert.equal(await exists(path.join(root, 'new folder')), false)
 })
 
+test('createFile creates file with content and undo removes it', async () => {
+  const root = await tmp()
+  const { e } = engine()
+  const res = await e.createFile(root, 'note.txt', 'hello world')
+  assert.deepEqual(res, { done: 1, errors: [] })
+  assert.ok(await exists(path.join(root, 'note.txt')))
+  assert.equal(await fs.readFile(path.join(root, 'note.txt'), 'utf8'), 'hello world')
+
+  // existing file cannot be overwritten
+  const failRes = await e.createFile(root, 'note.txt', 'over')
+  assert.equal(failRes.done, 0)
+  assert.equal(failRes.errors.length, 1)
+
+  await e.undo()
+  assert.equal(await exists(path.join(root, 'note.txt')), false)
+
+  // base64 payload creates raw binary file
+  const binRes = await e.createFile(root, 'raw.bin', 'base64:AQIDBA==')
+  assert.deepEqual(binRes, { done: 1, errors: [] })
+  const binBuf = await fs.readFile(path.join(root, 'raw.bin'))
+  assert.deepEqual([...binBuf], [1, 2, 3, 4])
+  await e.undo()
+  assert.equal(await exists(path.join(root, 'raw.bin')), false)
+
+  // base64 creates valid zip/docx header (PK\x03\x04)
+  const docxRes = await e.createFile(root, 'doc.docx', 'base64:UEsDBBQAAAAIA===')
+  assert.deepEqual(docxRes, { done: 1, errors: [] })
+  const docBuf = await fs.readFile(path.join(root, 'doc.docx'))
+  assert.equal(docBuf[0], 0x50) // 'P'
+  assert.equal(docBuf[1], 0x4b) // 'K'
+  await e.undo()
+  assert.equal(await exists(path.join(root, 'doc.docx')), false)
+})
+
 test('a bad destination fails the job instead of guessing', async () => {
   const root = await tmp()
   const src = path.join(root, 'a.txt')

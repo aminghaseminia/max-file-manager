@@ -4,6 +4,7 @@ import { t } from './i18n.ts'
  * from here, so adding a command means one line and it shows up everywhere.
  */
 export type CommandId =
+  | 'newItem'
   | 'copy'
   | 'move'
   | 'copyFiles'
@@ -54,6 +55,7 @@ export type CommandGroup = 'transfer' | 'file' | 'view' | 'tab' | 'window'
 export type CommandDef = { id: CommandId; label: string; key: string; group: CommandGroup }
 
 export const COMMANDS: CommandDef[] = [
+  { id: 'newItem', label: 'جدید', key: 'Ctrl+N', group: 'file' },
   { id: 'copy', label: 'کپی به مقصد', key: 'F5', group: 'transfer' },
   { id: 'copyFiles', label: 'کپی فایل', key: 'Ctrl+C', group: 'file' },
   { id: 'cutFiles', label: 'برش فایل', key: 'Ctrl+X', group: 'file' },
