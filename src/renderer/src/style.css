@@ -876,7 +876,7 @@ input {
   background: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
-/* path + filter */
+/* Ctrl+L, a click on the address row, or the current crumb edits the path in place */
 .path {
   display: flex;
   align-items: center;
@@ -886,6 +886,10 @@ input {
   padding: 3px 8px 5px;
   overflow: hidden;
   border-bottom: 1px solid var(--line-soft);
+}
+/* the empty part of the row is the address field's hit area, so the cursor says so */
+.path > .spacer {
+  cursor: text;
 }
 /* the chevrons are drawn for RTL; an LTR interface mirrors them exactly */
 [dir='ltr'] .dir-arrow {
