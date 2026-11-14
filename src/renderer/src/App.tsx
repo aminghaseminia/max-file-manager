@@ -88,6 +88,7 @@ import {
   PasteIcon,
   EyeIcon,
   EyeOffIcon,
+  EntryIcon,
   FolderIcon,
   FolderPlusIcon,
   GaugeIcon,
@@ -2144,7 +2145,23 @@ export default function App() {
     const rows: MenuItem[] = marks.map((m) => ({
       id: 'mark:' + m,
       label: baseName(m),
-      icon: <StarIcon filled size={12} />
+      // the folder's own colour/icon, exactly like the sidebar's bookmark rows
+      icon: (
+        <EntryIcon
+          size={15}
+          iconSet={iconSetFor()}
+          entry={{
+            name: baseName(m),
+            path: m,
+            dir: true,
+            size: 0,
+            mtime: 0,
+            ext: '',
+            color: markIcons[m]?.color,
+            icon: markIcons[m]?.icon
+          }}
+        />
+      )
     }))
     if (!rows.length) {
       return [
