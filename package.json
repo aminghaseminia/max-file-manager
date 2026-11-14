@@ -11,6 +11,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "node --test src/main/*.test.ts src/renderer/src/*.test.ts",
+    "fix:icons-case": "node scripts/fix-case-collisions.mjs",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb",
     "dist:win": "npm run build && electron-builder --win nsis",
     "dist:mac": "npm run build && electron-builder --mac dmg zip"
