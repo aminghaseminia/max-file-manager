@@ -22,7 +22,7 @@ import {
   type SortKey
 } from './format'
 import { PreviewPanel } from './PreviewPanel'
-import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon, SortIcon } from './Icons'
+import { EntryIcon, EyeIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon, SortIcon } from './Icons'
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -531,6 +531,15 @@ export function Pane(props: Props) {
     if (!paths.length) return
     keepDragPaths(paths)
     dragLog(`start ${path} all='${paths.join(',')}'`)
+    // Windows: Chromium's own native drag and the `startDrag` in main would be two drags at
+    // once, and the second one crashes the whole process. Cancelling this one leaves the OS
+    // drag as the only native drag; it still lands back here as `Files`, and `dropFiles`
+    // treats our own paths as the internal move/copy they are.
+    if (api.platform === 'win32') {
+      ev.preventDefault()
+      api.dragOut(paths)
+      return
+    }
     ev.dataTransfer.setData('application/x-mfm', JSON.stringify(paths))
     ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
     ev.dataTransfer.setData('text/plain', paths.join('\n'))
@@ -1035,6 +1044,11 @@ export function Pane(props: Props) {
                                 <EyeOffIcon />
                               </span>
                             )}
+                            {e.forceShow && (
+                              <span className="hidmark" title={t('همیشه در فهرست')}>
+                                <EyeIcon />
+                              </span>
+                            )}
                             <EntryIcon entry={e} iconSet={props.iconSet} />
                             <span dir="auto" className="trunc">{e.name}</span>
                             {props.showSymlink && e.link && (
@@ -1160,3 +1174,4 @@ export function Pane(props: Props) {
     </section>
   )
 }
+

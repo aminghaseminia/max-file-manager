@@ -27,6 +27,12 @@ export type FolderMeta = {
    * the folder's own marker and the listing honours it unless hidden files are shown.
    */
   hidden?: boolean
+  /**
+   * Names that stay visible even when hidden files are off — dot-files, names matched by the
+   * global ignore list, and folders whose own marker says `hidden`. The exception lives in this
+   * folder's marker, so it travels with the folder like every other look setting.
+   */
+  shown?: string[]
 }
 
 export type FolderFormat = {
@@ -94,6 +100,9 @@ const cleanPins = (raw: unknown): string[] =>
         .slice(0, 200)
     : []
 
+/** The forced-visible allow list follows the same bare-name rule as pins. */
+const cleanShown = cleanPins
+
 const cleanEntryColors = (raw: unknown): Record<string, string> => {
   const out: Record<string, string> = {}
   if (!raw || typeof raw !== 'object') return out
@@ -132,6 +141,8 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
     const fmt = cleanFormat(m.format)
     if (fmt) out.format = fmt
     if (m.hidden === true) out.hidden = true
+    const shown = cleanShown(m.shown)
+    if (shown.length) out.shown = shown
     return (
       out.color ||
       out.icon ||
@@ -141,7 +152,8 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
       out.ratings ||
       out.notes ||
       out.format ||
-      out.hidden
+      out.hidden ||
+      out.shown
     )
       ? out
       : null
@@ -196,6 +208,9 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
   else delete next.format
   if (next.hidden === true) next.hidden = true
   else delete next.hidden
+  const shown = cleanShown(next.shown)
+  if (shown.length) next.shown = shown
+  else delete next.shown
   const file = path.join(dir, META_FILE)
   if (
     !next.color &&
@@ -206,7 +221,8 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
     !next.ratings &&
     !next.notes &&
     !next.format &&
-    !next.hidden
+    !next.hidden &&
+    !next.shown
   ) {
     await fs.rm(file, { force: true })
     return null
@@ -239,6 +255,17 @@ export async function togglePin(dir: string, name: string, on?: boolean): Promis
   const want = on ?? !has
   const next = want ? (has ? cur : [...cur, name]) : cur.filter((n) => n !== name)
   await setMeta(dir, { pins: next })
+  return next
+}
+
+/** Force one name to stay visible even with hidden files off; returns the allow list. */
+export async function toggleShown(dir: string, name: string, on?: boolean): Promise<string[]> {
+  if (!bare(name)) return []
+  const cur = (await readMeta(dir))?.shown ?? []
+  const has = cur.includes(name)
+  const want = on ?? !has
+  const next = want ? (has ? cur : [...cur, name]) : cur.filter((n) => n !== name)
+  await setMeta(dir, { shown: next })
   return next
 }
 

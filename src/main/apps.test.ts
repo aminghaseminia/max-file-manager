@@ -8,9 +8,11 @@ import {
   parseDesktopEntry,
   parseMacAppPaths,
   parseMacOpenWith,
+  parseAssocHandlers,
   parseWindowsOpenWith,
   systemOpenCommand,
-  windowsArgv
+  windowsArgv,
+  windowsFileManagerCommand
 } from './apps.ts'
 
 const ENTRY = `[Desktop Entry]
@@ -63,6 +65,41 @@ test('macOS and Windows hand the file to the OS launcher, Linux stays on .deskto
   assert.equal(systemOpenCommand('linux', '/a/b.pdf'), null)
 })
 
+
+test('windowsFileManagerCommand quotes the app and the folder placeholder', () => {
+  assert.equal(
+    windowsFileManagerCommand('C:\\Program Files\\Max File Manager.exe', 'C:\\app', true),
+    '"C:\\Program Files\\Max File Manager.exe" "%1"'
+  )
+  // a checkout runs through electron.exe with the app directory as the first argument
+  assert.equal(
+    windowsFileManagerCommand('C:\\repo\\node_modules\\electron\\electron.exe', 'C:\\repo', false),
+    '"C:\\repo\\node_modules\\electron\\electron.exe" "C:\\repo" "%1"'
+  )
+})
+
+test('parseAssocHandlers turns the shell handler list into app rows', () => {
+  const json = JSON.stringify({
+    default: 'Photos',
+    apps: [
+      { id: 'Snip & Sketch', name: 'Snip & Sketch', icon: '@{x?ms-resource://y}' },
+      { id: 'C:\\Windows\\system32\\mspaint.exe', name: 'Paint', icon: '' },
+      { id: 'C:\\Windows\\system32\\mspaint.exe', name: 'Paint', icon: '' },
+      { name: 'no id' },
+      { id: '', name: 'empty' }
+    ]
+  })
+  const parsed = parseAssocHandlers(json)
+  assert.equal(parsed.defaultName, 'Photos')
+  assert.deepEqual(
+    parsed.apps.map((a) => a.id),
+    ['assoc:Snip & Sketch', 'assoc:C:\\Windows\\system32\\mspaint.exe'],
+    'duplicates and rows without an id are dropped'
+  )
+  assert.equal(parsed.apps[0].name, 'Snip & Sketch')
+  assert.deepEqual(parseAssocHandlers(''), { defaultName: '', apps: [] })
+  assert.deepEqual(parseAssocHandlers('not json'), { defaultName: '', apps: [] })
+})
 
 test('parseWindowsOpenWith accepts the object shape PowerShell emits', () => {
   const json = JSON.stringify({

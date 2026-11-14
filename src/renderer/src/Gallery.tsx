@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
-import { fa, mediaUrl } from './format'
+import { baseName, fa, mediaUrl } from './format'
 import { copyImageContent } from './clipboard'
 import { GalleryInfo } from './GalleryInfo'
 import { WindowButtons } from './WindowButtons'
@@ -311,7 +311,7 @@ export function Gallery({
       return
     }
     setEdit(null)
-    onSaved(mode === 'overwrite' ? `${cur.name} جایگزین شد` : `ذخیره شد: ${r.path.split('/').pop()}`)
+    onSaved(mode === 'overwrite' ? `${cur.name} جایگزین شد` : `ذخیره شد: ${baseName(r.path)}`)
     onChanged()
   }
 

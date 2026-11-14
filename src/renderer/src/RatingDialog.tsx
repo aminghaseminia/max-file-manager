@@ -2,7 +2,7 @@ import { t } from './i18n.ts'
 import { useState } from 'react'
 import { api } from './api'
 import { encodeBmp } from '../../shared/bmp.ts'
-import { fa } from './format'
+import { baseName, fa } from './format'
 import { XIcon } from './Icons'
 
 type Props = {
@@ -114,7 +114,7 @@ export async function convertInRenderer(
       if ('error' in saved) throw new Error(saved.error)
       done++
     } catch (e: any) {
-      errors.push(`${src.split('/').pop()}: ${e?.message ?? String(e)}`)
+      errors.push(`${baseName(src)}: ${e?.message ?? String(e)}`)
     }
   }
   return { done, errors }

@@ -175,6 +175,10 @@ export type Prefs = {
   startup: 'session' | 'folder'
   hotkey: string
   hotkeyEnabled: boolean
+  /** Windows: Win+E opens this window instead of Explorer (needs the keyboard-hook helper) */
+  winE: boolean
+  /** Windows: keep that helper running after the app quits (starts at sign-in) */
+  winEAutostart: boolean
   /** '' means: reopen the last session */
   startFolder: string
   /** extension → app that opens it, overriding the OS default */
@@ -193,8 +197,19 @@ export type CustomCommand = {
   command: string
 }
 
-/** Metadata files nobody wants to see; the user can extend or clear the list. */
-export const DEFAULT_IGNORE_FILES = ['.directory', 'desktop.ini']
+/**
+ * Metadata files and OS junk folders nobody wants to see; the user can extend or clear the list.
+ * `.directory`/`desktop.ini` are the metadata files KDE and Windows leave behind; `$RECYCLE.BIN`
+ * (Windows recycle bin at every drive root), `lost+found` (Linux/ext4 repair folder) and
+ * `msdownld.tmp` (IE download staging) are the system folders that would otherwise sit in a listing.
+ */
+export const DEFAULT_IGNORE_FILES = [
+  '.directory',
+  'desktop.ini',
+  '$RECYCLE.BIN',
+  'lost+found',
+  'msdownld.tmp'
+]
 
 /** Expanded Places-tree nodes: absolute paths only, deduped, capped (a tree is not a state file). */
 const cleanTreeOpen = (raw: unknown): string[] => {
@@ -223,6 +238,21 @@ const cleanIgnoreFiles = (raw: unknown): string[] => {
     if (out.length >= 100) break
   }
   return out
+}
+
+/**
+ * The default before `$RECYCLE.BIN`/`lost+found`/`msdownld.tmp` joined it. A saved list that is
+ * still exactly this one was never edited, so it grows into the new default instead of keeping an
+ * install that predates the change on the old two entries forever.
+ */
+const LEGACY_DEFAULT_IGNORE_FILES = ['.directory', 'desktop.ini']
+
+const migratedIgnoreFiles = (raw: unknown): string[] => {
+  const list = cleanIgnoreFiles(raw)
+  const untouched =
+    list.length === LEGACY_DEFAULT_IGNORE_FILES.length &&
+    list.every((x, i) => x.toLowerCase() === LEGACY_DEFAULT_IGNORE_FILES[i])
+  return untouched ? [...DEFAULT_IGNORE_FILES] : list
 }
 
 export const DEFAULT_FONT_FAMILY = "Vazirmatn, system-ui, 'Noto Sans', sans-serif"
@@ -318,6 +348,8 @@ export const DEFAULTS: Prefs = {
   startup: 'session',
   hotkey: 'Super+E',
   hotkeyEnabled: false,
+  winE: true,
+  winEAutostart: true,
   startFolder: '',
   defaultApps: {},
   customCommands: [],
@@ -584,7 +616,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     )
       ? (p.groupBy as Prefs['groupBy'])
       : 'none',
-    ignoreFiles: cleanIgnoreFiles(p.ignoreFiles),
+    ignoreFiles: migratedIgnoreFiles(p.ignoreFiles),
     scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,
     transferNewerOnly: p.transferNewerOnly === true,
@@ -603,6 +635,8 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     startup: p.startup === 'folder' ? 'folder' : 'session',
     hotkey: typeof p.hotkey === 'string' && p.hotkey.trim() ? p.hotkey.trim() : 'Super+E',
     hotkeyEnabled: p.hotkeyEnabled === true,
+    winE: p.winE !== false,
+    winEAutostart: p.winEAutostart !== false,
     startFolder: typeof p.startFolder === 'string' ? p.startFolder : '',
     defaultApps: cleanDefaultApps(p.defaultApps),
     customCommands: cleanCustomCommands(p.customCommands),

@@ -191,6 +191,15 @@ function SubmenuPanel({
   )
 }
 
+/** The `children` of one menu row, found by id — submenu panels re-resolve this every render so
+ * an asynchronously loaded list (the «Open with» apps) appears without reopening the menu. */
+const childrenOf = (list: MenuItem[], key: string): MenuItem[] | undefined => {
+  for (const it of list) {
+    if ('id' in it && it.id === key) return it.children
+  }
+  return undefined
+}
+
 export function ContextMenu({
   x,
   y,
@@ -330,20 +339,25 @@ export function ContextMenu({
           )}
         </div>
       )}
-      {subs.map((s, idx) => (
-        <SubmenuPanel
-          key={s.key + ':' + idx}
-          sub={s}
-          depth={idx + 1}
-          activeChildKey={subs[idx + 1]?.key}
-          onOpenSub={openSub}
-          onHoverPlain={hoverPlain}
-          onPick={onPick}
-          onClose={onClose}
-          cancelClose={cancelClose}
-          scheduleClose={scheduleClose}
-        />
-      ))}
+      {(() => {
+        // level 0 is the root list; each open submenu is resolved from its parent's current items
+        const levels: MenuItem[][] = [items]
+        for (const s of subs) levels.push(childrenOf(levels[levels.length - 1], s.key) ?? s.items)
+        return subs.map((s, idx) => (
+          <SubmenuPanel
+            key={s.key + ':' + idx}
+            sub={{ ...s, items: levels[idx + 1] }}
+            depth={idx + 1}
+            activeChildKey={subs[idx + 1]?.key}
+            onOpenSub={openSub}
+            onHoverPlain={hoverPlain}
+            onPick={onPick}
+            onClose={onClose}
+            cancelClose={cancelClose}
+            scheduleClose={scheduleClose}
+          />
+        ))
+      })()}
     </div>
   )
 }

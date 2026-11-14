@@ -7,7 +7,7 @@
  * user already has — no network, no extra dependency.
  */
 
-import { promises as fs } from 'node:fs'
+import { promises as fs, unlink, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFile, spawn } from 'node:child_process'
@@ -222,10 +222,13 @@ export async function openWithDefault(file: string): Promise<{ ok: true } | { er
 /** The desktop's default handler for this file, or null when the type has none. */
 export async function defaultApp(file: string): Promise<{ id: string; name: string } | null> {
   if (process.platform === 'win32') {
-    const ext = path.extname(file).toLowerCase() || '.dat'
-    const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: ext }))
-    const hit = parsed.apps.find((a) => a.id === parsed.defaultId)
-    return hit ? { id: hit.id, name: hit.name } : null
+    // the shell knows the default handler even when it is a packaged app
+    const assoc = parseAssocHandlers(await assocRaw(extOf(file), false))
+    const hit = assoc.apps.find((a) => a.name.toLowerCase() === assoc.defaultName.toLowerCase())
+    if (hit) return { id: hit.id, name: hit.name }
+    const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: extOf(file) }))
+    const fallback = parsed.apps.find((a) => a.id === parsed.defaultId)
+    return fallback ? { id: fallback.id, name: fallback.name } : null
   }
   if (process.platform === 'darwin') return macDefaultApp(file)
   const desktop = await findDesktop(await defaultDesktopName(mimeForPath(file)))
@@ -317,7 +320,7 @@ export async function appIconPath(icon: string): Promise<string> {
 
 const WIN_CACHE = new Map<string, string>()
 
-export type OpenWithRow = { id: string; name: string; command?: string }
+export type OpenWithRow = { id: string; name: string; command?: string; icon?: string }
 
 const runPowerShell = (script: string, env: Record<string, string> = {}): Promise<string> =>
   new Promise((resolve) => {
@@ -330,6 +333,36 @@ const runPowerShell = (script: string, env: Record<string, string> = {}): Promis
         (err, out) => resolve(err ? '' : String(out))
       )
     } catch {
+      resolve('')
+    }
+  })
+
+/**
+ * The same runner for the association scripts: they carry an inline C# helper (several KB), and a
+ * temp `.ps1` reaches PowerShell exactly as written instead of fighting command-line quoting.
+ */
+const runPowerShellFile = (script: string, env: Record<string, string> = {}): Promise<string> =>
+  new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve('')
+    const file = path.join(os.tmpdir(), `mfm-assoc-${process.pid}-${Date.now()}.ps1`)
+    try {
+      // a BOM keeps PowerShell 5.1 from reading the file as the ANSI code page
+      writeFileSync(file, '\ufeff' + script, 'utf8')
+    } catch {
+      return resolve('')
+    }
+    try {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
+        { timeout: 20_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true, env: { ...process.env, ...env } },
+        (err, out) => {
+          unlink(file, () => undefined)
+          resolve(err ? '' : String(out))
+        }
+      )
+    } catch {
+      unlink(file, () => undefined)
       resolve('')
     }
   })
@@ -428,6 +461,39 @@ foreach ($prog in $ids) {
   if (-not $name) { $name = $prog }
   [void]$rows.Add([pscustomobject]@{ id = ('progid:' + $prog); name = [string]$name; command = [string]$cmd })
 }
+# Applications that declare this extension in SupportedTypes. Explorer builds its own "recommended"
+# list from these keys; reading only the extension's own ProgIDs left the picker empty on a fresh app.
+foreach ($root in @('Registry::HKEY_CLASSES_ROOT\Applications', 'Registry::HKEY_CURRENT_USER\Software\Classes\Applications')) {
+  foreach ($app in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+    if ($rows.Count -ge 80) { break }
+    $exe = Split-Path -Leaf $app.PSPath
+    if (-not $exe -or $seen.ContainsKey('exe:' + $exe)) { continue }
+    $supported = Get-ItemProperty -LiteralPath ($app.PSPath + '\SupportedTypes') -ErrorAction SilentlyContinue
+    if (-not $supported) { continue }
+    $hit = $false
+    foreach ($p in $supported.PSObject.Properties) {
+      if ($p.Name -like 'PS*') { continue }
+      if ($p.Name -eq $ext -or $p.Name -eq '*') { $hit = $true; break }
+    }
+    if (-not $hit) { continue }
+    $cmd = (Get-ItemProperty -LiteralPath ($app.PSPath + '\shell\open\command') -ErrorAction SilentlyContinue).'(default)'
+    if (-not $cmd) {
+      $ap = (Get-ItemProperty -LiteralPath ('Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\App Paths\' + $exe) -ErrorAction SilentlyContinue).'(default)'
+      if ($ap) { $cmd = '"' + $ap + '" "%1"' }
+    }
+    if (-not $cmd) { continue }
+    $name = (Get-ItemProperty -LiteralPath $app.PSPath -ErrorAction SilentlyContinue).'(default)'
+    if (-not $name) {
+      $path = $cmd -replace '^"([^"]+)".*$', '$1'
+      if ($path -eq $cmd) { $path = $cmd -replace '^([^\s]+\.exe).*$', '$1' }
+      $fi = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+      if ($fi) { $name = $fi.VersionInfo.FileDescription }
+    }
+    if (-not $name) { $name = [System.IO.Path]::GetFileNameWithoutExtension($exe) }
+    $seen['exe:' + $exe] = $true
+    [void]$rows.Add([pscustomobject]@{ id = ('exe:' + $exe); name = [string]$name; command = [string]$cmd })
+  }
+}
 $def = $uc
 if (-not $def) { $def = $main }
 [pscustomobject]@{ defaultId = $(if ($def) { 'progid:' + $def } else { '' }); apps = @($rows) } | ConvertTo-Json -Compress -Depth 5
@@ -449,7 +515,265 @@ $cmd = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $prog + 
 if ($cmd) { [pscustomobject]@{ command = [string]$cmd } | ConvertTo-Json -Compress } else { '{}' }
 `
 
+/** The «open with» command of an application id (`exe:notepad.exe`) when the list has been forgotten. */
+const WIN_EXE_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+$exe = $env:MFM_EXE
+$cmd = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\Applications\' + $exe + '\shell\open\command') -ErrorAction SilentlyContinue).'(default)'
+if (-not $cmd) { $cmd = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CURRENT_USER\Software\Classes\Applications\' + $exe + '\shell\open\command') -ErrorAction SilentlyContinue).'(default)' }
+if (-not $cmd) {
+  $ap = (Get-ItemProperty -LiteralPath ('Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\App Paths\' + $exe) -ErrorAction SilentlyContinue).'(default)'
+  if ($ap) { $cmd = '"' + $ap + '" "%1"' }
+}
+if ($cmd) { [pscustomobject]@{ command = [string]$cmd } | ConvertTo-Json -Compress } else { '{}' }
+`
+
+/** `IAssocHandler` rows for the extension, exactly what Explorer's own «Open with» shows. */
+export function parseAssocHandlers(json: string): { defaultName: string; apps: OpenWithRow[] } {
+  const text = String(json ?? '').trim()
+  if (!text) return { defaultName: '', apps: [] }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { defaultName: '', apps: [] }
+  }
+  const box = (parsed ?? {}) as Record<string, unknown>
+  const rows = Array.isArray(box.apps) ? box.apps : []
+  const apps: OpenWithRow[] = []
+  const seen = new Set<string>()
+  for (const raw of rows) {
+    const row = raw as Record<string, unknown>
+    if (!row || typeof row.id !== 'string' || !row.id) continue
+    const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : row.id
+    const id = 'assoc:' + row.id
+    if (seen.has(id)) continue
+    seen.add(id)
+    apps.push({
+      id,
+      name,
+      command: '',
+      icon: typeof row.icon === 'string' ? row.icon.trim() : ''
+    })
+  }
+  return { defaultName: typeof box.default === 'string' ? box.default : '', apps }
+}
+
+/**
+ * Windows' own association API (`SHAssocEnumHandlers` + `IAssocHandler`), compiled inline.
+ *
+ * Reading only the registry left out every packaged app: the default handler for images is the
+ * Store «Photos» app, whose ProgID has a `DelegateExecute` and no command line, so it vanished
+ * from the list. The shell API returns Explorer's recommended list with localized names, and
+ * `Invoke` launches a handler (packaged or classic) with a real data object for the file.
+ */
+const ASSOC_CS = `
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+[ComImport, Guid("973810ae-9599-4b88-9e4d-6ee98c9552da"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IEnumAssocHandlers {
+  [PreserveSig] int Next(uint celt, out IntPtr rgelt, out uint pceltFetched);
+}
+
+[ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IShellItem {
+  [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+}
+
+[ComImport, Guid("F04061AC-1659-4a3f-A954-775AA57FC083"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IAssocHandler {
+  [PreserveSig] int GetName([MarshalAs(UnmanagedType.LPWStr)] out string ppsz);
+  [PreserveSig] int GetUIName([MarshalAs(UnmanagedType.LPWStr)] out string ppsz);
+  [PreserveSig] int GetIconLocation([MarshalAs(UnmanagedType.LPWStr)] out string ppszPath, out int pIndex);
+  [PreserveSig] int IsRecommended();
+  [PreserveSig] int MakeDefault([MarshalAs(UnmanagedType.LPWStr)] string pszDescription);
+  [PreserveSig] int Invoke(IntPtr pdo);
+  [PreserveSig] int CreateInvoker(IntPtr pdo, out IntPtr ppInvoker);
+}
+
+public static class Assoc {
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHAssocEnumHandlers(string pszExtra, int afFilter, out IEnumAssocHandlers ppEnum);
+
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHCreateItemFromParsingName(string pszPath, IntPtr pbc, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IShellItem ppv);
+
+  [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+  static extern int AssocQueryString(int flags, int str, string assoc, string extra, StringBuilder outBuf, ref uint outLen);
+
+  [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHLoadIndirectString(string pszSource, StringBuilder pszOutBuf, uint cchOutBuf, IntPtr ppvReserved);
+
+  static readonly Guid BhidDataObject = new Guid("b8c0bd9f-ed24-455c-83e6-d5390c4fe8c4");
+  static readonly Guid IidDataObject = new Guid("0000010e-0000-0000-C000-000000000046");
+
+  static string Esc(string s) {
+    if (s == null) return "";
+    return s.Replace("\\\\", "\\\\\\\\").Replace("\\"", "\\\\\\"").Replace("\\r", " ").Replace("\\n", " ");
+  }
+
+  static string Default(string ext) {
+    uint len = 1024;
+    var sb = new StringBuilder(1024);
+    int hr = AssocQueryString(0, 4, ext, null, sb, ref len);
+    return hr == 0 ? sb.ToString() : "";
+  }
+
+  /** A packaged app's icon is an indirect resource string; resolve it to the real asset path. */
+  static string ResolveIcon(string location) {
+    if (string.IsNullOrEmpty(location)) return "";
+    if (location[0] != '@') return location;
+    var sb = new StringBuilder(2048);
+    try {
+      SHLoadIndirectString(location, sb, 2048, IntPtr.Zero);
+    } catch {
+      return "";
+    }
+    return sb.ToString();
+  }
+
+  public static string List(string ext, int filter) {
+    var sb = new StringBuilder("{\\"default\\":\\"").Append(Esc(Default(ext))).Append("\\",\\"apps\\":[");
+    bool first = true;
+    IEnumAssocHandlers e;
+    SHAssocEnumHandlers(ext, filter, out e);
+    IntPtr ptr;
+    uint fetched;
+    while (e.Next(1, out ptr, out fetched) == 0 && fetched == 1) {
+      var h = (IAssocHandler)Marshal.GetObjectForIUnknown(ptr);
+      string name, ui, icon;
+      int idx;
+      h.GetName(out name);
+      h.GetUIName(out ui);
+      h.GetIconLocation(out icon, out idx);
+      Marshal.Release(ptr);
+      string id = string.IsNullOrEmpty(name) ? ui : name;
+      if (string.IsNullOrEmpty(id)) continue;
+      if (!first) sb.Append(",");
+      first = false;
+      sb.Append("{\\"id\\":\\"").Append(Esc(id)).Append("\\",\\"name\\":\\"")
+        .Append(Esc(string.IsNullOrEmpty(ui) ? id : ui)).Append("\\",\\"icon\\":\\"")
+        .Append(Esc(ResolveIcon(icon))).Append("\\"}");
+    }
+    return sb.Append("]}").ToString();
+  }
+
+  static IntPtr DataObjectFor(string file) {
+    Guid iid = typeof(IShellItem).GUID;
+    IShellItem item;
+    SHCreateItemFromParsingName(file, IntPtr.Zero, ref iid, out item);
+    Guid bhid = BhidDataObject;
+    Guid dio = IidDataObject;
+    IntPtr pdo;
+    if (item.BindToHandler(IntPtr.Zero, ref bhid, ref dio, out pdo) != 0) return IntPtr.Zero;
+    return pdo;
+  }
+
+  public static string Invoke(string name, string file) {
+    IEnumAssocHandlers e;
+    SHAssocEnumHandlers(System.IO.Path.GetExtension(file), 0, out e);
+    IntPtr ptr;
+    uint fetched;
+    while (e.Next(1, out ptr, out fetched) == 0 && fetched == 1) {
+      var h = (IAssocHandler)Marshal.GetObjectForIUnknown(ptr);
+      string n, ui;
+      h.GetName(out n);
+      h.GetUIName(out ui);
+      if (string.IsNullOrEmpty(n)) n = ui;
+      if (!string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) {
+        Marshal.Release(ptr);
+        continue;
+      }
+      IntPtr pdo = DataObjectFor(file);
+      if (pdo == IntPtr.Zero) {
+        Marshal.Release(ptr);
+        return "no-data";
+      }
+      int hr = h.Invoke(pdo);
+      Marshal.Release(ptr);
+      return hr == 0 ? "ok" : "err_0x" + hr.ToString("X8");
+    }
+    return "not_found";
+  }
+}
+`
+
+/** Explorer's recommended handlers for the extension (filter 0 = everything). */
+const WIN_ASSOC_SCRIPT =
+  `$ErrorActionPreference = 'SilentlyContinue'\n` +
+  `$code = @'\n${ASSOC_CS}\n'@\n` +
+  `Add-Type -TypeDefinition $code\n` +
+  `[Assoc]::List($env:MFM_EXT, [int]$env:MFM_FILTER)\n`
+
+/** Launch one handler from that list with the file it is meant to open. */
+const WIN_ASSOC_INVOKE_SCRIPT =
+  `$ErrorActionPreference = 'SilentlyContinue'\n` +
+  `$code = @'\n${ASSOC_CS}\n'@\n` +
+  `Add-Type -TypeDefinition $code\n` +
+  `[Assoc]::Invoke($env:MFM_ASSOC, $env:MFM_FILE)\n`
+
+const extOf = (file: string): string => path.extname(file).toLowerCase() || '.dat'
+
+const windowsRows = (rows: OpenWithRow[], defaultName: string): DesktopApp[] =>
+  rows
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      exec: row.command ?? '',
+      icon: '',
+      desktop: '',
+      // a source icon (exe or packaged PNG); `withAppIcons` turns it into a cacheable PNG
+      iconPath: row.icon ?? '',
+      isDefault: !!defaultName && row.name.toLowerCase() === defaultName.toLowerCase()
+    }))
+    .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+
+/** The shell list costs a PowerShell + C# round trip; a right-click repeat should be instant. */
+const ASSOC_CACHE = new Map<string, { at: number; raw: string }>()
+
+const assocRaw = async (ext: string, all: boolean): Promise<string> => {
+  const key = `${ext}:${all ? '1' : '0'}`
+  const hit = ASSOC_CACHE.get(key)
+  if (hit && Date.now() - hit.at < 20_000) return hit.raw
+  const raw = await runPowerShellFile(WIN_ASSOC_SCRIPT, { MFM_EXT: ext, MFM_FILTER: all ? '0' : '1' })
+  if (raw) ASSOC_CACHE.set(key, { at: Date.now(), raw })
+  return raw
+}
+
+/** `IAssocHandler` ids carry no command line: `launchAppWindows` invokes them through the shell. */
+export async function listAppsWindowsAssoc(file: string, all: boolean): Promise<DesktopApp[]> {
+  const ext = extOf(file)
+  const [handlerRaw, startRaw] = await Promise.all([
+    assocRaw(ext, all),
+    all ? runPowerShell(WIN_ALL_SCRIPT) : Promise.resolve('')
+  ])
+  const handlers = parseAssocHandlers(handlerRaw)
+  const rows = windowsRows(handlers.apps, handlers.defaultName)
+  if (!all || !startRaw) return rows
+  // the Start menu still holds apps that open a type through their own argument handling
+  const known = new Set(rows.map((r) => r.name.toLowerCase()))
+  for (const app of parseWindowsOpenWith(startRaw).apps) {
+    if (known.has(app.name.toLowerCase())) continue
+    known.add(app.name.toLowerCase())
+    rows.push({
+      id: app.id,
+      name: app.name,
+      exec: '',
+      icon: '',
+      desktop: '',
+      iconPath: '',
+      isDefault: false
+    })
+  }
+  return rows
+}
+
 const listAppsWindows = async (file: string, all: boolean): Promise<DesktopApp[]> => {
+  const rows = await listAppsWindowsAssoc(file, all)
+  if (rows.length) return rows
+  // Fallback for a shell that refuses the association API: read the registry directly.
   if (all) {
     const parsed = parseWindowsOpenWith(await runPowerShell(WIN_ALL_SCRIPT))
     return parsed.apps.map((row) => ({
@@ -462,8 +786,7 @@ const listAppsWindows = async (file: string, all: boolean): Promise<DesktopApp[]
       isDefault: false
     }))
   }
-  const ext = path.extname(file).toLowerCase() || '.dat'
-  const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: ext }))
+  const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: extOf(file) }))
   for (const row of parsed.apps) if (row.command) WIN_CACHE.set(row.id, row.command)
   return parsed.apps
     .map((row) => ({
@@ -713,9 +1036,16 @@ const launchAppWindows = async (
     if (!appId) return { error: 'app_not_found' }
     return launchArgvDetached(['explorer.exe', `shell:AppsFolder\\${appId}`])
   }
-  if (!id.startsWith('progid:')) return { error: 'app_not_found' }
+  // an `IAssocHandler` from Explorer's list: only the shell can start a packaged app with the file
+  if (id.startsWith('assoc:')) {
+    const name = id.slice(6)
+    if (!name) return { error: 'app_not_found' }
+    const raw = (await runPowerShellFile(WIN_ASSOC_INVOKE_SCRIPT, { MFM_ASSOC: name, MFM_FILE: file })).trim()
+    return raw === 'ok' ? { ok: true } : { error: 'launch_failed' }
+  }
+  if (!id.startsWith('progid:') && !id.startsWith('exe:')) return { error: 'app_not_found' }
   let command = WIN_CACHE.get(id) ?? ''
-  if (!command) {
+  if (!command && id.startsWith('progid:')) {
     const raw = await runPowerShell(WIN_PROGID_SCRIPT, { MFM_PROGID: id.slice(7) })
     try {
       const parsed = JSON.parse(raw || '{}') as { command?: string }
@@ -723,8 +1053,17 @@ const launchAppWindows = async (
     } catch {
       command = ''
     }
-    if (command) WIN_CACHE.set(id, command)
   }
+  if (!command && id.startsWith('exe:')) {
+    const raw = await runPowerShell(WIN_EXE_SCRIPT, { MFM_EXE: id.slice(4) })
+    try {
+      const parsed = JSON.parse(raw || '{}') as { command?: string }
+      command = typeof parsed.command === 'string' ? parsed.command : ''
+    } catch {
+      command = ''
+    }
+  }
+  if (command) WIN_CACHE.set(id, command)
   if (!command) return { error: 'app_not_found' }
   return launchArgvDetached(windowsArgv(command, file))
 }
@@ -735,14 +1074,122 @@ export async function isDefaultFileManager(): Promise<boolean> {
     const current = await defaultDesktopName('inode/directory')
     return current.includes('max-file-manager') || current.includes('mfm')
   }
+  if (process.platform === 'win32') {
+    const defaults = await Promise.all(WIN_FOLDER_CLASSES.map(shellDefault))
+    return defaults.every((d) => d === WIN_FM_VERB)
+  }
   return false
 }
 
-/** Set max-file-manager as the system default file manager (inode/directory). */
+// ── Windows: folders open in this app ─────────────────────────────────────────────────────
+// A double-click on a folder (desktop included) is a ShellExecute on the folder's class, so the
+// per-user HKCU handler wins. Explorer windows still navigate in place — that is Explorer's own
+// behaviour and not something a registry handler can change.
+const WIN_FOLDER_CLASSES = ['Folder', 'Directory', 'Drive'] as const
+const WIN_FM_VERB = 'MaxFileManager'
+
+/** `"app.exe" "%1"`, or `"electron.exe" "<appDir>" "%1"` when running from a checkout. */
+export function windowsFileManagerCommand(exe: string, appDir: string, packaged: boolean): string {
+  const q = (s: string): string => `"${s}"`
+  return packaged ? `${q(exe)} "%1"` : `${q(exe)} ${q(appDir)} "%1"`
+}
+
+const reg = (args: string[]): Promise<{ ok: boolean; out: string }> =>
+  new Promise((resolve) => {
+    try {
+      execFile('reg.exe', args, { timeout: 5000, windowsHide: true }, (err, out) =>
+        resolve({ ok: !err, out: String(out ?? '') })
+      )
+    } catch {
+      resolve({ ok: false, out: '' })
+    }
+  })
+
+/** The class's own default verb, '' when the value does not exist. */
+const shellDefault = async (cls: string): Promise<string> => {
+  const r = await reg(['query', `HKCU\\Software\\Classes\\${cls}\\shell`, '/ve'])
+  const m = r.out.match(/REG_(?:EXPAND_)?SZ\s+(.+)/)
+  return m ? m[1].trim() : ''
+}
+
+/**
+ * Registers the folder verb in HKCU and makes it the class default. The previous defaults come
+ * back so the caller can store them and undo the change exactly.
+ */
+export async function setDefaultFileManagerWindows(
+  exe: string,
+  appDir: string,
+  packaged: boolean
+): Promise<{ ok: boolean; error?: string; previous?: Record<string, string> }> {
+  if (!path.isAbsolute(exe)) return { ok: false, error: 'bad_path' }
+  const command = windowsFileManagerCommand(exe, appDir, packaged)
+  const previous: Record<string, string> = {}
+  for (const cls of WIN_FOLDER_CLASSES) {
+    previous[cls] = await shellDefault(cls)
+    const base = `HKCU\\Software\\Classes\\${cls}\\shell`
+    const verb = `${base}\\${WIN_FM_VERB}`
+    const steps = [
+      ['add', verb, '/ve', '/d', 'Open with Max File Manager', '/f'],
+      ['add', `${verb}\\command`, '/ve', '/d', command, '/f'],
+      ['add', base, '/ve', '/d', WIN_FM_VERB, '/f']
+    ]
+    for (const step of steps) {
+      if (!(await reg(step)).ok) return { ok: false, error: 'reg_failed', previous }
+    }
+  }
+  return { ok: true, previous }
+}
+
+/** The standard Explorer command for a folder; `%SystemRoot%` needs REG_EXPAND_SZ. */
+const WIN_EXPLORER_OPEN = '"%SystemRoot%\\Explorer.exe" "%1"'
+
+/**
+ * Some tweak tools leave `Directory\shell` with the literal default verb `none` and no `open`
+ * command at all — every folder then fails with «Application not found». Restoring that value
+ * would keep the machine broken, so the undo writes a working Explorer verb instead.
+ */
+async function repairFolderOpen(cls: string): Promise<void> {
+  const probe = await reg(['query', `HKCR\\${cls}\\shell\\open\\command`, '/ve'])
+  if (!probe.ok) {
+    await reg([
+      'add',
+      `HKCU\\Software\\Classes\\${cls}\\shell\\open\\command`,
+      '/ve',
+      '/t',
+      'REG_EXPAND_SZ',
+      '/d',
+      WIN_EXPLORER_OPEN,
+      '/f'
+    ])
+  }
+  await reg(['add', `HKCU\\Software\\Classes\\${cls}\\shell`, '/ve', '/d', 'open', '/f'])
+}
+
+/** Undo: drop the verb and give each class its old default back (empty → remove the value). */
+export async function clearDefaultFileManagerWindows(
+  previous: Record<string, string> | null
+): Promise<{ ok: boolean }> {
+  for (const cls of WIN_FOLDER_CLASSES) {
+    const base = `HKCU\\Software\\Classes\\${cls}\\shell`
+    await reg(['delete', `${base}\\${WIN_FM_VERB}`, '/f'])
+    const was = previous?.[cls] ?? ''
+    if (was && was !== WIN_FM_VERB && was !== 'none') await reg(['add', base, '/ve', '/d', was, '/f'])
+    else await repairFolderOpen(cls)
+  }
+  return { ok: true }
+}
+
+/** Set max-file-manager as the system default file manager (folder handler). */
 export async function setDefaultFileManager(
   execPath?: string,
-  appPath?: string
-): Promise<{ ok: boolean; error?: string }> {
+  appPath?: string,
+  packaged = true
+): Promise<{ ok: boolean; error?: string; previous?: Record<string, string> }> {
+  if (process.platform === 'win32') {
+    const exe = execPath || process.execPath
+    const dir = appPath || process.cwd()
+    return setDefaultFileManagerWindows(exe, dir, packaged)
+  }
   if (process.platform === 'linux') {
     const home = os.homedir()
     const appDir = path.join(home, '.local', 'share', 'applications')
@@ -809,5 +1256,10 @@ StartupWMClass=max-file-manager
       )
     })
   }
-  return { ok: false, error: 'پشتیبانی فقط روی لینوکس فعال است' }
+  return { ok: false, error: 'پشتیبانی فقط روی لینوکس و ویندوز فعال است' }
 }
+
+
+
+
+

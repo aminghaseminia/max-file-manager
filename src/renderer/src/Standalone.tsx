@@ -5,7 +5,7 @@ import { Gallery } from './Gallery'
 import { Editor } from './Editor'
 import { applyPrefs } from './apply-prefs'
 import { mergePrefs, migrateLegacy, type Prefs } from './prefs'
-import { isImage } from './format'
+import { dirOf, isImage } from './format'
 import { WindowButtons } from './WindowButtons'
 
 /** A short-lived message in the corner: these windows have no status bar of the main window. */
@@ -58,15 +58,30 @@ export function StandaloneGallery({ path }: { path: string }) {
 
   useEffect(() => {
     if (!prefs) return
-    const dir = path.slice(0, Math.max(0, path.lastIndexOf('/'))) || '/'
+    // `dirOf`, not a split on '/': Windows paths use backslashes
+    const dir = dirOf(path) || '/'
     let live = true
     void api
       .list(dir, prefs.showHidden)
-      .then((l) => {
+      .then(async (l) => {
         if (!live) return
         const pics = l.entries.filter(isGalleryImage)
-        // the requested file is always first-class, even if the listing is filtered
-        setImages(pics.length ? pics : [])
+        // the requested file is always first-class, even if the listing filtered it out
+        if (!pics.some((p) => p.path === path)) {
+          const meta = await api.properties(path).catch(() => null)
+          if (!live) return
+          if (meta && 'path' in meta && !meta.dir && isImage(meta.ext)) {
+            pics.unshift({
+              name: meta.name,
+              path: meta.path,
+              dir: false,
+              size: meta.size,
+              mtime: meta.mtime,
+              ext: meta.ext
+            })
+          }
+        }
+        setImages(pics)
       })
       .catch(() => live && setImages([]))
     return () => {

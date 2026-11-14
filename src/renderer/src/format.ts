@@ -350,8 +350,18 @@ export function openAction(
 export function dirOf(p: string): string {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   if (i < 0) return ''
-  if (i === 0) return p.slice(0, 1)
-  return p.slice(0, i)
+  const head = p.slice(0, Math.max(1, i))
+  // a drive root keeps its separator: bare `C:` is a relative path on Windows
+  return /^[A-Za-z]:$/.test(head) ? head + p[i] : head
+}
+
+/**
+ * A path the main process will accept as absolute: POSIX, `C:\…`, `C:/…` or a UNC share
+ * (`\\server\share`). Windows paths are what made «Add folder» stay greyed out.
+ */
+export function isAbsolutePath(p: string): boolean {
+  const s = String(p ?? '').trim()
+  return s.startsWith('/') || /^[A-Za-z]:[\\/]/.test(s) || /^\\\\[^\\]/.test(s)
 }
 
 export function joinPath(dir: string, name: string): string {

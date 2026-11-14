@@ -119,3 +119,51 @@ gdbus call --session --dest org.freedesktop.portal.Desktop \
 xdg-mime query default inode/directory        # باید max-file-manager.desktop باشد
 grep -E '^(Exec|MimeType|Icon)=' ~/.local/share/applications/max-file-manager.desktop
 ```
+
+## ویندوز: باز شدن پوشه‌ها در مکس
+
+تنظیمات → راه‌اندازی → «مدیر فایل پیش‌فرض سیستم» → «تنظیم به عنوان پیش‌فرض». این کار فقط
+کلیدهای **کاربر** (HKCU) را می‌نویسد و نیازی به ادمین ندارد:
+
+```
+HKCU\Software\Classes\Folder\shell\MaxFileManager\command     = "<app.exe>" "%1"
+HKCU\Software\Classes\Folder\shell                             (default) = MaxFileManager
+همین دو کلید برای Directory و Drive هم نوشته می‌شوند
+```
+
+نتیجه: دابل‌کلیک روی پوشه در دسکتاپ یا هر برنامه‌ای که `ShellExecute` می‌زند (Open Containing
+Folder مرورگرها، Start menu، drag-to-open) مکس را باز می‌کند. پنجرهٔ خود Explorer همچنان داخل
+خودش ناوبری می‌کند — این رفتار Explorer است و با verb رجیستری عوض نمی‌شود.
+
+بررسی و بازگرداندن:
+
+```powershell
+reg query "HKCU\Software\Classes\Folder\shell" /ve
+reg query "HKCU\Software\Classes\Folder\shell\MaxFileManager\command" /ve
+```
+
+دکمهٔ «بازگرداندن به ویندوز» همان تنظیمات، کلیدهای `MaxFileManager` را حذف می‌کند و مقدار
+پیش‌فرض قبلی هر کلاس را از store برمی‌گرداند (مسیر `%APPDATA%\max-file-manager\search.db`،
+کلید `windows-shell`). اگر مقدار قبلی `none` یا خالی بود — یعنی همان حالتِ خرابیِ
+«Application not found» که بعضی ابزارهای tweak می‌سازند — به‌جای آن یک verb سالم Explorer در
+HKCU نوشته می‌شود، نه همان مقدار خراب.
+
+## ویندوز: Win+E وقتی برنامه بسته است
+
+هوک صفحه‌کلید (`WinEHook.exe`) با گزینهٔ «Win+E وقتی برنامه بسته است هم کار کند»
+(تنظیمات → راه‌اندازی، پیش‌فرض روشن) بدون `--parent` اجرا می‌شود و این مقدار در Run کاربر
+نوشته می‌شود:
+
+```
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run\MaxFileManagerWinE
+  = "<install>\resources\WinEHook.exe" --target "<install>\Max File Manager.exe"
+```
+
+با خاموش‌کردن گزینهٔ Win+E، مقدار Run پاک و هر نمونهٔ `WinEHook.exe` بسته می‌شود.ت
+
+بررسی سریع:
+
+```powershell
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v MaxFileManagerWinE
+Get-Process WinEHook -ErrorAction SilentlyContinue
+```

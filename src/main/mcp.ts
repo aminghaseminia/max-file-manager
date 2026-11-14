@@ -102,6 +102,7 @@ const TOOLS: McpTool[] = [
   { name: 'meta_set', description: 'change a folder colour/icon/labels/notes/pins', read: false, input: { dir: 'string', patch: 'object' } },
   { name: 'sort_set', description: 'remember a folder sort key and direction', read: false, input: { dir: 'string', key: 'string', asc: 'boolean?' } },
   { name: 'pin_set', description: 'pin or unpin a file in its folder', read: false, input: { dir: 'string', name: 'string', on: 'boolean' } },
+  { name: 'shown_set', description: 'force a folder entry to stay visible while hidden files are off', read: false, input: { dir: 'string', name: 'string', on: 'boolean' } },
 
   // ── jobs, index and settings ───────────────────────────────────────────────
   { name: 'job_start', description: 'start a transfer job', read: false, input: { kind: 'string', sources: 'string[]', dest: 'string', opts: 'object?' } },

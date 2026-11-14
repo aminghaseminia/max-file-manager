@@ -81,6 +81,8 @@ export type Entry = {
   hidden?: boolean
   /** the entry is a symbolic link (the path itself, not its target) */
   link?: boolean
+  /** forced visible by the parent folder's `.mfm.json` */
+  forceShow?: boolean
 }
 export type SearchHit = {
   path: string
@@ -298,6 +300,10 @@ export type Api = {
   dupes(dir: string): Promise<{ entries: Entry[]; capped: boolean }>
   archive(p: string): Promise<{ entries: Entry[]; capped: boolean }>
   registerHotkey(accel: string): Promise<{ ok: boolean; accel: string }>
+  /** Windows only: hand Win+E to the keyboard-hook helper (or retire it) */
+  wineTakeover(on: boolean, autostart?: boolean): Promise<{ ok: boolean; active: boolean; app: string; error?: string }>
+  /** 'win32' | 'linux' | 'darwin' — a few settings only exist on one platform */
+  platform: string
   runScript(
     command: string,
     path?: string,
@@ -308,6 +314,8 @@ export type Api = {
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   isDefaultFileManager(): Promise<boolean>
   setDefaultFileManager(): Promise<{ ok: boolean; error?: string }>
+  /** Windows only: give the folder classes their old default verb back */
+  clearDefaultFileManager(): Promise<{ ok: boolean }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>
@@ -415,6 +423,8 @@ export type Api = {
   ): Promise<unknown>
   setNote(dir: string, name: string, text: string): Promise<Record<string, string>>
   togglePin(dir: string, name: string, on?: boolean): Promise<string[]>
+  /** keep a name visible even while hidden files are off (stored in the folder's `.mfm.json`) */
+  toggleShown(dir: string, name: string, on?: boolean): Promise<string[]>
   setMeta(dir: string, meta: FolderMeta): Promise<FolderMeta | null>
   iconThemes(extra: string[]): Promise<IconTheme[]>
   iconsIn(themeDir: string): Promise<IconRef[]>

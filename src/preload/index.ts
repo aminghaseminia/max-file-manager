@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('api', {
   dupes: (dir: string) => ipcRenderer.invoke('fs:dupes', dir),
   archive: (p: string) => ipcRenderer.invoke('fs:archive', p),
   registerHotkey: (accel: string) => ipcRenderer.invoke('hotkey:register', accel),
+  wineTakeover: (on: boolean, autostart = false) => ipcRenderer.invoke('wine:takeover', on, autostart),
+  platform: process.platform,
   runScript: (command: string, path?: string, dir?: string) =>
     ipcRenderer.invoke('app:runScript', { command, path, dir }),
   runCustomCommand: (command: string, path: string) =>
@@ -54,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
   isDefaultFileManager: () => ipcRenderer.invoke('desktop:isDefaultFileManager'),
   setDefaultFileManager: () => ipcRenderer.invoke('desktop:setDefaultFileManager'),
+  clearDefaultFileManager: () => ipcRenderer.invoke('desktop:clearDefaultFileManager'),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
   mcp: {
@@ -134,6 +137,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('meta:setEntryColor', { dir, name, color }),
   togglePin: (dir: string, name: string, on?: boolean) =>
     ipcRenderer.invoke('meta:togglePin', { dir, name, on }),
+  toggleShown: (dir: string, name: string, on?: boolean) =>
+    ipcRenderer.invoke('meta:toggleShown', { dir, name, on }),
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),
   iconThemes: (extra: string[]) => ipcRenderer.invoke('icons:themes', extra),
   iconsIn: (themeDir: string) => ipcRenderer.invoke('icons:in', themeDir),

@@ -988,7 +988,9 @@ export default function App() {
       const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
       if (loadSeq.current[i] !== seq) return
       const fmt = (listing.format as FolderView | null) ?? null
-      const entries = listing.entries.filter((e) => !isIgnoredName(e.name, prefs.ignoreFiles))
+      const entries = listing.entries.filter(
+        (e) => e.forceShow || !isIgnoredName(e.name, prefs.ignoreFiles)
+      )
       setPanes((p) => p && patch(p, i, { listing: { ...listing, entries }, fmt, error: '', loading: false }))
     } catch (e: any) {
       if (loadSeq.current[i] !== seq) return
@@ -1049,14 +1051,32 @@ export default function App() {
 
   // the OS-level hotkey follows the preference; the result is reported because it can fail
   useEffect(() => {
+    const accel = prefs.hotkeyEnabled ? prefs.hotkey : ''
+    // Windows: Win+E belongs to the keyboard-hook helper (wine-hook.ts); RegisterHotKey refuses it
+    if (api.platform === 'win32' && /^(super|win|windows)\+e$/i.test(accel.trim())) {
+      void api.registerHotkey('')
+      return
+    }
     void api
-      .registerHotkey(prefs.hotkeyEnabled ? prefs.hotkey : '')
+      .registerHotkey(accel)
       .then((r) => {
         if (prefs.hotkeyEnabled && !r.ok) {
-          setNote(`کلید ${prefs.hotkey} ثبت نشد — در تنظیمات KDE به «Add Command» بده`)
+          setNote(
+            api.platform === 'win32'
+              ? `کلید ${prefs.hotkey} ثبت نشد`
+              : `کلید ${prefs.hotkey} ثبت نشد — در تنظیمات KDE به «Add Command» بده`
+          )
         }
       })
   }, [prefs.hotkey, prefs.hotkeyEnabled])
+
+  // Windows: Win+E is claimed by the keyboard-hook helper (RegisterHotKey refuses it); say so when it failed
+  useEffect(() => {
+    if (api.platform !== 'win32') return
+    void api.wineTakeover(prefs.winE, prefs.winEAutostart).then((r) => {
+      if (prefs.winE && !r.ok && r.error) setNote(`Win+E به مکس وصل نشد — ${r.error}`)
+    })
+  }, [prefs.winE, prefs.winEAutostart])
 
   // a folder's format is applied at load time by `load()` above; it never rewrites the
   // global defaults, otherwise leaving the folder would drag its view onto every other one
@@ -2260,6 +2280,15 @@ export default function App() {
         setNote(wasPinned ? t('سنجاق برداشته شد') : t('به بالای پوشه سنجاق شد'))
         break
       }
+      case 'forceShow': {
+        if (!path) break
+        const dir = dirOf(path)
+        const name = baseName(path)
+        const on = !entryOf(active, path)?.forceShow
+        void api.toggleShown(dir, name, on).then(() => load(active, tabOf(panes![active])))
+        setNote(on ? t('همیشه نشان داده می‌شود') : t('دوباره طبق حالت پنهان‌ها'))
+        break
+      }
       case 'tabNew':
         addTab(active, tabOf(me))
         break
@@ -2597,6 +2626,11 @@ export default function App() {
         id: 'pinFile',
         label: isPinned ? t('برداشتن سنجاق') : t('سنجاق به بالای پوشه'),
         icon: <PinIcon filled={isPinned} />
+      },
+      {
+        id: 'forceShow',
+        label: entry?.forceShow ? t('حذف از «همیشه نشان بده»') : t('همیشه نشان بده'),
+        icon: <EyeIcon />
       }
     ]
 
@@ -4514,3 +4548,4 @@ export default function App() {
     </div>
   )
 }
+

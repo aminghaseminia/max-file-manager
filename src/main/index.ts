@@ -16,6 +16,7 @@ import {
 import { constants as fsConstants, existsSync, readFileSync, writeFileSync, watch as fsWatch, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
 import { targetPath } from './launch-path.ts'
@@ -34,12 +35,15 @@ import {
   setNote,
   setRating,
   togglePin,
+  toggleShown,
   type FolderFormat,
   type FolderMeta
 } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
+import { stopWinETakeover, winETakeover } from './wine-hook.ts'
 import { fitWindow } from './window-bounds.ts'
 import {
+  clearDefaultFileManagerWindows,
   defaultApp,
   isDefaultFileManager,
   launchApp,
@@ -89,6 +93,7 @@ import { findDupes, walk, type WalkOpts } from './search.ts'
 import { breakdown, type BreakdownMode } from './breakdown.ts'
 import { listDrives, mountDrive, unmountDrive } from './drives.ts'
 import { dirs } from './dirs.ts'
+import { mediaPathFromUrl } from './media-path.ts'
 import type { DirRef, Entry } from './types.ts'
 import { PortalServer, type PortalRequestData } from './portal.ts'
 import { installPortal, portalInstalled, uninstallPortal } from './portal-install.ts'
@@ -188,9 +193,7 @@ if (bootPrefs.singleInstance !== false && !process.env['SMOKE_SHOT']) {
   app.on('second-instance', (_e, argv) => {
     if (argv.includes('--portal-backend')) void portalServer.start().catch(() => undefined)
     if (!win || portalOnly) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
+    forceForeground(win)
     const target = targetPath(argv, app.getAppPath() || process.cwd())
     if (target) win.webContents.send('app:open-path', target)
   })
@@ -218,9 +221,11 @@ async function fillStats(entries: Entry[]): Promise<void> {
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'])
 
 async function list(dir: string, showHidden: boolean, dims = false) {
+  const meta = await readMeta(dir).catch(() => null)
+  const forced = new Set(meta?.shown ?? [])
   const dirents = await fs.readdir(dir, { withFileTypes: true })
   let entries: Entry[] = dirents
-    .filter((d) => showHidden || !d.name.startsWith('.'))
+    .filter((d) => showHidden || !d.name.startsWith('.') || forced.has(d.name))
     .map((d) => ({
       name: d.name,
       path: path.join(dir, d.name),
@@ -228,7 +233,8 @@ async function list(dir: string, showHidden: boolean, dims = false) {
       size: 0,
       mtime: 0,
       ext: path.extname(d.name).slice(1).toLowerCase(),
-      link: d.isSymbolicLink() || undefined
+      link: d.isSymbolicLink() || undefined,
+      forceShow: forced.has(d.name) || undefined
     }))
   await fillStats(entries)
   // folder look comes from the folder's own marker file; capped so a 5k-folder directory stays quick
@@ -252,7 +258,7 @@ async function list(dir: string, showHidden: boolean, dims = false) {
     )
   }
   // «don't list me» follows the hidden-files switch, exactly like Dolphin's hidden attribute
-  if (!showHidden) entries = entries.filter((e) => !e.hidden)
+  if (!showHidden) entries = entries.filter((e) => !e.hidden || e.forceShow)
   // pixel size needs a decoder, so it is opt-in and capped
   if (dims) {
     const images = entries.filter((e) => !e.dir && IMAGE_EXT.has(e.ext) && e.size < 20_000_000).slice(0, 400)
@@ -553,10 +559,27 @@ let quitting = false
 const singleInstanceEnabled = bootPrefs.singleInstance !== false
 
 function showWindow(): void {
-  if (!win || win.isDestroyed()) return
-  if (win.isMinimized()) win.restore()
-  win.show()
-  win.focus()
+  forceForeground(win)
+}
+
+/**
+ * Windows refuses the foreground to a process that was started by another process (the Win+E
+ * helper), so `show()+focus()` leaves the window behind. The accepted workaround is to flip
+ * always-on-top on for a moment: that makes the shell raise the window, and focus sticks.
+ */
+function forceForeground(w: BrowserWindow | null): void {
+  if (!w || w.isDestroyed()) return
+  if (w.isMinimized()) w.restore()
+  w.show()
+  if (process.platform === 'win32') {
+    const top = w.isAlwaysOnTop()
+    w.setAlwaysOnTop(true)
+    w.moveTop()
+    w.focus()
+    w.setAlwaysOnTop(top)
+  } else {
+    w.focus()
+  }
 }
 
 function ensureTray(labels: { show: string; quit: string }): void {
@@ -632,7 +655,7 @@ function createWindow(): BrowserWindow {
     })
   }
   w.on('ready-to-show', () => {
-    w.show()
+    forceForeground(w)
     if (saved?.maximized) w.maximize()
   })
   let boundsTimer: NodeJS.Timeout | null = null
@@ -655,6 +678,7 @@ function createWindow(): BrowserWindow {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  stopWinETakeover()
   for (const w of childWindows) if (!w.isDestroyed()) w.destroy()
   portalServer.stop()
   void stopMcp()
@@ -662,14 +686,50 @@ app.on('will-quit', () => {
 
 /**
  * Fill in the icons a platform did not resolve itself. macOS hands back `.app` paths and no icon,
- * so Electron reads the bundle icon once per app and caches the PNG (see `appicons.ts`).
+ * so Electron reads the bundle icon once per app and caches the PNG (see `appicons.ts`). Windows
+ * handlers hand back an `.exe` (classic) or a PNG inside `WindowsApps` (packaged app).
  */
 async function withAppIcons(apps: DesktopApp[]): Promise<DesktopApp[]> {
-  if (process.platform !== 'darwin') return apps
+  if (process.platform === 'darwin') {
+    const dir = path.join(app.getPath('userData'), 'appicons')
+    return Promise.all(
+      apps.map(async (a) => (a.iconPath ? a : { ...a, iconPath: await appIconFile(a.id, dir) }))
+    )
+  }
+  if (process.platform !== 'win32') return apps
   const dir = path.join(app.getPath('userData'), 'appicons')
   return Promise.all(
-    apps.map(async (a) => (a.iconPath ? a : { ...a, iconPath: await appIconFile(a.id, dir) }))
+    apps.map(async (a) => (a.iconPath ? { ...a, iconPath: await winIconFile(a.iconPath, dir) } : a))
   )
+}
+
+const winIconCache = new Map<string, string>()
+
+/** Packaged apps ship a PNG; a classic app's icon is extracted from its `.exe`, once per mtime. */
+async function winIconFile(source: string, dir: string): Promise<string> {
+  const src = String(source ?? '').trim()
+  if (!src || !path.isAbsolute(src)) return ''
+  if (/\.(png|jpe?g|webp)$/i.test(src)) return src
+  const hit = winIconCache.get(src)
+  if (hit) return hit
+  const st = await fs.stat(src).catch(() => null)
+  if (!st) return ''
+  const key = createHash('sha1').update(`win1:${src}:${st.mtimeMs}`).digest('hex')
+  const file = path.join(dir, `${key}.png`)
+  if (await fs.access(file).then(() => true, () => false)) {
+    winIconCache.set(src, file)
+    return file
+  }
+  const icon = await app.getFileIcon(src, { size: 'large' }).catch(() => null)
+  if (!icon || icon.isEmpty()) return ''
+  await fs.mkdir(dir, { recursive: true }).catch(() => undefined)
+  const tmp = `${file}.${process.pid}.png`
+  const wrote = await fs.writeFile(tmp, icon.toPNG()).then(() => true, () => false)
+  if (!wrote) return ''
+  await fs.rename(tmp, file).catch(() => undefined)
+  const ok = await fs.access(file).then(() => true, () => false)
+  if (ok) winIconCache.set(src, file)
+  return ok ? file : ''
 }
 
 /** Window IPC must act on the window that asked: viewer/editor windows are separate. */
@@ -723,7 +783,7 @@ function openStandalone(kind: 'gallery' | 'editor', file: string): { ok: true } 
 
 app.whenReady().then(async () => {
   protocol.handle('mfm', async (req) => {
-    const p = decodeURIComponent(new URL(req.url).pathname)
+    const p = mediaPathFromUrl(req.url)
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
     const res = await net.fetch(pathToFileURL(p).toString())
     // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
@@ -734,7 +794,7 @@ app.whenReady().then(async () => {
 
   protocol.handle('thumb', async (req) => {
     const url = new URL(req.url)
-    const p = decodeURIComponent(url.pathname)
+    const p = mediaPathFromUrl(req.url)
     const side = Number(url.searchParams.get('s') ?? 256) || 256
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
     const file = await thumbFor(p, side)
@@ -921,6 +981,9 @@ app.whenReady().then(async () => {
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
   )
   ipcMain.handle('hotkey:register', (_e, accel: string) => registerHotkey(accel))
+  ipcMain.handle('wine:takeover', (_e, on: boolean, autostart: boolean) =>
+    winETakeover(on === true, autostart === true)
+  )
   ipcMain.handle('app:runScript', (_e, a: { command?: string; path?: string; dir?: string }) => runScriptCommand(a))
   ipcMain.handle('app:runCustomCommand', (_e, a: { command?: string; path?: string }) =>
     runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
@@ -1249,6 +1312,8 @@ app.whenReady().then(async () => {
       }
       case 'pin_set':
         return togglePin(needAbs(args.dir), String(args.name ?? ''), Boolean(args.on))
+      case 'shown_set':
+        return toggleShown(needAbs(args.dir), String(args.name ?? ''), Boolean(args.on))
       case 'job_start':
         return engine.start(
           (args.kind === 'move' ? 'move' : args.kind === 'copy' ? 'copy' : 'copy') as JobKind,
@@ -1545,6 +1610,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:togglePin', (_e, a: { dir: string; name: string; on?: boolean }) =>
     path.isAbsolute(a?.dir ?? '') ? togglePin(a.dir, String(a.name ?? ''), a.on) : []
   )
+  ipcMain.handle('meta:toggleShown', (_e, a: { dir: string; name: string; on?: boolean }) =>
+    path.isAbsolute(a?.dir ?? '') ? toggleShown(a.dir, String(a.name ?? ''), a.on) : []
+  )
   ipcMain.handle('meta:labels', () => LABELS)
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
@@ -1625,13 +1693,29 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('apps:default', (_e, p: string) => (path.isAbsolute(p) ? defaultApp(p) : null))
   ipcMain.handle('apps:launch', (_e, id: string, p: string) => {
-    if (!path.isAbsolute(id) || !path.isAbsolute(p)) return { error: 'bad_path' }
+    // Windows ids are `assoc:Photos` / `progid:…` / `exe:…`; an absolute path is only the
+    // Linux `.desktop` and macOS `.app` shape.
+    const known =
+      process.platform === 'win32'
+        ? typeof id === 'string' && /^(assoc|progid|exe|appid):.+/.test(id)
+        : typeof id === 'string' && path.isAbsolute(id)
+    if (!known || !path.isAbsolute(p)) return { error: 'bad_path' }
     return launchApp(id, p)
   })
   ipcMain.handle('desktop:isDefaultFileManager', () => isDefaultFileManager())
-  ipcMain.handle('desktop:setDefaultFileManager', () =>
-    setDefaultFileManager(process.execPath, app.getAppPath())
-  )
+  ipcMain.handle('desktop:setDefaultFileManager', async () => {
+    const res = await setDefaultFileManager(process.execPath, app.getAppPath(), app.isPackaged)
+    // remember what the classes' default verbs were so «undo» restores them exactly
+    if (res.ok && res.previous) writeStore('windows-shell', res.previous)
+    return { ok: res.ok, error: res.error }
+  })
+  ipcMain.handle('desktop:clearDefaultFileManager', async () => {
+    if (process.platform !== 'win32') return { ok: false }
+    const previous = readStore<Record<string, string>>('windows-shell')
+    const res = await clearDefaultFileManagerWindows(previous)
+    writeStore('windows-shell', null)
+    return res
+  })
   ipcMain.handle('window:control', (e, action: 'minimize' | 'maximize' | 'close') => {
     const w = senderWindow(e)
     if (!w) return
@@ -1671,7 +1755,7 @@ app.whenReady().then(async () => {
     const old = win
     protocol.handle('thumb', async (req) => {
     const url = new URL(req.url)
-    const p = decodeURIComponent(url.pathname)
+    const p = mediaPathFromUrl(req.url)
     const side = Number(url.searchParams.get('s') ?? 256) || 256
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
     const file = await thumbFor(p, side)
@@ -1781,6 +1865,12 @@ app.whenReady().then(async () => {
       portalError = e instanceof Error ? e.message : String(e)
       console.error('MFM portal backend:', portalError)
     })
+  }
+
+  // Windows: Win+E goes to a keyboard-hook helper (see wine-hook.ts); the pref owns its lifetime
+  if (process.platform === 'win32' && bootPrefs.winE !== false) {
+    const takeover = winETakeover(true, bootPrefs.winEAutostart !== false)
+    if (!takeover.ok && takeover.error) console.error('MFM Win+E takeover:', takeover.error)
   }
 
   const opens = pendingOpens.length ? [...pendingOpens] : firstPath ? [firstPath] : []

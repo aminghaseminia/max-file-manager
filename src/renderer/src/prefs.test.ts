@@ -186,7 +186,27 @@ test('gallery info sidebar: on by default and a chosen state survives', () => {
 })
 
 test('ignore list: defaults hide metadata files and junk entries are dropped', () => {
-  assert.deepEqual(mergePrefs({}).ignoreFiles, ['.directory', 'desktop.ini'])
+  assert.deepEqual(mergePrefs({}).ignoreFiles, [
+    '.directory',
+    'desktop.ini',
+    '$RECYCLE.BIN',
+    'lost+found',
+    'msdownld.tmp'
+  ])
+  // a list saved before the OS junk folders joined the default grows into the new one
+  assert.deepEqual(mergePrefs({ ignoreFiles: ['.directory', 'desktop.ini'] }).ignoreFiles, [
+    '.directory',
+    'desktop.ini',
+    '$RECYCLE.BIN',
+    'lost+found',
+    'msdownld.tmp'
+  ])
+  // anything the user actually touched is left exactly as it is
+  assert.deepEqual(mergePrefs({ ignoreFiles: ['.directory'] }).ignoreFiles, ['.directory'])
+  assert.deepEqual(
+    mergePrefs({ ignoreFiles: ['.directory', 'desktop.ini', '*.bak'] }).ignoreFiles,
+    ['.directory', 'desktop.ini', '*.bak']
+  )
   assert.deepEqual(mergePrefs({ ignoreFiles: ['  .DS_Store ', '', 'x/y', 42 as never] }).ignoreFiles, [
     '.DS_Store'
   ])

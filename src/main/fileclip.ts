@@ -9,9 +9,32 @@
  * If neither helper is available, the paths go to the clipboard as plain text.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { EOL, tmpdir } from 'node:os'
 import path from 'node:path'
 import { app, clipboard } from 'electron'
+
+/**
+ * Windows gets a real file list (`CF_HDROP` + `Preferred DropEffect`), which Electron's clipboard
+ * cannot write, so a short PowerShell script builds the DataObject. It runs with `windowsHide` and
+ * `-WindowStyle Hidden`: a console window flashing on every Ctrl+X is not acceptable, and the
+ * `-WindowStyle` flag alone still flashes because it is applied after the console is created.
+ */
+const WINDOWS_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$paths = [System.IO.File]::ReadAllLines($env:MFM_CLIP_LIST, [System.Text.Encoding]::UTF8) | Where-Object { $_ -ne '' }
+if (-not $paths.Count) { Write-Output 'empty'; exit 1 }
+$list = New-Object System.Collections.Specialized.StringCollection
+foreach ($p in $paths) { [void]$list.Add($p) }
+$data = New-Object System.Windows.Forms.DataObject
+$data.SetFileDropList($list)
+# 2 = move (cut), 1 = copy: Explorer decides on paste from this value
+$effect = if ($env:MFM_CLIP_CUT -eq '1') { 2 } else { 1 }
+$data.SetData('Preferred DropEffect', [byte[]]@($effect, 0, 0, 0))
+[System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+Write-Output 'ok'
+`
 
 const SCRIPT = String.raw`
 import sys, json, select
@@ -105,6 +128,7 @@ function startHelper(): Promise<boolean> {
       try {
         proc = spawn(waylandBin, [], {
           detached: true,
+          windowsHide: true,
           stdio: ['pipe', 'pipe', 'ignore']
         })
       } catch {
@@ -116,6 +140,7 @@ function startHelper(): Promise<boolean> {
       try {
         proc = spawn('python3', ['-c', SCRIPT], {
           detached: true,
+          windowsHide: true,
           stdio: ['pipe', 'pipe', 'ignore']
         })
       } catch {
@@ -193,10 +218,88 @@ async function send(msg: Record<string, unknown>): Promise<boolean> {
   })
 }
 
+/** Windows: real files on the clipboard through a hidden PowerShell — never a console window. */
+function copyFilesWindows(paths: string[], cut: boolean): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let dir = ''
+    try {
+      dir = mkdtempSync(path.join(tmpdir(), 'mfm-clip-'))
+      writeFileSync(path.join(dir, 'paths.txt'), paths.join(EOL), 'utf8')
+    } catch (e) {
+      console.error('MFM file clipboard: temp list failed', e)
+      resolve(false)
+      return
+    }
+    const cleanup = (): void => {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // a leftover temp dir is harmless
+      }
+    }
+    let proc: ChildProcess
+    try {
+      proc = spawn(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-WindowStyle',
+          'Hidden',
+          '-Command',
+          WINDOWS_SCRIPT
+        ],
+        {
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, MFM_CLIP_LIST: path.join(dir, 'paths.txt'), MFM_CLIP_CUT: cut ? '1' : '0' }
+        }
+      )
+    } catch {
+      cleanup()
+      resolve(false)
+      return
+    }
+    let out = ''
+    let err = ''
+    let settled = false
+    proc.stdout?.on('data', (buf: Buffer) => {
+      out += String(buf)
+    })
+    proc.stderr?.on('data', (buf: Buffer) => {
+      err += String(buf)
+    })
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      if (!ok) console.error('MFM file clipboard:', (err || out || 'powershell failed').trim().slice(0, 400))
+      resolve(ok)
+    }
+    proc.once('error', () => finish(false))
+    proc.once('exit', (code) => finish(code === 0 && out.includes('ok')))
+    setTimeout(() => {
+      try {
+        proc.kill()
+      } catch {
+        // already gone
+      }
+      finish(false)
+    }, 8000)
+  })
+}
+
 /** Resolves to `files` only after the helper confirms that the selection is set. */
 export async function copyFilesToClipboard(paths: string[], cut = false): Promise<'files' | 'text'> {
   const list = paths.filter((p) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p))
   if (!list.length) return 'text'
+  if (process.platform === 'win32') {
+    if (await copyFilesWindows(list, cut)) return 'files'
+    clipboard.writeText(list.join('\n'))
+    return 'text'
+  }
   if (await send({ paths: list, cut })) return 'files'
   clipboard.writeText(list.join('\n'))
   return 'text'

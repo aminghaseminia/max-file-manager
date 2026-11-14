@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {thumbUrl, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isIgnoredName, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {thumbUrl, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isAbsolutePath, isIgnoredName, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -158,10 +158,24 @@ test('planRename: regex groups, and an invalid pattern renames nothing', () => {
   )
 })
 
+test('isAbsolutePath accepts POSIX, drive and UNC paths', () => {
+  assert.equal(isAbsolutePath('/home/max/Pictures'), true)
+  assert.equal(isAbsolutePath('D:\\Cloud'), true)
+  assert.equal(isAbsolutePath('c:/Users/Milena'), true)
+  assert.equal(isAbsolutePath('\\\\server\\share\\pics'), true)
+  assert.equal(isAbsolutePath('  D:\\Cloud  '), true)
+  assert.equal(isAbsolutePath('Cloud'), false)
+  assert.equal(isAbsolutePath('C:'), false)
+  assert.equal(isAbsolutePath(''), false)
+})
+
 test('dirOf / joinPath keep the platform separator', () => {
   assert.equal(dirOf('/home/maxv/a.txt'), '/home/maxv')
   assert.equal(dirOf('/a'), '/')
   assert.equal(dirOf('C:\\x\\y.txt'), 'C:\\x')
+  // a file at the drive root: bare `C:` is relative, so the separator must stay
+  assert.equal(dirOf('C:\\y.txt'), 'C:\\')
+  assert.equal(dirOf('C:/y.txt'), 'C:/')
   assert.equal(joinPath('/a/b', 'c.txt'), '/a/b/c.txt')
   assert.equal(joinPath('/a/b/', 'c.txt'), '/a/b/c.txt')
   assert.equal(joinPath('C:\\a', 'c.txt'), 'C:\\a\\c.txt')
@@ -498,6 +512,12 @@ test('isIgnoredName matches exact names case-insensitively and honours wildcards
   assert.equal(isIgnoredName('.directory', ['.directory', 'desktop.ini']), true)
   assert.equal(isIgnoredName('Desktop.ini', ['.directory', 'desktop.ini']), true)
   assert.equal(isIgnoredName('notes.txt', ['.directory', 'desktop.ini']), false)
+  // the OS junk folders in DEFAULT_IGNORE_FILES; `$` must stay literal, not a regex anchor
+  assert.equal(isIgnoredName('$RECYCLE.BIN', ['$RECYCLE.BIN', 'lost+found', 'msdownld.tmp']), true)
+  assert.equal(isIgnoredName('lost+found', ['$RECYCLE.BIN', 'lost+found', 'msdownld.tmp']), true)
+  assert.equal(isIgnoredName('MSDOWNLD.TMP', ['$RECYCLE.BIN', 'lost+found', 'msdownld.tmp']), true)
+  assert.equal(isIgnoredName('$RECYCLE.BIN.bak', ['$RECYCLE.BIN']), false)
+  assert.equal(isIgnoredName('$recycle.bin', ['$RECYCLE.BIN*']), true)
   assert.equal(isIgnoredName('a.tmp', ['*.tmp']), true)
   assert.equal(isIgnoredName('a.tmp', ['?.tmp']), true)
   assert.equal(isIgnoredName('ab.tmp', ['?.tmp']), false)

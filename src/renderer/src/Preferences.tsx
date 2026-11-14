@@ -12,7 +12,7 @@ import {
   type CustomCommand,
   type Prefs
 } from './prefs'
-import { fa } from './format'
+import { fa, isAbsolutePath } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
@@ -499,7 +499,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                     className="pref-input wide"
                     dir="ltr"
                     value={prefs.ignoreFiles.join(', ')}
-                    placeholder=".directory, desktop.ini"
+                    placeholder=".directory, desktop.ini, $RECYCLE.BIN"
                     onChange={(e) =>
                       onChange({
                         ignoreFiles: e.target.value
@@ -923,7 +923,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                 />
                 <button
                   className="btn"
-                  disabled={!newRoot.startsWith('/')}
+                  disabled={!isAbsolutePath(newRoot)}
                   onClick={() => {
                     onChange({ searchRoots: [...prefs.searchRoots, newRoot.trim()] })
                     setNewRoot('')
@@ -1340,7 +1340,9 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
             <>
               {row(
                 t('کلید سراسری باز کردن'),
-                t('روی X11 کار می‌کند؛ روی Wayland باید همان کلید را در تنظیمات KDE به «Add Command» بدهی (راهنما در docs/INTEGRATION.md)'),
+                api.platform === 'win32'
+                  ? t('روی ویندوز ترکیب‌هایی مثل Ctrl+Alt+M کار می‌کنند؛ خود Win+E گزینهٔ پایین را دارد')
+                  : t('روی X11 کار می‌کند؛ روی Wayland باید همان کلید را در تنظیمات KDE به «Add Command» بدهی (راهنما در docs/INTEGRATION.md)'),
                 check(prefs.hotkeyEnabled, 'hotkeyEnabled')
               )}
               {row(
@@ -1353,13 +1355,26 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   onChange={(e) => onChange({ hotkey: e.target.value })}
                 />
               )}
+              {api.platform === 'win32' &&
+                row(
+                  t('Win+E مکس را باز کند'),
+                  t('ویندوز Win+E را داخل خود Explorer حل می‌کند و به کلید سراسری نمی‌دهد؛ یک هوک صفحه‌کلید همان کلید را به مکس می‌رساند (همان کاری که Directory Opus می‌کند)'),
+                  check(prefs.winE, 'winE')
+                )}
+              {api.platform === 'win32' &&
+                row(
+                  t('Win+E وقتی برنامه بسته است هم کار کند'),
+                  t('هوک صفحه‌کلید در ورود به ویندوز اجرا می‌شود و می‌ماند؛ یک ورودی در Run کاربر نوشته می‌شود. اگر خاموش باشد فقط تا وقتی مکس باز است کار می‌کند'),
+                  check(prefs.winEAutostart, 'winEAutostart')
+                )}
             </>
           )}
 
           {page === 'launch' && (
             <>
-              {row(
-                t('انتخابگر فایل مکس برای برنامه‌های دیگر'),
+              {api.platform === 'linux' &&
+                row(
+                  t('انتخابگر فایل مکس برای برنامه‌های دیگر'),
                 t('فایرفاکس و برنامه‌های سازگار با XDG، دیالوگ باز کردن و ذخیره فایل را با مکس نمایش می‌دهند'),
                 <label className="check">
                   <input
@@ -1382,7 +1397,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   />
                 </label>
               )}
-              {portalMsg && <div className="hint" dir="auto">{portalMsg}</div>}
+              {api.platform === 'linux' && portalMsg && <div className="hint" dir="auto">{portalMsg}</div>}
               {row(
                 t('تک‌نمونه (single instance)'),
                 t('اجرای دوباره، پنجرهٔ موجود را جلو می‌آورد · با راه‌اندازی بعدی اعمال می‌شود'),
@@ -1442,28 +1457,40 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   />
                 </label>
               )}
-              {row(
-                t('مدیر فایل پیش‌فرض سیستم'),
-                isDefault
-                  ? t('این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است')
-                  : t('باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود'),
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={isDefault === true || settingDefault}
-                  onClick={async () => {
-                    setSettingDefault(true)
-                    try {
-                      const res = await api.setDefaultFileManager()
-                      if (res.ok) setIsDefault(true)
-                    } finally {
-                      setSettingDefault(false)
-                    }
-                  }}
-                >
-                  {isDefault ? t('پیش‌فرض است') : settingDefault ? t('در حال تنظیم…') : t('تنظیم به عنوان پیش‌فرض')}
-                </button>
-              )}
+              {(api.platform === 'linux' || api.platform === 'win32') &&
+                row(
+                  t('مدیر فایل پیش‌فرض سیستم'),
+                  isDefault
+                    ? t('این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است')
+                    : t('باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود'),
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={(isDefault === true && api.platform !== 'win32') || settingDefault}
+                    onClick={async () => {
+                      setSettingDefault(true)
+                      try {
+                        if (isDefault && api.platform === 'win32') {
+                          const res = await api.clearDefaultFileManager()
+                          if (res.ok) setIsDefault(false)
+                        } else {
+                          const res = await api.setDefaultFileManager()
+                          if (res.ok) setIsDefault(true)
+                        }
+                      } finally {
+                        setSettingDefault(false)
+                      }
+                    }}
+                  >
+                    {isDefault
+                      ? api.platform === 'win32'
+                        ? t('بازگرداندن به ویندوز')
+                        : t('پیش‌فرض است')
+                      : settingDefault
+                        ? t('در حال تنظیم…')
+                        : t('تنظیم به عنوان پیش‌فرض')}
+                  </button>
+                )}
             </>
           )}
 

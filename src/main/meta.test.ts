@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { iconsIn, themeDirs } from './icons.ts'
-import { LABELS, META_FILE, readMeta, setLabel, setMeta, setNote, setRating, togglePin } from './meta.ts'
+import { LABELS, META_FILE, readMeta, setLabel, setMeta, setNote, setRating, togglePin, toggleShown } from './meta.ts'
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'mfm-meta-'))
 
@@ -14,6 +14,20 @@ test('setMeta writes a hidden file inside the folder and readMeta reads it', asy
   await setMeta(dir, { color: '#e0a44a' })
   assert.ok(await fs.stat(path.join(dir, META_FILE)), 'the marker lives with the folder')
   assert.deepEqual(await readMeta(dir), { color: '#e0a44a' })
+})
+
+test('toggleShown keeps bare names only and clears the marker when empty', async () => {
+  const dir = await tmp()
+  assert.deepEqual(await toggleShown(dir, '.env', true), ['.env'])
+  assert.deepEqual(await toggleShown(dir, 'private', true), ['.env', 'private'])
+  assert.deepEqual((await readMeta(dir))?.shown, ['.env', 'private'])
+  // a path or traversal is not a name in this folder: nothing is written, like `togglePin`
+  assert.deepEqual(await toggleShown(dir, 'a/b', true), [])
+  assert.deepEqual(await toggleShown(dir, '..', true), [])
+  assert.deepEqual((await readMeta(dir))?.shown, ['.env', 'private'])
+  assert.deepEqual(await toggleShown(dir, '.env', false), ['private'])
+  assert.deepEqual(await toggleShown(dir, 'private', false), [])
+  assert.equal(await readMeta(dir), null, 'the marker is removed when nothing is left')
 })
 
 test('setMeta merges, and empty meta deletes the file', async () => {

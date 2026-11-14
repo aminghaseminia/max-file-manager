@@ -22,6 +22,11 @@ linux:
 win:
   target:
     - nsis
+  extraResources:
+    # Win+E takeover: a low-level keyboard hook helper (built by scripts/build-wine-hook.mjs).
+    # It has to live outside app.asar to be executable, and only Windows has a use for it.
+    - from: out/main/WinEHook.exe
+      to: WinEHook.exe
 mac:
   target:
     - dmg
