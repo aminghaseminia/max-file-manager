@@ -1,4 +1,5 @@
 import { getLang, t } from './i18n.ts'
+import { isHtmlPath } from './html.ts'
 import type { Entry } from './api.ts'
 
 export type SortKey =
@@ -281,7 +282,7 @@ export const isImage = (ext: string): boolean => KIND[ext] === 'image'
 /** Files the built-in editor is the right default app for; no extension counts as text. */
 const EDITOR_EXT = new Set(['txt', 'text', 'log', 'md', 'markdown', 'mdx', 'rst'])
 
-export const opensInEditor = (e: Entry): boolean =>
+export const opensInEditor = (e: Pick<Entry, 'dir' | 'ext'>): boolean =>
   !e.dir && (e.ext === '' || EDITOR_EXT.has(e.ext.toLowerCase()))
 
 /** One keystroke of list/grid navigation. */
@@ -312,6 +313,31 @@ export function navIndex(cur: number, move: NavMove, count: number, cols = 1, pa
 /** Formats the archive reader understands (zip + tar family). */
 export const isArchiveName = (name: string): boolean =>
   /\.(zip|tar|tgz|tar\.gz|tar\.bz2|tbz2)$/i.test(name)
+
+export type OpenAction = 'navigate' | 'external' | 'archive' | 'preview' | 'gallery' | 'editor'
+
+/**
+ * What a double-click on an entry should do.
+ *
+ * Kept pure so the preference can be tested. «Run» is the user's explicit request for the system
+ * app, so it wins over the per-type defaults (HTML preview, built-in editor); Preview and Gallery
+ * keep their specialised behaviour for everything that is not an image or a document.
+ */
+export function openAction(
+  e: Pick<Entry, 'dir' | 'name' | 'ext' | 'path'>,
+  mode: 'open' | 'gallery' | 'preview',
+  opts: { hasDefaultApp?: boolean; virtual?: boolean } = {}
+): OpenAction {
+  if (e.dir) return 'navigate'
+  if (opts.hasDefaultApp) return 'external'
+  if (isArchiveName(e.name)) return 'archive'
+  if (mode === 'open') return 'external'
+  if (mode === 'preview') return 'preview'
+  if (isHtmlPath(e.path) && !opts.virtual) return 'preview'
+  if (isImage(e.ext) && mode === 'gallery') return 'gallery'
+  if (opensInEditor(e) && !opts.virtual) return 'editor'
+  return 'external'
+}
 
 /** POSIX or Windows: parent folder of a path, keeping its own separator. */
 export function dirOf(p: string): string {

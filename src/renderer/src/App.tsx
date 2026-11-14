@@ -58,6 +58,7 @@ import {
   mediaUrl,
   menuTargets,
   navIndex,
+  openAction,
   opensInEditor,
   orderEntries,
   reorderItem,
@@ -66,7 +67,6 @@ import {
   type NavMove,
   type SortKey
 } from './format'
-import { isHtmlPath } from './html'
 import { copyImageContent } from './clipboard'
 import {
   ArchiveOpenIcon,
@@ -1311,17 +1311,15 @@ export default function App() {
       panes?.[i].listing?.entries.find((x) => x.path === p) ??
       panes?.[i].results?.find((x) => x.path === p)
     if (!e) return
-    if (e.dir) go(i, e.path)
-    else if (prefs.defaultApps[e.ext]) openExternal(e.path)
-    else if (isArchiveName(e.name)) void openArchive(i, e.path)
-    else if (prefs.doubleClick === 'preview') {
-      openPreview(e.path)
-    } else if (isHtmlPath(e.path) && !panes?.[i].archive) {
-      // an HTML file is a document: show the sandboxed preview, never hand it to the desktop
-      openPreview(e.path)
-    } else if (isImage(e.ext) && prefs.doubleClick === 'gallery') openGallery(i, e.path)
-    // text files belong in the built-in editor; an archive listing is virtual, so nothing to read
-    else if (opensInEditor(e) && !panes?.[i].archive) openEditor(e.path)
+    const action = openAction(e, prefs.doubleClick, {
+      hasDefaultApp: !!prefs.defaultApps[e.ext],
+      virtual: !!panes?.[i].archive
+    })
+    if (action === 'navigate') go(i, e.path)
+    else if (action === 'archive') void openArchive(i, e.path)
+    else if (action === 'preview') openPreview(e.path)
+    else if (action === 'gallery') openGallery(i, e.path)
+    else if (action === 'editor') openEditor(e.path)
     else openExternal(e.path)
   }
 
