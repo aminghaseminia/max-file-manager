@@ -228,6 +228,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 
 ## تست و تحویل
 
+- **قبل از هر build/install از تغییرات تازه، ممیزی امنیتی واجب است**: اول `git fetch upstream` و دیف را بخوان؛ اگر اسکریپت نصب/بعد-نصب تازه (در مخزن یا هر وابستگی)، وابستگی از خارج `registry.npmjs.org` یا بدون `integrity`، `eval`/`new Function`/`vm`، کد مینیفای/مبهم، درخواست شبکه‌ای تازه، `child_process` تازه (به‌ویژه `sh -c` غیر‌لیترال)، شل‌شدن CSP/`contextIsolation`/`nodeIntegration`، سطح تازه‌ای در `preload`، ماندگاری تازه (LaunchAgent/login item/cron) یا ابزار MCP ممتاز دیدی، **متوقف شو و گزارش بده** — نساز و نصب نکن. فقط بعد از پاک‌بودن ممیزی `npm run typecheck` + تست + `dist:*` + نصب. جزئیات چک‌لیست در بخش «Updating from upstream».
 - منطق خالص (فرمت، مرتب‌سازی، مسیر) تست واحد دارد؛ UI را با `SMOKE_SHOT` و چشم خودت ببین.
 - اجرای کامل سوییت کار من (مالک) است؛ تو تست را بنویس و همان تست مربوطه را اجرا کن.
 - قبل از تحویل: `npm run typecheck` + `node --test` + یک اسکرین‌شات تازه.
@@ -270,7 +271,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 ## Updating from upstream (this macOS fork)
 
 `origin` is `aminghaseminia/max-file-manager`; `upstream` is `majidasgari/max-file-manager`.
-**A pull is code execution.** Never build or install before the review below — the only reason this fork exists separately is so incoming code can be treated as untrusted until it has been read.
+**A pull is code execution.** Audit the incoming diff for backdoors and malicious code **before** any build or install — never build first and check afterwards. The only reason this fork exists separately is so incoming code can be treated as untrusted until it has been read.
 
 ### 1. Fetch, then look before merging
 
