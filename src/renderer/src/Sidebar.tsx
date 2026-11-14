@@ -4,7 +4,7 @@ import { api, type DirRef, type Drive } from './api'
 import { baseName, fa } from './format'
 import { clearDragPaths, keepDragPaths, lastDragPaths } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
 
@@ -109,6 +109,10 @@ export function Sidebar({
 }: Props) {
   const [dragMarkIdx, setDragMarkIdx] = useState<number | null>(null)
   const [dropMarkTarget, setDropMarkTarget] = useState<{ idx: number; place: 'before' | 'after' } | null>(null)
+  /** Expanded tree nodes in «Places», and the sub-folders already read for them (lazy). */
+  const [treeOpen, setTreeOpen] = useState<Set<string>>(() => new Set())
+  const [treeKids, setTreeKids] = useState<Record<string, DirRef[]>>({})
+  const treeLoading = useRef<Set<string>>(new Set())
   const [localCollapsed, setLocalCollapsed] = useState<Set<string>>(() => new Set())
   const isCollapsed = (id: string) =>
     collapsed ? collapsed.includes(id) : localCollapsed.has(id)
@@ -216,6 +220,95 @@ export function Sidebar({
       window.removeEventListener('dragend', onEnd)
     }
   }, [])
+
+  /** Read a folder's sub-directories once; expanding again reuses the result. */
+  const treeLoaded = useRef<Set<string>>(new Set())
+  const loadTreeKids = (dir: string): void => {
+    if (treeLoaded.current.has(dir) || treeLoading.current.has(dir)) return
+    treeLoading.current.add(dir)
+    void api
+      .dirs(dir, showHidden)
+      .then((list) => {
+        treeLoaded.current.add(dir)
+        setTreeKids((prev) => ({
+          ...prev,
+          [dir]: [...list].sort((a, b) => a.name.localeCompare(b.name))
+        }))
+      })
+      .catch(() => {
+        treeLoaded.current.add(dir)
+        setTreeKids((prev) => ({ ...prev, [dir]: [] }))
+      })
+      .finally(() => treeLoading.current.delete(dir))
+  }
+
+  const toggleTree = (dir: string): void => {
+    const willOpen = !treeOpen.has(dir)
+    setTreeOpen((prev) => {
+      const next = new Set(prev)
+      if (willOpen) next.add(dir)
+      else next.delete(dir)
+      return next
+    })
+    if (willOpen) loadTreeKids(dir)
+  }
+
+  // the hidden-files switch changes what a folder contains: drop the cache and re-read open nodes
+  useEffect(() => {
+    treeLoaded.current.clear()
+    treeLoading.current.clear()
+    setTreeKids({})
+    for (const p of treeOpen) loadTreeKids(p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHidden])
+
+  /** One level of the Places tree; children render themselves so any depth works. */
+  const renderTree = (parent: string, depth: number): React.ReactNode => {
+    const list = treeKids[parent]
+    if (!list) return null
+    if (!list.length) {
+      return (
+        <div className="tree-empty" style={{ paddingInlineStart: 16 + depth * 12 }}>
+          {t('پوشه‌ای نیست')}
+        </div>
+      )
+    }
+    return list.map((c) => {
+      const isOpen = treeOpen.has(c.path)
+      const known = treeKids[c.path]
+      // once a folder is known to have no sub-folders, its arrow would only offer an empty panel
+      const hasKids = known === undefined || known.length > 0
+      return (
+        <div key={c.path}>
+          <div
+            className={'tree-row' + (activePath === c.path ? ' on' : '')}
+            style={{ paddingInlineStart: 4 + depth * 12 }}
+          >
+            {hasKids ? (
+              <button
+                type="button"
+                className="twisty tree-twisty"
+                title={isOpen ? t('جمع کردن') : t('باز کردن')}
+                aria-label={isOpen ? t('جمع کردن') : t('باز کردن')}
+                aria-expanded={isOpen}
+                onClick={() => toggleTree(c.path)}
+              >
+                {isOpen ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+              </button>
+            ) : (
+              <span className="twisty" />
+            )}
+            <button className="tree-name" dir="auto" title={c.path} onClick={() => onNav(c.path)}>
+              <FolderIcon size={14} />
+              <span>{c.name}</span>
+            </button>
+          </div>
+          {isOpen && renderTree(c.path, depth + 1)}
+        </div>
+      )
+    })
+  }
+
   return (
     <aside
       ref={ref}
@@ -267,24 +360,35 @@ export function Sidebar({
           const Glyph = r.name === '~' ? HomeIcon : DriveIcon
           const label = r.name === '~' ? t('خانه') : r.name === '/' ? t('ریشه') : r.name
           return (
-            <div
-              key={r.path}
-              className={'tree-row' + (active ? ' on' : '')}
-              draggable
-              onDragStart={(ev) => {
-                keepDragPaths([r.path])
-                dragLog(`place start ${r.path}`)
-                ev.dataTransfer.setData('application/x-mfm-mark', JSON.stringify([r.path]))
-                ev.dataTransfer.effectAllowed = 'all'
-              }}
-              onDragOver={acceptDrag}
-              onDrop={handleDrop}
-            >
-              <span className="twisty" />
-              <button className="tree-name" dir="auto" title={r.path} onClick={() => onNav(r.path)}>
-                <Glyph />
-                <span>{label}</span>
-              </button>
+            <div key={r.path}>
+              <div
+                className={'tree-row' + (active ? ' on' : '')}
+                draggable
+                onDragStart={(ev) => {
+                  keepDragPaths([r.path])
+                  dragLog(`place start ${r.path}`)
+                  ev.dataTransfer.setData('application/x-mfm-mark', JSON.stringify([r.path]))
+                  ev.dataTransfer.effectAllowed = 'all'
+                }}
+                onDragOver={acceptDrag}
+                onDrop={handleDrop}
+              >
+                <button
+                  type="button"
+                  className="twisty tree-twisty"
+                  title={treeOpen.has(r.path) ? t('جمع کردن') : t('باز کردن')}
+                  aria-label={treeOpen.has(r.path) ? t('جمع کردن') : t('باز کردن')}
+                  aria-expanded={treeOpen.has(r.path)}
+                  onClick={() => toggleTree(r.path)}
+                >
+                  {treeOpen.has(r.path) ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+                </button>
+                <button className="tree-name" dir="auto" title={r.path} onClick={() => onNav(r.path)}>
+                  <Glyph />
+                  <span>{label}</span>
+                </button>
+              </div>
+              {treeOpen.has(r.path) && renderTree(r.path, 1)}
             </div>
           )
         })}

@@ -460,6 +460,8 @@ const EN: Record<string, string> = {
   'باز/بسته': 'Expand',
   'انجام شد': 'done',
   'باز کردن': 'Open',
+  'جمع کردن': 'Collapse',
+  'پوشه‌ای نیست': 'No subfolders',
   'انصراف': 'Cancel',
   'اندازه': 'Size',
   'امتیاز': 'Rating',
