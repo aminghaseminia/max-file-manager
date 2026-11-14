@@ -150,6 +150,9 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `note` | `text` | message in the status bar |
 | `window` | `action` (`minimize`,`maximize`,`close`,`show`,`fullscreen`,`chrome`), `on?` | window control |
 
+The folder-tree pane needs no tool of its own: `prefs_set` with `treePane` (`off|left|right`),
+`treeWidth` and `treeAutoFocus` controls it, and `goto` makes auto-focus reveal the folder.
+
 The UI tools go through `mcp:ui` to the window (one-way IPC) because panes, selection, tabs and
 marks live in renderer state. `command` with a `pane` first focuses that pane, then runs the
 command through the same `RUN` table a click uses.

@@ -135,6 +135,12 @@ export type Prefs = {
   doubleShiftSearch: boolean
   /** show a folder tree inside every pane (Opus «Dual Tree») */
   paneTree: boolean
+  /** the separate folder-tree pane: off, docked left or docked right */
+  treePane: 'off' | 'left' | 'right'
+  /** tree pane width in px (160..520) */
+  treeWidth: number
+  /** the tree follows the active pane's folder */
+  treeAutoFocus: boolean
   /** user commands: name → shell line, `{path}` and `{dir}` are substituted */
   scripts: Record<string, string>
   // transfer filters
@@ -248,6 +254,9 @@ export const DEFAULTS: Prefs = {
   searchExclude: ['node_modules', '.git', '.cache', '.venv', 'dist', 'build', '*.tmp', '.Trash', 'snap'],
   doubleShiftSearch: true,
   paneTree: false,
+  treePane: 'off',
+  treeWidth: 232,
+  treeAutoFocus: true,
   scripts: {},
   transferSkipExisting: false,
   transferNewerOnly: false,
@@ -514,6 +523,12 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
       : DEFAULTS.searchExclude,
     doubleShiftSearch: p.doubleShiftSearch !== false,
     paneTree: p.paneTree === true,
+    treePane: p.treePane === 'left' || p.treePane === 'right' ? p.treePane : 'off',
+    treeWidth:
+      typeof p.treeWidth === 'number' && Number.isFinite(p.treeWidth)
+        ? Math.min(520, Math.max(160, Math.round(p.treeWidth)))
+        : 232,
+    treeAutoFocus: p.treeAutoFocus !== false,
     scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,
     transferNewerOnly: p.transferNewerOnly === true,

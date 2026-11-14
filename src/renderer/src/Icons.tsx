@@ -540,6 +540,12 @@ export const UnlockIcon = ({ size = 13 }: { size?: number }) => (
     <path d="M8 11V8a4 4 0 0 1 7-2.6" />
   </S>
 )
+export const LocateIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21" />
+  </S>
+)
 export const PinIcon = ({ filled = false, size = 13 }: { filled?: boolean; size?: number }) => (
   <svg
     width={size}

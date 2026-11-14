@@ -745,6 +745,24 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                 seg(prefs.sidebar, [{ v: 'docked', label: t('چسبیده') }, { v: 'float', label: t('شناور') }], 'sidebar')
               )}
               {row(
+                t('درخت پوشه‌ها (پنل جدا)'),
+                t('یک پنل مستقل برای درخت پوشه‌ها، جدا از سایدبار و پنجره‌ها؛ جای آن را انتخاب کن'),
+                seg(
+                  prefs.treePane,
+                  [
+                    { v: 'off', label: t('خاموش') },
+                    { v: 'left', label: t('چپ') },
+                    { v: 'right', label: t('راست') }
+                  ],
+                  'treePane'
+                )
+              )}
+              {row(
+                t('درخت، پوشهٔ جاری را دنبال کند'),
+                t('با هر تغییر پوشه در پنل فعال، درخت خودش همان پوشه را باز و نمایان می‌کند'),
+                check(prefs.treeAutoFocus, 'treeAutoFocus')
+              )}
+              {row(
                 t('سطح رنگ تم سایدبار'),
                 t('تنظیم میزان غلظت رنگ تم روی سایدبار در ۶ سطح (۱ = کمترین رنگ، ۶ = پررنگ‌ترین)'),
                 seg(

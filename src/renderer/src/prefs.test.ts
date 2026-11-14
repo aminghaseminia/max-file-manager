@@ -166,3 +166,15 @@ test('customCommands: valid entries keep, invalid/empty entries rejected', () =>
   assert.equal(p.customCommands[0].command, 'code %f')
   assert.equal(p.customCommands[1].pattern, 'folder')
 })
+
+test('tree pane: side, width and auto-focus survive only in valid form', () => {
+  const left = mergePrefs({ treePane: 'left', treeWidth: 300, treeAutoFocus: false })
+  assert.equal(left.treePane, 'left')
+  assert.equal(left.treeWidth, 300)
+  assert.equal(left.treeAutoFocus, false)
+  assert.equal(mergePrefs({ treePane: 'right' }).treePane, 'right')
+  assert.equal(mergePrefs({ treePane: 'top' as never }).treePane, 'off')
+  assert.equal(mergePrefs({ treeWidth: 5 }).treeWidth, 160)
+  assert.equal(mergePrefs({ treeWidth: 9999 }).treeWidth, 520)
+  assert.equal(mergePrefs({}).treeAutoFocus, true)
+})
