@@ -635,6 +635,13 @@ export function Pane(props: Props) {
 
       <div
         className="path"
+        onClick={(ev) => {
+          if (ev.detail > 1) return
+          const el = ev.target as HTMLElement
+          // nav buttons, the breadcrumbs and the field keep their own click behaviour
+          if (el instanceof HTMLInputElement || el.closest('.crumb, .vchip, button')) return
+          startAddrEdit()
+        }}
         onDoubleClick={(ev) => {
           const el = ev.target as HTMLElement
           // nav/action buttons and the field itself keep their own double-click behaviour
@@ -668,6 +675,11 @@ export function Pane(props: Props) {
                   onClick={(ev) => {
                     // the second click of a double-click opens the editor instead of navigating again
                     if (ev.detail > 1) return
+                    // clicking the folder we are already in edits the path; a parent crumb navigates
+                    if (c.path === cur) {
+                      startAddrEdit(c.path)
+                      return
+                    }
                     props.onNav(c.path)
                   }}
                 >
