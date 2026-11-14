@@ -249,6 +249,12 @@ export const StarIcon = ({ filled = false, size = 15 }: { filled?: boolean; size
     <path d="M12 3.6l2.6 5.3 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.8z" />
   </svg>
 )
+export const PieIcon = () => (
+  <S>
+    <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z" />
+    <path d="M15 3.7A8.5 8.5 0 0 1 20.3 9H15z" />
+  </S>
+)
 export const TrashXIcon = () => (
   <S>
     <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l1 13h9l1-13" />

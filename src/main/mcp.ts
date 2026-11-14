@@ -29,6 +29,7 @@ const TOOLS: McpTool[] = [
   { name: 'properties', description: 'name, size, mode, owner, links, timestamps, image size', read: true, input: { path: 'string' } },
   { name: 'statfs', description: 'free and total bytes of a filesystem', read: true, input: { path: 'string' } },
   { name: 'size', description: 'recursive size of a folder', read: true, input: { path: 'string' } },
+  { name: 'breakdown', description: 'folder contents by size/type/extension, largest files and subfolder totals', read: true, input: { path: 'string', mode: 'string?' } },
   { name: 'hash', description: 'digest of files', read: true, input: { paths: 'string[]', algo: 'string?' } },
   { name: 'dupes', description: 'duplicate files under a folder (by content hash)', read: true, input: { dir: 'string' } },
 

@@ -81,6 +81,7 @@ import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
+import { breakdown, type BreakdownMode } from './breakdown.ts'
 import { listDrives, mountDrive, unmountDrive } from './drives.ts'
 import type { DirRef, Entry } from './types.ts'
 import { PortalServer, type PortalRequestData } from './portal.ts'
@@ -724,6 +725,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('fs:properties', (_e, p: string) => propertiesOf(p))
 
+  ipcMain.handle('fs:breakdown', (_e, a: { path?: string; mode?: BreakdownMode }) =>
+    path.isAbsolute(a?.path ?? '')
+      ? breakdown(a.path!, { mode: a.mode === 'level1' ? 'level1' : 'all' })
+      : { root: '', mode: 'all', bytes: 0, files: 0, folders: 0, scanned: 0, capped: false, byExt: [], largest: [], children: [] }
+  )
   /** chmod from the permissions tab; only the permission bits are accepted. */
   ipcMain.handle('fs:chmod', async (_e, a: { path?: string; mode?: number }) => {
     if (!path.isAbsolute(a?.path ?? '')) return { error: 'bad_path' }
@@ -958,6 +964,8 @@ app.whenReady().then(async () => {
       }
       case 'size':
         return dirSize(needAbs(args.path))
+      case 'breakdown':
+        return breakdown(needAbs(args.path), { mode: args.mode === 'level1' ? 'level1' : 'all' })
       case 'hash':
         return hashMany(absList(args.paths), String(args.algo ?? 'sha256'))
       case 'dupes':

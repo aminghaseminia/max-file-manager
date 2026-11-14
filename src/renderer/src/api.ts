@@ -15,6 +15,23 @@ export type PortalRequestData = {
 }
 export type PortalStatus = { supported: boolean; installed: boolean; running: boolean }
 
+export type BreakdownMode = 'level1' | 'all'
+export type BreakdownSlice = { key: string; count: number; bytes: number }
+export type BreakdownFile = { path: string; rel: string; name: string; ext: string; size: number }
+export type BreakdownChild = { path: string; name: string; dir: boolean; bytes: number; files: number }
+export type Breakdown = {
+  root: string
+  mode: BreakdownMode
+  bytes: number
+  files: number
+  folders: number
+  scanned: number
+  capped: boolean
+  byExt: BreakdownSlice[]
+  largest: BreakdownFile[]
+  children: BreakdownChild[]
+}
+
 export type Entry = {
   name: string
   path: string
@@ -219,6 +236,8 @@ export type Api = {
     configure(enabled: boolean): Promise<PortalStatus & { error?: string }>
   }
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
+  /** bytes/counts per extension, the largest files and each direct child's total */
+  breakdown(path: string, mode?: BreakdownMode): Promise<Breakdown>
   statfs(p: string): Promise<{ free: number; size: number } | null>
   debugLog(msg: string): Promise<boolean>
   chmod(p: string, mode: number): Promise<{ ok: true } | { error: string }>
