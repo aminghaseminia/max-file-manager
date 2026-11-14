@@ -1,5 +1,5 @@
 import { t } from './i18n.ts'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, type Entry, type FileProperties } from './api'
 import {
@@ -71,6 +71,10 @@ export function PropertiesDialog({
   const [hashes, setHashes] = useState<Record<string, string>>({})
   const [hashing, setHashing] = useState<string | null>(null)
   const [expected, setExpected] = useState('')
+  const [folderSize, setFolderSize] = useState<{ bytes: number; files: number; capped: boolean } | null>(null)
+  const [sizing, setSizing] = useState(false)
+  /** invalidates a slow recursive size when the dialog moves to another entry */
+  const sizeReq = useRef(0)
 
   const [octal, setOctal] = useState('')
   const [stars, setStars] = useState(0)
@@ -84,6 +88,9 @@ export function PropertiesDialog({
     setFailed(false)
     setHashes({})
     setExpected('')
+    sizeReq.current++
+    setFolderSize(null)
+    setSizing(false)
     void api
       .properties(path)
       .then((r) => ('error' in r ? setFailed(true) : setData(r)))
@@ -247,6 +254,53 @@ export function PropertiesDialog({
       ? t('{n} مورد', { n: fa(d.items ?? 0) })
       : `${fmtSize(d.size, false, 'human')} (${fa(d.size)} ${t('بایت')})`
 
+  /** Folders are not walked on open: the size is a recursive scan the user asks for. */
+  const calcSize = async (p: string): Promise<void> => {
+    const req = ++sizeReq.current
+    setSizing(true)
+    try {
+      const r = await api.size(p)
+      if (sizeReq.current === req) setFolderSize(r)
+    } catch {
+      if (sizeReq.current === req) onNote(t('محاسبهٔ اندازه ممکن نشد'))
+    } finally {
+      if (sizeReq.current === req) setSizing(false)
+    }
+  }
+
+  const sizeRow = (d: FileProperties) => {
+    if (!d.dir) return row(t('اندازه'), sizeText(d))
+    return (
+      <div className="prop-row">
+        <span className="prop-key">{t('اندازه')}</span>
+        <span className="prop-value" dir="auto">
+          {folderSize ? (
+            <>
+              <span dir="ltr">
+                {folderSize.capped ? '≈ ' : ''}
+                {fmtSize(folderSize.bytes, false)}
+              </span>
+              {' · '}
+              {folderSize.files === 1 ? t('یک فایل') : t('{n} فایل', { n: fa(folderSize.files) })}
+              {folderSize.capped && (
+                <span className="dim"> {t('محاسبه به سقف خود رسید؛ عدد تقریبی است')}</span>
+              )}
+            </>
+          ) : (
+            sizeText(d)
+          )}
+        </span>
+        <button className="btn ghost mini" disabled={sizing} onClick={() => void calcSize(d.path)}>
+          {sizing
+            ? t('در حال محاسبهٔ اندازه…')
+            : folderSize
+              ? t('محاسبهٔ دوباره')
+              : t('محاسبهٔ اندازه')}
+        </button>
+      </div>
+    )
+  }
+
   const icon =
     data && !data.dir && isImage(data.ext) ? (
       <img src={thumbUrl(data.path, 96)} alt="" draggable={false} />
@@ -296,7 +350,7 @@ export function PropertiesDialog({
           {t('کپی')}
         </button>
       </div>
-      {row(t('اندازه'), sizeText(d))}
+      {sizeRow(d)}
       {d.dims && row(t('ابعاد'), `${fa(d.dims.w)} × ${fa(d.dims.h)} ${t('پیکسل')}`)}
       {d.link && row(t('مقصد پیوند'), d.target || '—', true)}
       {row(t('ساخته‌شده'), fmtDate(d.birthtime, 'iso', true), true)}
@@ -443,7 +497,7 @@ export function PropertiesDialog({
     <>
       {row(t('نوع'), entry ? typeLabel(entry) : d.ext.toUpperCase())}
       {row(t('نوع محتوا'), d.mime || '—', true)}
-      {row(t('اندازه'), sizeText(d))}
+      {sizeRow(d)}
       {d.dims && row(t('ابعاد'), `${fa(d.dims.w)} × ${fa(d.dims.h)} ${t('پیکسل')}`)}
       {row(t('ساخته‌شده'), fmtDate(d.birthtime, 'iso', true), true)}
       {row(t('تغییر یافته'), fmtDate(d.mtime, 'iso', true), true)}
