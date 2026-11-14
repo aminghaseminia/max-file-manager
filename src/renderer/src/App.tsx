@@ -68,7 +68,6 @@ import { copyImageContent } from './clipboard'
 import {
   ArchiveOpenIcon,
   AudioIcon,
-  ChevronLeftIcon,
   CodeIcon,
   DocIcon,
   FileIcon,
@@ -1962,11 +1961,14 @@ export default function App() {
       case 'reveal':
         if (path) void api.reveal(path)
         break
-      case 'terminal':
-        void api.openTerminal(tabOf(me)).then((r) => {
+      case 'terminal': {
+        // a right-click on a folder opens the terminal in that folder, not in the current one
+        const target = path && entryOf(active, path)?.dir ? path : tabOf(me)
+        void api.openTerminal(target).then((r) => {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })
         break
+      }
       case 'tags':
         if (path)
           void api.tags([path]).then((r) =>
@@ -2232,6 +2234,8 @@ export default function App() {
         { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
         ...folderOpenWith,
         { sep: true },
+        { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> },
+        { sep: true },
         { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
         { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
@@ -2268,6 +2272,9 @@ export default function App() {
       { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
       { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
       { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
+      ...(entry?.dir
+        ? [{ id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem]
+        : []),
       ...(entry && isImage(entry.ext)
         ? [
             {
@@ -2343,7 +2350,7 @@ export default function App() {
       { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
       { id: 'symlink', label: t('ایجاد پیوند نمادین…'), icon: <LinkIcon /> },
       { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
-      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <ChevronLeftIcon /> },
+      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> },
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> },
       { sep: true },
       { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
