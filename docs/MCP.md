@@ -126,7 +126,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `reveal` | `path` | system file manager |
 | `terminal` | `dir` | desktop terminal |
 | `apps_launch` | `id`, `path` | chosen `.desktop` |
-| `app_set_default` | `path`, `app` | make that app the system handler for the file type (`xdg-mime`); `.desktop` path or exact name |
+| `app_set_default` | `path`, `app` | make that app the system handler for the file type (`xdg-mime`); `.desktop` path or exact name. Linux only — Windows/macOS reject programmatic association changes |
 | `set_default_manager` | – | register this app as the default |
 | `update_open` | `url` | release page |
 | `hotkey` | `accel` | global shortcut; a Wayland failure is reported |
