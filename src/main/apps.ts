@@ -219,8 +219,15 @@ export async function openWithDefault(file: string): Promise<{ ok: true } | { er
   return { error: 'open_failed' }
 }
 
-/** The desktop's default handler for this file, or null when the MIME has none. */
+/** The desktop's default handler for this file, or null when the type has none. */
 export async function defaultApp(file: string): Promise<{ id: string; name: string } | null> {
+  if (process.platform === 'win32') {
+    const ext = path.extname(file).toLowerCase() || '.dat'
+    const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: ext }))
+    const hit = parsed.apps.find((a) => a.id === parsed.defaultId)
+    return hit ? { id: hit.id, name: hit.name } : null
+  }
+  if (process.platform === 'darwin') return null
   const desktop = await findDesktop(await defaultDesktopName(mimeForPath(file)))
   if (!desktop) return null
   const entry = parseDesktopEntry(await fs.readFile(desktop, 'utf8').catch(() => ''))
@@ -302,8 +309,246 @@ export async function appIconPath(icon: string): Promise<string> {
   return ''
 }
 
-/** Every application that advertises the file's MIME type, the default one first. */
+// ── Windows ────────────────────────────────────────────────────────────────────────────────
+// There is no `.desktop` registry: handlers live under HKCR\<ext> as command lines. PowerShell
+// runs read-only, and every parser below is pure so it can be tested on any platform.
+// «Always open with» stays Linux-only: Windows 8+ only lets the user change an association
+// through the system UI.
+
+const WIN_CACHE = new Map<string, string>()
+
+export type OpenWithRow = { id: string; name: string; command?: string }
+
+const runPowerShell = (script: string, env: Record<string, string> = {}): Promise<string> =>
+  new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve('')
+    try {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+        { timeout: 12_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true, env: { ...process.env, ...env } },
+        (err, out) => resolve(err ? '' : String(out))
+      )
+    } catch {
+      resolve('')
+    }
+  })
+
+/** PowerShell JSON is a single object or an array depending on the row count. */
+export function parseWindowsOpenWith(json: string): { defaultId: string; apps: OpenWithRow[] } {
+  const text = String(json ?? '').trim()
+  if (!text) return { defaultId: '', apps: [] }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { defaultId: '', apps: [] }
+  }
+  const raw = Array.isArray(parsed) ? { defaultId: '', apps: parsed } : (parsed as Record<string, unknown>)
+  // a bare row (no wrapper) is still a row; PowerShell's ConvertTo-Json does that for one object
+  const box = raw.apps === undefined && typeof raw.id === 'string' ? { defaultId: '', apps: [raw] } : raw
+  const rows = Array.isArray(box.apps) ? box.apps : box.apps ? [box.apps] : []
+  const apps: OpenWithRow[] = []
+  for (const raw of rows) {
+    const row = raw as Record<string, unknown>
+    if (!row || typeof row.id !== 'string' || !row.id) continue
+    apps.push({
+      id: row.id,
+      name: typeof row.name === 'string' && row.name.trim() ? row.name.trim() : row.id,
+      command: typeof row.command === 'string' ? row.command : ''
+    })
+  }
+  return { defaultId: typeof box.defaultId === 'string' ? box.defaultId : '', apps }
+}
+
+/** `"%ProgramFiles%\App\app.exe" "%1"` → argv with the file in place of the placeholder. */
+export function windowsArgv(command: string, file: string): string[] {
+  const expanded = String(command ?? '').replace(/%([^%]+)%/g, (all, name: string) => {
+    const key = Object.keys(process.env).find((k) => k.toLowerCase() === name.toLowerCase())
+    return key ? String(process.env[key]) : all
+  })
+  const argv: string[] = []
+  let current = ''
+  let quote = ''
+  for (const ch of expanded) {
+    if (quote) {
+      if (ch === quote) quote = ''
+      else current += ch
+      continue
+    }
+    if (ch === '"') {
+      quote = ch
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (current) argv.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  if (current) argv.push(current)
+  const out: string[] = []
+  for (const token of argv) {
+    if (/^%[lL1-9]$/.test(token)) out.push(file)
+    else if (/^%\*$/.test(token)) out.push(file)
+    else if (/^%[a-zA-Z]$/.test(token)) continue
+    else out.push(token)
+  }
+  if (!out.includes(file)) out.push(file)
+  return out
+}
+
+const WIN_LIST_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+$ext = $env:MFM_EXT
+$ids = New-Object System.Collections.ArrayList
+$rows = New-Object System.Collections.ArrayList
+try { $main = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $ext)).'(default)' } catch {}
+if ($main) { [void]$ids.Add($main) }
+try { $uc = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext + '\UserChoice')).ProgId } catch {}
+if ($uc) { [void]$ids.Add($uc) }
+try { $owp = Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $ext + '\OpenWithProgids') } catch {}
+if ($owp) { foreach ($p in $owp.PSObject.Properties) { if ($p.Name -notlike 'PS*' -and $p.Name) { [void]$ids.Add($p.Name) } } }
+try { $owl = Get-ItemProperty -LiteralPath ('Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext + '\OpenWithList') } catch {}
+if ($owl) { foreach ($p in $owl.PSObject.Properties) { if ($p.Name -ne 'MRUList' -and $p.Value) { [void]$ids.Add('Applications\' + $p.Value) } } }
+$seen = @{}
+foreach ($prog in $ids) {
+  if (-not $prog -or $seen.ContainsKey($prog)) { continue }
+  $seen[$prog] = $true
+  try { $cmd = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $prog + '\shell\open\command')).'(default)' } catch {}
+  if (-not $cmd) { continue }
+  $name = ''
+  try {
+    $k = Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $prog)
+    $name = $k.'(default)'
+    if (-not $name) { $name = $k.FriendlyAppName }
+    if (-not $name) { $name = $k.ApplicationName }
+  } catch {}
+  if (-not $name) { $name = $prog }
+  [void]$rows.Add([pscustomobject]@{ id = ('progid:' + $prog); name = [string]$name; command = [string]$cmd })
+}
+$def = $uc
+if (-not $def) { $def = $main }
+[pscustomobject]@{ defaultId = $(if ($def) { 'progid:' + $def } else { '' }); apps = @($rows) } | ConvertTo-Json -Compress -Depth 5
+`
+
+const WIN_ALL_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+$rows = New-Object System.Collections.ArrayList
+foreach ($a in (Get-StartApps)) {
+  if ($a.Name -and $a.AppID) { [void]$rows.Add([pscustomobject]@{ id = ('appid:' + $a.AppID); name = [string]$a.Name; command = '' }) }
+}
+[pscustomobject]@{ defaultId = ''; apps = @($rows) } | ConvertTo-Json -Compress -Depth 5
+`
+
+const WIN_PROGID_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+$prog = $env:MFM_PROGID
+$cmd = (Get-ItemProperty -LiteralPath ('Registry::HKEY_CLASSES_ROOT\' + $prog + '\shell\open\command')).'(default)'
+if ($cmd) { [pscustomobject]@{ command = [string]$cmd } | ConvertTo-Json -Compress } else { '{}' }
+`
+
+const listAppsWindows = async (file: string, all: boolean): Promise<DesktopApp[]> => {
+  if (all) {
+    const parsed = parseWindowsOpenWith(await runPowerShell(WIN_ALL_SCRIPT))
+    return parsed.apps.map((row) => ({
+      id: row.id,
+      name: row.name,
+      exec: '',
+      icon: '',
+      desktop: '',
+      iconPath: '',
+      isDefault: false
+    }))
+  }
+  const ext = path.extname(file).toLowerCase() || '.dat'
+  const parsed = parseWindowsOpenWith(await runPowerShell(WIN_LIST_SCRIPT, { MFM_EXT: ext }))
+  for (const row of parsed.apps) if (row.command) WIN_CACHE.set(row.id, row.command)
+  return parsed.apps
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      exec: row.command ?? '',
+      icon: '',
+      desktop: '',
+      iconPath: '',
+      isDefault: row.id === parsed.defaultId
+    }))
+    .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+}
+
+// ── macOS ──────────────────────────────────────────────────────────────────────────────────
+// LaunchServices is not scriptable directly: the file's UTI comes from `mdls` and the handlers
+// from Spotlight (`mdfind` on kMDItemContentTypeTree). Apps are started with `open`.
+
+const MAC_APP_DIRS = ['/Applications', '/System/Applications', '/System/Applications/Utilities']
+
+/** `mdfind` prints one path per line; keep the bundles and drop duplicates. */
+export function parseMacAppPaths(stdout: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const line of String(stdout ?? '').split(/\r?\n/)) {
+    const p = line.trim().replace(/\/+$/, '')
+    if (!p.endsWith('.app') || seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+  }
+  return out
+}
+
+export function macAppName(appPath: string): string {
+  return path.basename(String(appPath ?? '').replace(/\/+$/, ''), '.app')
+}
+
+const macAppsIn = async (dir: string): Promise<string[]> =>
+  (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
+    .filter((d) => d.name.endsWith('.app'))
+    .map((d) => path.join(dir, d.name))
+
+const macUti = (file: string): Promise<string> =>
+  new Promise((resolve) => {
+    execFile('mdls', ['-raw', '-name', 'kMDItemContentType', file], { timeout: 4000 }, (err, out) => {
+      const uti = String(out ?? '').trim()
+      resolve(err || !uti || uti === '(null)' ? '' : uti)
+    })
+  })
+
+const macRecommended = (uti: string): Promise<string[]> =>
+  new Promise((resolve) => {
+    execFile(
+      'mdfind',
+      [`kMDItemContentTypeTree == "${uti}"`],
+      { timeout: 8000, maxBuffer: 4 * 1024 * 1024 },
+      (err, out) => resolve(err ? [] : parseMacAppPaths(String(out ?? '')))
+    )
+  })
+
+const listAppsMac = async (file: string, all: boolean): Promise<DesktopApp[]> => {
+  const paths = all
+    ? [...new Set((await Promise.all(MAC_APP_DIRS.map(macAppsIn))).flat())]
+    : await (async () => {
+        const uti = await macUti(file)
+        return uti ? macRecommended(uti) : []
+      })()
+  return paths
+    .sort((a, b) => macAppName(a).localeCompare(macAppName(b)))
+    .map((appPath) => ({
+      id: appPath,
+      name: macAppName(appPath),
+      exec: '',
+      icon: '',
+      desktop: appPath,
+      iconPath: '',
+      isDefault: false
+    }))
+}
+
+/** Every application that can open the file: `.desktop` entries on Linux, registry command
+ * lines on Windows, LaunchServices bundles on macOS; the current handler first. */
 export async function listApps(p: string, all = false): Promise<DesktopApp[]> {
+  if (process.platform === 'win32') return listAppsWindows(p, all)
+  if (process.platform === 'darwin') return listAppsMac(p, all)
   const mime = mimeForPath(p)
   const defaultName = await defaultDesktopName(mime)
   const seen = new Set<string>()
@@ -388,6 +633,11 @@ export async function launchApp(
   id: string,
   file: string
 ): Promise<{ ok: true } | { error: string }> {
+  if (process.platform === 'win32') return launchAppWindows(id, file)
+  if (process.platform === 'darwin') {
+    if (!path.isAbsolute(id) || !id.endsWith('.app')) return { error: 'app_not_found' }
+    return launchArgvDetached(['open', '-a', id, file])
+  }
   const entry = parseDesktopEntry(await fs.readFile(id, 'utf8').catch(() => ''))
   if (!entry['Exec']) return { error: 'app_not_found' }
   const argv = execFor(entry['Exec'], file)
@@ -400,6 +650,44 @@ export async function launchApp(
   } catch {
     return { error: 'launch_failed' }
   }
+}
+
+const launchArgvDetached = (argv: string[]): { ok: true } | { error: string } => {
+  if (!argv.length) return { error: 'app_not_found' }
+  try {
+    const child = spawn(argv[0], argv.slice(1), { detached: true, stdio: 'ignore' })
+    child.on('error', () => undefined)
+    child.unref()
+    return { ok: true }
+  } catch {
+    return { error: 'launch_failed' }
+  }
+}
+
+const launchAppWindows = async (
+  id: string,
+  file: string
+): Promise<{ ok: true } | { error: string }> => {
+  // a Start-menu entry (Store apps included) opens through the shell namespace
+  if (id.startsWith('appid:')) {
+    const appId = id.slice(6)
+    if (!appId) return { error: 'app_not_found' }
+    return launchArgvDetached(['explorer.exe', `shell:AppsFolder\\${appId}`])
+  }
+  if (!id.startsWith('progid:')) return { error: 'app_not_found' }
+  let command = WIN_CACHE.get(id) ?? ''
+  if (!command) {
+    const raw = await runPowerShell(WIN_PROGID_SCRIPT, { MFM_PROGID: id.slice(7) })
+    try {
+      const parsed = JSON.parse(raw || '{}') as { command?: string }
+      command = typeof parsed.command === 'string' ? parsed.command : ''
+    } catch {
+      command = ''
+    }
+    if (command) WIN_CACHE.set(id, command)
+  }
+  if (!command) return { error: 'app_not_found' }
+  return launchArgvDetached(windowsArgv(command, file))
 }
 
 /** Query whether max-file-manager is currently the default handler for inode/directory. */

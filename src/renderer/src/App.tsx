@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
+import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
@@ -55,12 +55,14 @@ import {
   isImage,
   joinPath,
   matchCustomCommand,
+  mediaUrl,
   menuTargets,
   navIndex,
   openAction,
   opensInEditor,
   orderEntries,
   reorderItem,
+  terminalDir,
   typeLabel,
   type NavMove,
   type SortKey
@@ -340,6 +342,7 @@ export default function App() {
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null)
   const [marksMenu, setMarksMenu] = useState<{ x: number; y: number; pane: number } | null>(null)
   const [openWith, setOpenWith] = useState<string | null>(null)
+  const [menuApps, setMenuApps] = useState<{ path: string; apps: DesktopApp[] } | null>(null)
   const [propsFor, setPropsFor] = useState<string | null>(null)
   const [breakdownFor, setBreakdownFor] = useState<string | null>(null)
   const [folderLook, setFolderLook] = useState<{ dirs: string[]; name: string; meta: FolderMeta | null } | null>(
@@ -1762,6 +1765,17 @@ export default function App() {
       return
     }
     if (!menu || !panes) return
+    if (id.startsWith('app:')) {
+      const appId = id.slice(4)
+      const target = menu.path ?? tabOf(panes[active])
+      setMenu(null)
+      if (target) {
+        void api.apps.launch(appId, target).then((r) => {
+          if ('error' in r) setNote(t('برنامه باز نشد'))
+        })
+      }
+      return
+    }
     if (id.startsWith('script:')) {
       const name = id.slice(7)
       const cmd = prefs.scripts[name]
@@ -1977,8 +1991,9 @@ export default function App() {
         if (path) void api.reveal(path)
         break
       case 'terminal': {
-        // a right-click on a folder opens the terminal in that folder, not in the current one
-        const target = path && entryOf(active, path)?.dir ? path : tabOf(me)
+        // a right-click on a folder opens the terminal in that folder; a file means its own
+        // folder (flat/search results can live outside the tab), never the archive's fake path
+        const target = terminalDir(path, entryOf(active, path)?.dir === true, me.archive ?? null, tabOf(me))
         void api.openTerminal(target).then((r) => {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })
@@ -2280,23 +2295,32 @@ export default function App() {
     const matchingCustom = entry
       ? (prefs.customCommands ?? []).filter((cmd) => matchCustomCommand(cmd, entry.path, entry.dir))
       : []
-    const openWithItem: MenuItem =
-      matchingCustom.length > 0
-        ? {
-            id: 'openWith',
-            label: t('باز کردن با…'),
-            icon: <PlayIcon />,
-            children: [
-              ...matchingCustom.map((c) => ({
-                id: `customCmd:${c.id}`,
-                label: c.label,
-                icon: <PlayIcon />
-              })),
-              { sep: true },
-              { id: 'openWithDialog', label: t('سایر برنامه‌ها…'), icon: <PlayIcon /> }
-            ]
-          }
-        : { id: 'openWith', label: t('باز کردن با…'), icon: <PlayIcon /> }
+    const osApps = entry && !entry.dir && menuApps?.path === entry.path ? menuApps.apps : []
+    const openWithChildren: MenuItem[] = [
+      ...matchingCustom.map((c) => ({
+        id: `customCmd:${c.id}`,
+        label: c.label,
+        icon: <PlayIcon />
+      })),
+      ...(osApps.length ? [{ sep: true } as MenuItem] : []),
+      ...osApps.map((a) => ({
+        id: `app:${a.id}`,
+        label: a.name,
+        icon: a.iconPath ? (
+          <img className="ic-img" src={mediaUrl(a.iconPath)} alt="" width={16} height={16} draggable={false} />
+        ) : (
+          <PlayIcon />
+        )
+      })),
+      { sep: true },
+      { id: 'openWithDialog', label: t('سایر برنامه‌ها…'), icon: <PlayIcon /> }
+    ]
+    const openWithItem: MenuItem = {
+      id: 'openWith',
+      label: t('باز کردن با…'),
+      icon: <PlayIcon />,
+      children: openWithChildren
+    }
 
     const entryMenu: MenuItem[] = [
       { id: 'open', label: entry?.dir ? t('باز کردن') : t('اجرا کردن'), icon: <PlayIcon /> },
@@ -3466,7 +3490,21 @@ export default function App() {
             showSeconds={prefs.showSeconds}
             showSymlink={prefs.showSymlink}
             onGallery={() => pane.preview && openGallery(pane.preview.from, pane.preview.entry.path)}
-            onContext={(path, x, y) => setMenu({ path, x, y })}
+            onContext={(path, x, y) => {
+            setMenu({ path, x, y })
+            // the «Open with» submenu lists the real handlers for this file; load them now so the
+            // submenu is complete instead of just pointing at the full dialog
+            setMenuApps(null)
+            if (path) {
+              const isFile = entryOf(active, path)?.dir === false
+              if (isFile) {
+                void api.apps
+                  .openWith(path)
+                  .then((r) => setMenuApps({ path, apps: r.apps }))
+                  .catch(() => undefined)
+              }
+            }
+          }}
             onDropInternal={(paths, dest, copy) => void dropInternal(paths, dest, copy)}
             onDropFiles={(files, dest, copy) => void dropFiles(files, dest, copy)}
             onMetrics={(m) => {
