@@ -227,7 +227,7 @@ export async function defaultApp(file: string): Promise<{ id: string; name: stri
     const hit = parsed.apps.find((a) => a.id === parsed.defaultId)
     return hit ? { id: hit.id, name: hit.name } : null
   }
-  if (process.platform === 'darwin') return null
+  if (process.platform === 'darwin') return macDefaultApp(file)
   const desktop = await findDesktop(await defaultDesktopName(mimeForPath(file)))
   if (!desktop) return null
   const entry = parseDesktopEntry(await fs.readFile(desktop, 'utf8').catch(() => ''))
@@ -479,12 +479,19 @@ const listAppsWindows = async (file: string, all: boolean): Promise<DesktopApp[]
 }
 
 // ── macOS ──────────────────────────────────────────────────────────────────────────────────
-// LaunchServices is not scriptable directly: the file's UTI comes from `mdls` and the handlers
-// from Spotlight (`mdfind` on kMDItemContentTypeTree). Apps are started with `open`.
+// Spotlight (`mdfind kMDItemContentTypeTree == …`) indexes documents, not handlers: it returned
+// nothing for markdown and image *files* for png, so the recommended list was always empty.
+// LaunchServices is the only correct source, and JXA exposes it through NSWorkspace. Apps are
+// started with `open`.
 
-const MAC_APP_DIRS = ['/Applications', '/System/Applications', '/System/Applications/Utilities']
+const MAC_APP_DIRS = [
+  '/Applications',
+  path.join(os.homedir(), 'Applications'),
+  '/System/Applications',
+  '/System/Applications/Utilities'
+]
 
-/** `mdfind` prints one path per line; keep the bundles and drop duplicates. */
+/** One line per bundle path; keep the bundles and drop duplicates. */
 export function parseMacAppPaths(stdout: string): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -506,42 +513,74 @@ const macAppsIn = async (dir: string): Promise<string[]> =>
     .filter((d) => d.name.endsWith('.app'))
     .map((d) => path.join(dir, d.name))
 
-const macUti = (file: string): Promise<string> =>
-  new Promise((resolve) => {
-    execFile('mdls', ['-raw', '-name', 'kMDItemContentType', file], { timeout: 4000 }, (err, out) => {
-      const uti = String(out ?? '').trim()
-      resolve(err || !uti || uti === '(null)' ? '' : uti)
-    })
-  })
+/** Handlers and the current default straight from LaunchServices, as JSON. */
+const MAC_OPEN_WITH_SCRIPT = String.raw`
+function run(argv) {
+  ObjC.import('AppKit')
+  const url = $.NSURL.fileURLWithPath(argv[0])
+  const ws = $.NSWorkspace.sharedWorkspace
+  const list = ws.URLsForApplicationsToOpenURL(url)
+  const apps = []
+  if (list) for (let i = 0; i < list.count; i++) apps.push(list.objectAtIndex(i).path.js)
+  let def = ''
+  try { def = ws.URLForApplicationToOpenURL(url).path.js } catch (e) {}
+  return JSON.stringify({ apps: apps, def: def })
+}
+`
 
-const macRecommended = (uti: string): Promise<string[]> =>
+export function parseMacOpenWith(json: string): { apps: string[]; def: string } {
+  const text = String(json ?? '').trim()
+  if (!text) return { apps: [], def: '' }
+  try {
+    const raw = JSON.parse(text) as { apps?: unknown; def?: unknown }
+    const apps = Array.isArray(raw.apps)
+      ? [...new Set(raw.apps.filter((a): a is string => typeof a === 'string' && a.endsWith('.app')))]
+      : []
+    return { apps, def: typeof raw.def === 'string' ? raw.def : '' }
+  } catch {
+    return { apps: [], def: '' }
+  }
+}
+
+const macOpenWith = (file: string): Promise<{ apps: string[]; def: string }> =>
   new Promise((resolve) => {
     execFile(
-      'mdfind',
-      [`kMDItemContentTypeTree == "${uti}"`],
+      'osascript',
+      ['-l', 'JavaScript', '-e', MAC_OPEN_WITH_SCRIPT, '--', file],
       { timeout: 8000, maxBuffer: 4 * 1024 * 1024 },
-      (err, out) => resolve(err ? [] : parseMacAppPaths(String(out ?? '')))
+      (err, out) => resolve(err ? { apps: [], def: '' } : parseMacOpenWith(String(out ?? '')))
     )
   })
 
+const macRow = (appPath: string, def: string): DesktopApp => ({
+  id: appPath,
+  name: macAppName(appPath),
+  exec: '',
+  icon: '',
+  desktop: appPath,
+  iconPath: '',
+  isDefault: !!def && appPath === def
+})
+
 const listAppsMac = async (file: string, all: boolean): Promise<DesktopApp[]> => {
-  const paths = all
-    ? [...new Set((await Promise.all(MAC_APP_DIRS.map(macAppsIn))).flat())]
-    : await (async () => {
-        const uti = await macUti(file)
-        return uti ? macRecommended(uti) : []
-      })()
-  return paths
-    .sort((a, b) => macAppName(a).localeCompare(macAppName(b)))
-    .map((appPath) => ({
-      id: appPath,
-      name: macAppName(appPath),
-      exec: '',
-      icon: '',
-      desktop: appPath,
-      iconPath: '',
-      isDefault: false
-    }))
+  if (all) {
+    const paths = [...new Set((await Promise.all(MAC_APP_DIRS.map(macAppsIn))).flat())]
+    return paths
+      .sort((a, b) => macAppName(a).localeCompare(macAppName(b)))
+      .map((appPath) => macRow(appPath, ''))
+  }
+  const info = await macOpenWith(file)
+  return info.apps
+    .sort(
+      (a, b) =>
+        Number(b === info.def) - Number(a === info.def) || macAppName(a).localeCompare(macAppName(b))
+    )
+    .map((appPath) => macRow(appPath, info.def))
+}
+
+const macDefaultApp = async (file: string): Promise<{ id: string; name: string } | null> => {
+  const { def } = await macOpenWith(file)
+  return def ? { id: def, name: macAppName(def) } : null
 }
 
 /** Every application that can open the file: `.desktop` entries on Linux, registry command

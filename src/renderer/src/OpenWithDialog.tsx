@@ -229,24 +229,20 @@ export function OpenWithDialog({ path, customCommands, isDir, onClose, onNote, o
           ))}
         </div>
 
-        <label className="open-with-remember">
-          <input
-            type="checkbox"
-            checked={remember}
-            disabled={isDir || !canSetDefault}
-            onChange={(e) => setRemember(e.target.checked)}
-          />
-          <span>
-            {t('همیشه با این برنامه باز کن')}
-            {isDir
-              ? ` — ${t('برای پوشه‌ها نیست')}`
-              : !canSetDefault
-                ? ` — ${t('فقط روی لینوکس')}`
-                : mime
-                  ? ` (${mime})`
-                  : ''}
-          </span>
-        </label>
+        {canSetDefault && (
+          <label className="open-with-remember">
+            <input
+              type="checkbox"
+              checked={remember}
+              disabled={isDir}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            <span>
+              {t('همیشه با این برنامه باز کن')}
+              {isDir ? ` — ${t('برای پوشه‌ها نیست')}` : mime ? ` (${mime})` : ''}
+            </span>
+          </label>
+        )}
 
         <div className="dialog-actions">
           <button className="btn ghost" onClick={() => void systemDefault()}>

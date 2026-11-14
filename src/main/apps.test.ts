@@ -7,6 +7,7 @@ import {
   mimeForPath,
   parseDesktopEntry,
   parseMacAppPaths,
+  parseMacOpenWith,
   parseWindowsOpenWith,
   systemOpenCommand,
   windowsArgv
@@ -120,4 +121,18 @@ test('parseMacAppPaths keeps bundles only and removes duplicates', () => {
     '/Applications/Safari.app'
   ])
   assert.equal(macAppName('/Applications/Visual Studio Code.app/'), 'Visual Studio Code')
+})
+
+test('macOS handlers come from LaunchServices JSON, bundles only and de-duplicated', () => {
+  const parsed = parseMacOpenWith(
+    JSON.stringify({
+      apps: ['/Applications/Xcode.app', '/Applications/Xcode.app', '/System/Applications/TextEdit.app', '/tmp/a.txt', ''],
+      def: '/Applications/Xcode.app'
+    })
+  )
+  assert.deepEqual(parsed.apps, ['/Applications/Xcode.app', '/System/Applications/TextEdit.app'])
+  assert.equal(parsed.def, '/Applications/Xcode.app')
+  // a failed or empty osascript run must not throw or invent handlers
+  assert.deepEqual(parseMacOpenWith(''), { apps: [], def: '' })
+  assert.deepEqual(parseMacOpenWith('execution error'), { apps: [], def: '' })
 })
