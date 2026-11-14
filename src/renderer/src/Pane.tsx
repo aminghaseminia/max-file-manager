@@ -532,6 +532,17 @@ export function Pane(props: Props) {
   const menu = (ev: React.MouseEvent, path: string | null) => {
     ev.preventDefault()
     ev.stopPropagation()
+    if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
+    // A right-click selects what it points at, like Dolphin: the menu and every action in it must
+    // act on the clicked row, not on whatever happened to be selected before. Right-clicking a row
+    // that is already part of a multi-selection keeps the selection.
+    if (path === null) {
+      if (pane.sel.length) props.onSel([], 'set')
+    } else if (!pane.sel.includes(path)) {
+      const idx = entries.findIndex((e) => e.path === path)
+      props.onSel([path], 'set')
+      if (idx >= 0) anchor.current = idx
+    }
     props.onContext(path, ev.clientX, ev.clientY)
   }
 
