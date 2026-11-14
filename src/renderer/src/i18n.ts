@@ -947,7 +947,26 @@ const EN: Record<string, string> = {
   'پیکربندی (.yaml)': 'YAML Config (.yaml)',
   'اسکریپت اس‌کیوال (.sql)': 'SQL Script (.sql)',
   'فایل خالی…': 'Blank File…',
-  'این نام از قبل وجود دارد': 'This name already exists'
+  'این نام از قبل وجود دارد': 'This name already exists',
+  'انتخابگر فایل مکس برای برنامه‌های دیگر': 'Use Max File Manager for file dialogs',
+  'فایرفاکس و برنامه‌های سازگار با XDG، دیالوگ باز کردن و ذخیره فایل را با مکس نمایش می‌دهند': 'Firefox and other XDG-aware apps open and save files with Max File Manager',
+  'انتخابگر فایل مکس فعال شد': 'Max File Manager file picker enabled',
+  'انتخابگر فایل مکس غیرفعال شد': 'Max File Manager file picker disabled',
+  'دسکتاپ': 'Desktop',
+  'دانلودها': 'Downloads',
+  'نام فایل': 'File name',
+  'در حال باز کردن…': 'Opening…',
+  'اسناد': 'Documents',
+  'تصاویر': 'Pictures',
+  'انتخاب پوشه': 'Select folder',
+  'اول یک فایل را انتخاب کن': 'Select a file first',
+  'نام فایل برای ذخیره مشخص نشده است': 'No file name was provided for saving',
+  'یک نام فایل معتبر بنویس': 'Enter a valid file name',
+  'پوشهٔ بالایی': 'Parent folder',
+  'پنهان‌کردن فایل‌های مخفی': 'Hide hidden files',
+  'فایلی با این نام وجود دارد. جایگزین شود؟': 'A file with this name already exists. Replace it?',
+  'جایگزین کن': 'Replace',
+  'نوع فایل': 'File type'
 }
 
 export function t(key: string, vars?: Record<string, string | number>): string {

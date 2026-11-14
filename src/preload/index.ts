@@ -10,6 +10,13 @@ ipcRenderer.on('mcp:ui', (_e, msg) => {
 
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
+  portal: {
+    request: () => ipcRenderer.invoke('portal:request'),
+    respond: (result: unknown) => ipcRenderer.invoke('portal:respond', result),
+    rememberDir: (dir: string) => ipcRenderer.invoke('portal:rememberDir', dir),
+    status: () => ipcRenderer.invoke('portal:status'),
+    configure: (enabled: boolean) => ipcRenderer.invoke('portal:configure', enabled)
+  },
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
@@ -183,6 +190,12 @@ contextBridge.exposeInMainWorld('api', {
   state: {
     get: () => ipcRenderer.invoke('state:get'),
     set: (s: unknown) => ipcRenderer.invoke('state:set', s),
-    setPrefs: (prefs: unknown) => ipcRenderer.invoke('state:setPrefs', prefs)
+    setPrefs: (prefs: unknown) => ipcRenderer.invoke('state:setPrefs', prefs),
+    marks: (change?: { path: string; on: boolean }) => ipcRenderer.invoke('state:marks', change),
+    onMarks: (cb: (marks: string[]) => void) => {
+      const fn = (_e: unknown, marks: string[]) => cb(marks)
+      ipcRenderer.on('state:marks', fn)
+      return () => ipcRenderer.removeListener('state:marks', fn)
+    }
   }
 })

@@ -83,6 +83,8 @@ import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import { listDrives, mountDrive, unmountDrive } from './drives.ts'
 import type { DirRef, Entry } from './types.ts'
+import { PortalServer, type PortalRequestData } from './portal.ts'
+import { installPortal, portalInstalled, uninstallPortal } from './portal-install.ts'
 
 // mfm:// serves local files to <img> so the renderer never gets a filesystem API.
 protocol.registerSchemesAsPrivileged([
@@ -139,6 +141,7 @@ let chrome: Chrome = {
 let win: BrowserWindow | null = null
 
 const firstPath = targetPath(process.argv, app.getAppPath() || process.cwd())
+const portalOnly = process.argv.includes('--portal-backend')
 
 // macOS hands "open this folder" over as an Apple event, not argv; queue it until the window exists
 const pendingOpens: string[] = []
@@ -162,7 +165,8 @@ if (bootPrefs.singleInstance !== false && !process.env['SMOKE_SHOT']) {
     process.exit(0)
   }
   app.on('second-instance', (_e, argv) => {
-    if (!win) return
+    if (argv.includes('--portal-backend')) void portalServer.start().catch(() => undefined)
+    if (!win || portalOnly) return
     if (win.isMinimized()) win.restore()
     win.show()
     win.focus()
@@ -531,6 +535,14 @@ function windowIcon(): string | undefined {
   return existsSync(packed) ? packed : undefined
 }
 
+const portalServer = new PortalServer({
+  preload: path.join(__dirname, '../preload/index.js'),
+  rendererUrl: process.env['ELECTRON_RENDERER_URL'],
+  rendererFile: path.join(__dirname, '../renderer/index.html'),
+  icon: windowIcon()
+})
+let portalError = ''
+
 let tray: Tray | null = null
 let trayPrefs = { minimize: false, close: false }
 let quitting = false
@@ -639,6 +651,7 @@ function createWindow(): BrowserWindow {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  portalServer.stop()
   void stopMcp()
 })
 
@@ -668,7 +681,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('thumbs:clear', () => clearThumbs())
 
-  win = createWindow()
+  if (!portalOnly) win = createWindow()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   })
@@ -1004,6 +1017,13 @@ app.whenReady().then(async () => {
       }
       case 'desktop_default_manager':
         return { default: await isDefaultFileManager() }
+      case 'portal_status':
+        return {
+          supported: process.platform === 'linux',
+          installed: portalInstalled(),
+          running: portalServer.running,
+          error: portalError || null
+        }
       case 'update_check':
         return checkUpdate(!!args.force)
       case 'write_text':
@@ -1521,9 +1541,72 @@ app.whenReady().then(async () => {
     return true
   })
 
+  ipcMain.handle('state:marks', async (_e, change?: { path?: string; on?: boolean }) => {
+    const st = (await readState()) ?? {}
+    let marks: string[] = Array.isArray(st.marks)
+      ? st.marks.filter((m: unknown): m is string => typeof m === 'string' && path.isAbsolute(m))
+      : []
+    if (change && typeof change.path === 'string' && path.isAbsolute(change.path)) {
+      const has = marks.includes(change.path)
+      if (change.on === true && !has) marks = [...marks, change.path]
+      if (change.on === false && has) marks = marks.filter((m) => m !== change.path)
+      writeStore('state', { ...st, marks })
+      // the dialog and the main window share one bookmark list; tell every open window
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('state:marks', marks)
+      }
+    }
+    return marks
+  })
+
+  ipcMain.handle('portal:request', (e): PortalRequestData | null => portalServer.requestFor(e.sender.id))
+  ipcMain.handle('portal:respond', (e, result: { paths: string[] } | null) => portalServer.respond(e.sender.id, result))
+  ipcMain.handle('portal:rememberDir', async (_e, dir: string) => {
+    if (typeof dir !== 'string' || !path.isAbsolute(dir)) return false
+    const st = (await readState()) ?? {}
+    const prefs = { ...(st.prefs ?? {}), pickerLastDir: dir }
+    writeStore('state', { ...st, prefs })
+    return true
+  })
+  ipcMain.handle('portal:status', () => ({
+    supported: process.platform === 'linux',
+    installed: portalInstalled(),
+    running: portalServer.running,
+    error: portalError
+  }))
+  ipcMain.handle('portal:configure', async (_e, enabled: boolean) => {
+    portalError = ''
+    try {
+      if (enabled) {
+        // Own the bus name before the frontend reloads its configuration; otherwise a pending
+        // chooser request can activate a second process while systemctl is still waiting.
+        await portalServer.start()
+        await installPortal()
+      } else {
+        portalServer.stop()
+        await uninstallPortal()
+      }
+    } catch (e) {
+      portalError = e instanceof Error ? e.message : String(e)
+    }
+    return {
+      supported: process.platform === 'linux',
+      installed: portalInstalled(),
+      running: portalServer.running,
+      error: portalError || undefined
+    }
+  })
+
+  if (portalOnly || bootPrefs.portalPicker === true) {
+    await portalServer.start().catch((e) => {
+      portalError = e instanceof Error ? e.message : String(e)
+      console.error('MFM portal backend:', portalError)
+    })
+  }
+
   const opens = pendingOpens.length ? [...pendingOpens] : firstPath ? [firstPath] : []
   pendingOpens.length = 0
-  if (opens.length) {
+  if (opens.length && win) {
     win.webContents.once('did-finish-load', () => {
       for (const p of opens) win?.webContents.send('app:open-path', p)
     })
@@ -1532,7 +1615,7 @@ app.whenReady().then(async () => {
   // SMOKE_SHOT=<file.png> renders the window once, saves a screenshot and quits; SMOKE_JS drives the UI first.
   const shot = process.env['SMOKE_SHOT']
   const js = process.env['SMOKE_JS']
-  if (shot) {
+  if (shot && win) {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
         if (js && win) {
@@ -1549,7 +1632,7 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) win = createWindow()
+    if (!portalOnly && BrowserWindow.getAllWindows().length === 0) win = createWindow()
   })
 })
 

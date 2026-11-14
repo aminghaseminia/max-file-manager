@@ -421,6 +421,11 @@ export default function App() {
   const lastShift = useRef(0)
 
   useEffect(() => {
+    // Bookmarks are shared with the XDG file dialog; a change made there must show up here too.
+    return api.state.onMarks((list) => setMarks(list))
+  }, [])
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
 

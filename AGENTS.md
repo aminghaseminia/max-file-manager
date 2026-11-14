@@ -60,6 +60,11 @@ src/renderer/src/RenameDialog.tsx  تغییر نام گروهی با پیش‌ن
 src/renderer/src/TitleBar.tsx      تایتل‌بار خود برنامه (drag، کوچک/بزرگ/بستن)
 src/renderer/src/Preferences.tsx پنجرهٔ تنظیمات: دسته‌ها، صفحه‌ها، اعمال فوری
 src/main/image.ts      ذخیرهٔ تصویر ویرایش‌شده (data URL → فایل، اتمیک) — + تست
+src/main/portal.ts     بک‌اند XDG FileChooser روی D-Bus + پنجرهٔ انتخاب فایل
+src/main/portal-install.ts  نصب/حذف فایل‌های پروفایل کاربر برای انتخابگر فایل (mfm.portal، سرویس D-Bus، portals.conf)
+src/main/portal-core.ts     منطق خالص پورتال: مسیر `ay`، صافی‌ها، ویرایش portals.conf — + تست
+src/shared/portal-filters.ts  تطبیق glob/MIME صافی‌های پورتال (main و رندرر)
+src/renderer/src/PortalPicker.tsx  پنجرهٔ انتخاب فایل (باز/ذخیره/چندانتخابی) داخل خود مکس
 src/renderer/src/prefs.ts    تنها منبع تنظیمات (نوع Prefs + DEFAULTS + mergePrefs + مهاجرت) — + تست
 src/renderer/src/Gallery.tsx گالری تصاویر تمام‌پنجره (پیمایش، بزرگ‌نمایی، چرخش، پخش خودکار)
 src/renderer/src/FolderDialog.tsx  رنگ و آیکون پوشه + انتخاب پک آیکون
@@ -91,6 +96,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 - **رها کردن فایل از بیرون**: مسیر فایل را فقط با `api.pathForFile(file)` بگیر (در preload با `webUtils`) — هر راه دیگری شکست می‌خورد.
 - **پیش‌نمایش سقف دارد** (۲۰۰KB متن، تصویر بزرگ inline نمی‌شود)؛ سقف را بی‌دلیل بالا نبر و همیشه «بریده شد» را نشان بده.
 - **کپی/انتقال فقط از راه `jobs.ts`** (صف + پیشرفت + لغو). هیچ‌جا `fs.cp` مستقیم برای انتقال ننویس و برای حذف فقط از `ops.remove` استفاده کن.
+- **انتخابگر فایل XDG سه‌لایه دارد و مرزها را نشکن**: `portal.ts` بک‌اند D-Bus (`org.freedesktop.impl.portal.FileChooser`) و پنجرهٔ انتخاب فایل، `portal-install.ts` فقط فایل‌های پروفایل کاربر (`mfm.portal`، سرویس D-Bus و `portals.conf`) و `portal-core.ts` منطق خالص (اعتبارسنجی مسیر `ay`، صافی‌های پورتال، ویرایش `portals.conf`) با تست. **نشان‌شده‌ها یک لیست مشترک‌اند** (`state.marks`، IPC `state:marks` + رویداد `state:marks` به همهٔ پنجره‌ها)؛ هرگز یک لیست جدا در دیالوگ نساز. در `portals.conf` فقط توکن `mfm` به کلید `FileChooser` اضافه/حذف می‌شود و بقیهٔ کلیدها (`default=kde` و…) دست‌نخورده می‌مانند؛ خاموش‌کردن باید فایل را به حالت قبل برگرداند. `bus.export()` همیشه **قبل** از `requestName()` است و پنجره **بعد** از ارسال پاسخ D-Bus بسته می‌شود؛ برعکس این ترتیب دو باگ واقعی ساخت («Method OpenFile does not exist» و پاسخ خطای ۲ در حالت فعال‌سازی). مسیر `--portal-backend` نباید پنجرهٔ اصلی بسازد و نباید در `targetPath` مسیر باز کند.
 - **یکپارچگی سیستم دستی انجام نمی‌شود**: نصب `.desktop`، هندلر پیش‌فرض و کلید سراسری همه از `scripts/install-integration.sh` و `hotkey:register` می‌گذرند؛ مسیرها را در سند `docs/INTEGRATION.md` نگه دار. کلید سراسری روی X11 جواب می‌دهد و روی Wayland ممکن است ثبت نشود — شکست باید به کاربر گزارش شود، نه بی‌صدا.
 - **همگام‌سازی «جدیدتر برنده» است**: در `sync.ts` اگر mtime بیش از ۲ ثانیه تفاوت داشته باشد جهت از همان تعیین می‌شود؛ تفاوت اندازه با زمان یکسان `sizeDiff` (مشکوک) است و در هر دو جهت پیشنهاد می‌شود. حذف همیشه از طریق callback تزریق‌شده (`shell.trashItem`) انجام می‌شود — این ماژول هیچ‌وقت hard-delete نمی‌کند و باید همین‌طور بماند.
 - **پیش‌نمایش HTML هرگز اجرا نمی‌شود**: `iframe` با `sandbox=""` (بدون allow-scripts) و `cleanHtml` که script/iframe/object/on*/`javascript:` را حذف می‌کند. هر دو لایه لازم‌اند؛ هیچ‌وقت sandbox را بازتر نکن.

@@ -83,6 +83,8 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
   const [capturing, setCapturing] = useState<string | null>(null)
   const [isDefault, setIsDefault] = useState<boolean | null>(null)
   const [settingDefault, setSettingDefault] = useState(false)
+  const [portalBusy, setPortalBusy] = useState(false)
+  const [portalMsg, setPortalMsg] = useState('')
   const [indexSt, setIndexSt] = useState<SearchProgress | null>(null)
   const [ioBusy, setIoBusy] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState('')
@@ -1280,6 +1282,31 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
 
           {page === 'launch' && (
             <>
+              {row(
+                t('انتخابگر فایل مکس برای برنامه‌های دیگر'),
+                t('فایرفاکس و برنامه‌های سازگار با XDG، دیالوگ باز کردن و ذخیره فایل را با مکس نمایش می‌دهند'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.portalPicker}
+                    disabled={portalBusy}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked
+                      setPortalBusy(true)
+                      setPortalMsg('')
+                      try {
+                        const result = await api.portal.configure(enabled)
+                        onChange({ portalPicker: enabled ? result.installed : result.installed ? prefs.portalPicker : false })
+                        if (result.error) setPortalMsg(result.error)
+                        else setPortalMsg(enabled ? t('انتخابگر فایل مکس فعال شد') : t('انتخابگر فایل مکس غیرفعال شد'))
+                      } finally {
+                        setPortalBusy(false)
+                      }
+                    }}
+                  />
+                </label>
+              )}
+              {portalMsg && <div className="hint" dir="auto">{portalMsg}</div>}
               {row(
                 t('تک‌نمونه (single instance)'),
                 t('اجرای دوباره، پنجرهٔ موجود را جلو می‌آورد · با راه‌اندازی بعدی اعمال می‌شود'),

@@ -147,6 +147,10 @@ export type Prefs = {
   confirmDelete: boolean
   trashByDefault: boolean
   // launching
+  /** provide the XDG file chooser used by Firefox and other portal-aware apps */
+  portalPicker: boolean
+  /** last folder accepted in the portal picker */
+  pickerLastDir: string
   singleInstance: boolean
   /** hide the window in the tray when minimized / closed (needs single instance) */
   minimizeToTray: boolean
@@ -250,6 +254,8 @@ export const DEFAULTS: Prefs = {
   speedLimitKB: 0,
   confirmDelete: true,
   trashByDefault: true,
+  portalPicker: false,
+  pickerLastDir: '',
   singleInstance: true,
   minimizeToTray: false,
   closeToTray: false,
@@ -517,6 +523,9 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
         : 0,
     confirmDelete: p.confirmDelete !== false,
     trashByDefault: p.trashByDefault !== false,
+    portalPicker: p.portalPicker === true,
+    pickerLastDir:
+      typeof p.pickerLastDir === 'string' && p.pickerLastDir.startsWith('/') ? p.pickerLastDir : '',
     singleInstance: p.singleInstance !== false,
     minimizeToTray: p.minimizeToTray === true,
     closeToTray: p.closeToTray === true,

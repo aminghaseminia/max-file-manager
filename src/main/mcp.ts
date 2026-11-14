@@ -64,6 +64,7 @@ const TOOLS: McpTool[] = [
   { name: 'apps', description: 'applications that can open a file', read: true, input: { path: 'string' } },
   { name: 'app_default', description: 'the default application for a file type', read: true, input: { path: 'string' } },
   { name: 'desktop_default_manager', description: 'is this app the system default file manager', read: true, input: {} },
+  { name: 'portal_status', description: 'is the XDG file chooser installed, running and used by other apps', read: true, input: {} },
   { name: 'update_check', description: 'compare the running version with the latest release', read: true, input: { force: 'boolean?' } },
 
   // ── writing files ──────────────────────────────────────────────────────────
