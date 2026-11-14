@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { appHandles, execFor, mimeForPath, parseDesktopEntry } from './apps.ts'
+import { appHandles, execFor, mimeForPath, parseDesktopEntry, systemOpenCommand } from './apps.ts'
 
 const ENTRY = `[Desktop Entry]
 Type=Application
@@ -44,4 +44,10 @@ test('file extensions map to the MIME type the desktop uses', () => {
   assert.equal(mimeForPath('/a/PHOTO.JPG'), 'image/jpeg')
   assert.equal(mimeForPath('/a/note.docx'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
   assert.equal(mimeForPath('/a/unknown.weird'), 'application/octet-stream')
+})
+
+test('macOS and Windows hand the file to the OS launcher, Linux stays on .desktop', () => {
+  assert.deepEqual(systemOpenCommand('darwin', '/a/b.pdf'), ['open', ['/a/b.pdf']])
+  assert.deepEqual(systemOpenCommand('win32', '/a/b.pdf'), ['cmd', ['/c', 'start', '', '/a/b.pdf']])
+  assert.equal(systemOpenCommand('linux', '/a/b.pdf'), null)
 })
