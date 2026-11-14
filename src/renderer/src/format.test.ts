@@ -437,6 +437,9 @@ test('thumbUrl carries the file version so a replaced image is not served from c
   assert.notEqual(a, thumbUrl('/p/a.png', 256, '1000-43'))
   // no version (properties dialog and older callers) keeps the plain form
   assert.equal(thumbUrl('/p/a b.png', 96), 'thumb://local/p/a%20b.png?s=96')
+  // Windows: the slash after `local` is required, otherwise `localD` becomes the host
+  assert.equal(thumbUrl('D:\\Cloud\\a b.png', 256, '1-2'), 'thumb://local/D:/Cloud/a%20b.png?s=256&v=1-2')
+  assert.equal(thumbUrl('C:/x.png'), 'thumb://local/C:/x.png?s=256')
 })
 
 const G = (name: string, extra: Partial<Entry> = {}): Entry => ({

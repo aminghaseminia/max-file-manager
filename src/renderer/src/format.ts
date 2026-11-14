@@ -213,7 +213,10 @@ export function baseName(p: string): string {
  */
 export function thumbUrl(p: string, side = 256, version = ''): string {
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
-  return `thumb://local${segs.join('/')}?s=${side}${version ? `&v=${encodeURIComponent(version)}` : ''}`
+  const tail = segs.join('/')
+  // same trap as `mediaUrl`: `thumb://localD:/x` parses `localD` as the host, so the drive path
+  // must start with a slash or the handler sees `/x` and rejects it as relative
+  return `thumb://local${tail.startsWith('/') ? '' : '/'}${tail}?s=${side}${version ? `&v=${encodeURIComponent(version)}` : ''}`
 }
 
 /** Local file → the mfm:// URL the renderer may load in <img>. */
