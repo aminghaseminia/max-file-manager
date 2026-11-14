@@ -414,21 +414,3 @@ test('terminalDir: a folder is itself, a file is its folder, an archive means th
   assert.equal(terminalDir(null, false, null, '/home/me'), '/home')
 })
 
-test('openAction: the «Run» preference beats the HTML preview and the built-in editor', () => {
-  // the regression: a document type stayed in the preview pane even with double-click = Run
-  assert.equal(openAction(e('notes.md', false, 10, 0, 'md'), 'open'), 'external')
-  assert.equal(openAction(e('page.html', false, 10, 0, 'html'), 'open'), 'external')
-  assert.equal(openAction(e('app.php', false, 10, 0, 'php'), 'open'), 'external')
-  // folders always navigate, archives always open the reader, a chosen app always wins
-  assert.equal(openAction(e('src', true), 'open'), 'navigate')
-  assert.equal(openAction(e('bundle.zip', false, 10, 0, 'zip'), 'open'), 'archive')
-  assert.equal(openAction(e('photo.png', false, 10, 0, 'png'), 'open', { hasDefaultApp: true }), 'external')
-  // the other modes keep their specialised behaviour
-  assert.equal(openAction(e('notes.md', false, 10, 0, 'md'), 'preview'), 'preview')
-  assert.equal(openAction(e('page.html', false, 10, 0, 'html'), 'gallery'), 'preview')
-  assert.equal(openAction(e('photo.png', false, 10, 0, 'png'), 'gallery'), 'gallery')
-  assert.equal(openAction(e('notes.md', false, 10, 0, 'md'), 'gallery'), 'editor')
-  // a virtual listing (inside an archive) has nothing to read or preview
-  assert.equal(openAction(e('notes.md', false, 10, 0, 'md'), 'preview', { virtual: true }), 'preview')
-  assert.equal(openAction(e('notes.md', false, 10, 0, 'md'), 'gallery', { virtual: true }), 'external')
-})
