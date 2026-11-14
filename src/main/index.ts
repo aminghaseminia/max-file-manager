@@ -13,7 +13,7 @@ import {
   screen,
   shell
 } from 'electron'
-import { constants as fsConstants, existsSync, readFileSync, writeFileSync, promises as fs } from 'node:fs'
+import { constants as fsConstants, existsSync, readFileSync, writeFileSync, watch as fsWatch, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -683,6 +683,55 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('thumbs:clear', () => clearThumbs())
+
+  /**
+   * One fs.watch per folder that is on screen, event-driven (no polling). A save or rename fires
+   * several events, so each folder is debounced before the renderer is told to reload it. Folders
+   * whose filesystem does not support watching (some network mounts) are skipped silently.
+   */
+  const watched = new Map<string, { w: import('node:fs').FSWatcher; timer: ReturnType<typeof setTimeout> | null }>()
+  const closeWatched = (dir?: string): void => {
+    const entries = dir ? [...watched].filter(([p]) => p === dir) : [...watched]
+    for (const [p, e] of entries) {
+      if (e.timer) clearTimeout(e.timer)
+      try {
+        e.w.close()
+      } catch {
+        // already closed
+      }
+      watched.delete(p)
+    }
+  }
+  const changed = (dir: string): void => {
+    const entry = watched.get(dir)
+    if (!entry || entry.timer) return
+    entry.timer = setTimeout(() => {
+      const current = watched.get(dir)
+      if (!current) return
+      current.timer = null
+      if (win && !win.isDestroyed()) win.webContents.send('fs:changed', dir)
+    }, 300)
+  }
+  ipcMain.handle('fs:watch', (_e, dirs: unknown) => {
+    const want = new Set(
+      (Array.isArray(dirs) ? dirs : []).filter(
+        (d): d is string => typeof d === 'string' && path.isAbsolute(d)
+      )
+    )
+    for (const p of [...watched.keys()]) if (!want.has(p)) closeWatched(p)
+    for (const p of want) {
+      if (watched.has(p)) continue
+      try {
+        const w = fsWatch(p, { persistent: false }, () => changed(p))
+        w.on('error', () => closeWatched(p))
+        watched.set(p, { w, timer: null })
+      } catch {
+        // watching unsupported here; the manual refresh still works
+      }
+    }
+    return true
+  })
+  app.on('will-quit', () => closeWatched())
 
   if (!portalOnly) win = createWindow()
   const engine = createEngine((job) => {

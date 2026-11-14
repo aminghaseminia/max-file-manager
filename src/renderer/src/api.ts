@@ -247,6 +247,9 @@ export type Api = {
     configure(enabled: boolean): Promise<PortalStatus & { error?: string }>
   }
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
+  /** watch the folders on screen; the callback fires when one changes on disk (no polling) */
+  watchDirs(dirs: string[]): Promise<boolean>
+  onFsChange(cb: (dir: string) => void): () => void
   /** bytes/counts per extension, the largest files and each direct child's total */
   breakdown(path: string, mode?: BreakdownMode): Promise<Breakdown>
   statfs(p: string): Promise<{ free: number; size: number } | null>

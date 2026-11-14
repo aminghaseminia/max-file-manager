@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('api', {
   },
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
+  /** Watch the folders on screen; main sends `fs:changed` when one of them changes on disk. */
+  watchDirs: (dirs: string[]) => ipcRenderer.invoke('fs:watch', dirs),
+  onFsChange: (cb: (dir: string) => void) => {
+    const fn = (_e: unknown, dir: string) => cb(dir)
+    ipcRenderer.on('fs:changed', fn)
+    return () => ipcRenderer.removeListener('fs:changed', fn)
+  },
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
   breakdown: (path: string, mode?: string) => ipcRenderer.invoke('fs:breakdown', { path, mode }),
   debugLog: (msg: string) => ipcRenderer.invoke('debug:log', String(msg)),

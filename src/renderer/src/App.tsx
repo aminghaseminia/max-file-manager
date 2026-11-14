@@ -900,9 +900,9 @@ export default function App() {
     }
   }
 
-  const load = async (i: number, dir: string) => {
+  const load = async (i: number, dir: string, quiet = false) => {
     const seq = ++loadSeq.current[i]
-    setPanes((p) => p && patch(p, i, { loading: true }))
+    if (!quiet) setPanes((p) => p && patch(p, i, { loading: true }))
     try {
       const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
       if (loadSeq.current[i] !== seq) return
@@ -1367,6 +1367,36 @@ export default function App() {
     else if (action === 'editor') openEditor(e.path)
     else openExternal(e.path)
   }
+
+  const loadRef = useRef(load)
+  loadRef.current = load
+  const panesRef = useRef(panes)
+  panesRef.current = panes
+
+  // Only the folders on screen are watched. Navigating swaps the watch set, so a big tree is never
+  // watched wholesale; nothing polls.
+  const watchKey = panes
+    ? panes.map((p) => (p.archive || p.virtual ? '' : p.tabs[p.ti])).join('\u0000')
+    : ''
+  useEffect(() => {
+    const dirs = panes ? panes.filter((p) => !p.archive && !p.virtual).map((p) => p.tabs[p.ti]) : []
+    void api.watchDirs(dirs).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchKey])
+
+  // a change on disk reloads the pane showing that folder, quietly: same listing, fresh names,
+  // sizes and mtimes (which in turn re-versions the thumbnails)
+  useEffect(
+    () =>
+      api.onFsChange((dir) => {
+        const cur = panesRef.current
+        if (!cur) return
+        cur.forEach((p, i) => {
+          if (!p.archive && !p.virtual && p.tabs[p.ti] === dir) void loadRef.current(i, dir, true)
+        })
+      }),
+    []
+  )
 
   /** A starred folder is the selected one when a single folder is selected, else the open folder. */
   const bookmarkTarget = (i: number): string => {
