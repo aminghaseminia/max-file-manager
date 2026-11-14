@@ -203,10 +203,17 @@ export function baseName(p: string): string {
   return s.split(/[\\/]/).pop() || s
 }
 
-/** Small cached thumbnail for grid tiles; falls back to mfm:// for non-images. */
-export function thumbUrl(p: string, side = 256): string {
+/**
+ * Small cached thumbnail for grid tiles; falls back to mfm:// for non-images.
+ *
+ * `version` is the entry's mtime+size. Putting it in the URL is what makes a replaced file show a
+ * new picture: the browser keys its image cache by URL, so with a bare path it served the old
+ * thumbnail for a day. The server's cache key already includes mtime/size, so an unchanged file
+ * never regenerates anything — no polling and no watcher needed.
+ */
+export function thumbUrl(p: string, side = 256, version = ''): string {
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
-  return `thumb://local${segs.join('/')}?s=${side}`
+  return `thumb://local${segs.join('/')}?s=${side}${version ? `&v=${encodeURIComponent(version)}` : ''}`
 }
 
 /** Local file → the mfm:// URL the renderer may load in <img>. */

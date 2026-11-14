@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {thumbUrl, baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -414,3 +414,13 @@ test('terminalDir: a folder is itself, a file is its folder, an archive means th
   assert.equal(terminalDir(null, false, null, '/home/me'), '/home')
 })
 
+
+test('thumbUrl carries the file version so a replaced image is not served from cache', () => {
+  const a = thumbUrl('/p/a.png', 256, '1000-42')
+  assert.equal(a, 'thumb://local/p/a.png?s=256&v=1000-42')
+  // a changed file (new mtime or size) gets a different URL
+  assert.notEqual(a, thumbUrl('/p/a.png', 256, '1001-42'))
+  assert.notEqual(a, thumbUrl('/p/a.png', 256, '1000-43'))
+  // no version (properties dialog and older callers) keeps the plain form
+  assert.equal(thumbUrl('/p/a b.png', 96), 'thumb://local/p/a%20b.png?s=96')
+})

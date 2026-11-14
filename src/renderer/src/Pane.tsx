@@ -1018,7 +1018,7 @@ export function Pane(props: Props) {
                   >
                     {pic ? (
                       <img
-                        src={isImageName(e.name) ? thumbUrl(e.path, 256) : mediaUrl(e.path)}
+                        src={isImageName(e.name) ? thumbUrl(e.path, 256, `${Math.round(e.mtime)}-${e.size}`) : mediaUrl(e.path)}
                         alt=""
                         loading="lazy"
                         draggable={false}

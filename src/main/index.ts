@@ -676,7 +676,9 @@ app.whenReady().then(async () => {
     if (!file) return new Response('no thumb', { status: 404 })
     const res = await net.fetch(pathToFileURL(file).toString())
     const headers = new Headers(res.headers)
-    headers.set('Cache-Control', 'public, max-age=86400')
+    // a versioned URL (?v=mtime-size) is immutable: a changed file gets a new URL. Without one the
+    // renderer cannot tell us the file changed, so it must revalidate instead of trusting a day-old hit
+    headers.set('Cache-Control', url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache')
     return new Response(res.body, { status: res.status, headers })
   })
 
@@ -1544,7 +1546,9 @@ app.whenReady().then(async () => {
     if (!file) return new Response('no thumb', { status: 404 })
     const res = await net.fetch(pathToFileURL(file).toString())
     const headers = new Headers(res.headers)
-    headers.set('Cache-Control', 'public, max-age=86400')
+    // a versioned URL (?v=mtime-size) is immutable: a changed file gets a new URL. Without one the
+    // renderer cannot tell us the file changed, so it must revalidate instead of trusting a day-old hit
+    headers.set('Cache-Control', url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache')
     return new Response(res.body, { status: res.status, headers })
   })
 
