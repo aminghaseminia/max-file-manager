@@ -87,6 +87,7 @@ import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import { breakdown, type BreakdownMode } from './breakdown.ts'
 import { listDrives, mountDrive, unmountDrive } from './drives.ts'
+import { dirs } from './dirs.ts'
 import type { DirRef, Entry } from './types.ts'
 import { PortalServer, type PortalRequestData } from './portal.ts'
 import { installPortal, portalInstalled, uninstallPortal } from './portal-install.ts'
@@ -253,23 +254,6 @@ async function list(dir: string, showHidden: boolean, dims = false) {
 }
 
 /** Subfolders only, no stat: what the sidebar tree needs. */
-async function dirs(dir: string, showHidden = false): Promise<DirRef[]> {
-  const kids = (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
-    .filter((k) => k.isDirectory() && (showHidden || !k.name.startsWith('.')))
-    .slice(0, 1000)
-  const out: DirRef[] = []
-  for (let i = 0; i < kids.length; i += 64) {
-    const slice = await Promise.all(
-      kids.slice(i, i + 64).map(async (k) => {
-        const p = path.join(dir, k.name)
-        if (!showHidden && (await readMeta(p))?.hidden) return null
-        return { name: k.name, path: p }
-      })
-    )
-    for (const item of slice) if (item) out.push(item)
-  }
-  return out
-}
 
 const isDir = (p: string) => fs.stat(p).then((s) => s.isDirectory(), () => false)
 
@@ -779,7 +763,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('image:save', (_e, a: { src: string; dataUrl: string; mode: 'overwrite' | 'copy' }) =>
     saveImage(a.src, a.dataUrl, a.mode)
   )
-  ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false) => dirs(dir, !!showHidden))
+  ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false, followLinks = false) =>
+    dirs(dir, { showHidden: !!showHidden, followLinks: !!followLinks })
+  )
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
   ipcMain.handle('drives:list', () => listDrives())
@@ -962,7 +948,7 @@ app.whenReady().then(async () => {
         }
       }
       case 'dirs':
-        return dirs(needAbs(args.path), !!args.hidden)
+        return dirs(needAbs(args.path), { showHidden: !!args.hidden, followLinks: !!args.links })
       case 'walk':
         return walk(needAbs(args.dir), {
           query: args.pattern ? String(args.pattern) : undefined,

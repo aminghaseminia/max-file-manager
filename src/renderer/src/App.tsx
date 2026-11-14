@@ -34,6 +34,7 @@ import { PURE_ICON_SET } from './pure-icons'
 import { PURE_URL_BY_NAME } from './pure-set'
 import { FOLDER_COLORS } from './folder-colors'
 import { PaneTree } from './PaneTree'
+import { TreePane } from './TreePane'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { SyncDialog } from './SyncDialog'
@@ -744,6 +745,40 @@ export default function App() {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       updatePrefs({ sidebarWidth: curWidth })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  /** Drag the tree pane's edge; on the right side the handle reads the opposite direction. */
+  const startTreeResize = (ev: React.PointerEvent) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const handle = ev.currentTarget as HTMLElement
+    try {
+      handle.setPointerCapture(ev.pointerId)
+    } catch {}
+    const panel = handle.previousElementSibling as HTMLElement | null
+    if (!panel) return
+    const rect = panel.getBoundingClientRect()
+    const right = prefs.treePane === 'right'
+
+    let cur = prefs.treeWidth
+    const move = (e: PointerEvent) => {
+      const raw = right ? rect.right - e.clientX : e.clientX - rect.left
+      const clamped = Math.min(520, Math.max(160, Math.round(raw)))
+      if (clamped !== cur) {
+        cur = clamped
+        setPrefs((p) => ({ ...p, treeWidth: clamped }))
+      }
+    }
+    const up = (e: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(e.pointerId)
+      } catch {}
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      updatePrefs({ treeWidth: cur })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -3360,6 +3395,30 @@ export default function App() {
           </>
         )}
 
+        {prefs.treePane === 'left' && (
+          <>
+            <TreePane
+              path={curPath}
+              showHidden={hidden}
+              side="left"
+              width={prefs.treeWidth}
+              autoFocus={prefs.treeAutoFocus}
+              showSymlink={prefs.showSymlink}
+              onNav={(d) => go(active, d)}
+              onAutoFocus={(on) => updatePrefs({ treeAutoFocus: on })}
+              onClose={() => updatePrefs({ treePane: 'off' })}
+            />
+            <div
+              className="tree-split"
+              role="separator"
+              aria-orientation="vertical"
+              title={t('تغییر عرض درخت')}
+              onPointerDown={startTreeResize}
+              onDoubleClick={() => updatePrefs({ treeWidth: 232 })}
+            />
+          </>
+        )}
+
         {(prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
           const pane = panes[i]
           // the preview/editor sits exactly where the opposite pane is
@@ -3542,6 +3601,30 @@ export default function App() {
 
           return renderedPane
         })}
+
+        {prefs.treePane === 'right' && (
+          <>
+            <div
+              className="tree-split"
+              role="separator"
+              aria-orientation="vertical"
+              title={t('تغییر عرض درخت')}
+              onPointerDown={startTreeResize}
+              onDoubleClick={() => updatePrefs({ treeWidth: 232 })}
+            />
+            <TreePane
+              path={curPath}
+              showHidden={hidden}
+              side="right"
+              width={prefs.treeWidth}
+              autoFocus={prefs.treeAutoFocus}
+              showSymlink={prefs.showSymlink}
+              onNav={(d) => go(active, d)}
+              onAutoFocus={(on) => updatePrefs({ treeAutoFocus: on })}
+              onClose={() => updatePrefs({ treePane: 'off' })}
+            />
+          </>
+        )}
 
         {sideOpen && prefs.layout === 'single' && (
           <>

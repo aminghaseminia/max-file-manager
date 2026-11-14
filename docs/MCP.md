@@ -49,7 +49,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `roots` | – | home folder and mounted drives |
 | `drives_list` | – | connected USB and removable block devices and their mount points |
 | `list` | `path`, `hidden?`, `dims?` | entries + `pins`, `labels`, `ratings`, `notes`, `format`, file colours |
-| `dirs` | `path`, `hidden?` | child folders only |
+| `dirs` | `path`, `hidden?`, `links?` | child folders only (`links`: include symlinked folders, flagged `link`) |
 | `walk` | `dir`, `pattern?`, `regex?`, `content?`, `exclude[]?`, `cap?` | recursive matches with a budget |
 | `properties` | `path` | mode, owner/group, links, inode, timestamps, image size, mime |
 | `statfs` | `path` | free and total bytes |
@@ -149,6 +149,9 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `properties_dialog` | `path?` | properties sheet |
 | `note` | `text` | message in the status bar |
 | `window` | `action` (`minimize`,`maximize`,`close`,`show`,`fullscreen`,`chrome`), `on?` | window control |
+
+The folder-tree pane needs no tool of its own: `prefs_set` with `treePane` (`off|left|right`),
+`treeWidth` and `treeAutoFocus` controls it, and `goto` makes auto-focus reveal the folder.
 
 The UI tools go through `mcp:ui` to the window (one-way IPC) because panes, selection, tabs and
 marks live in renderer state. `command` with a `pane` first focuses that pane, then runs the

@@ -189,8 +189,8 @@ export const SearchIcon = () => (
   </S>
 )
 /** A symbolic link: a thin chain, never a badge. */
-export const LinkIcon = () => (
-  <S>
+export const LinkIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M9.5 14.5l5-5" />
     <path d="M11 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1" />
     <path d="M13 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1" />
@@ -538,6 +538,12 @@ export const UnlockIcon = ({ size = 13 }: { size?: number }) => (
   <S size={size}>
     <rect x="5" y="11" width="14" height="9" rx="2" />
     <path d="M8 11V8a4 4 0 0 1 7-2.6" />
+  </S>
+)
+export const LocateIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21" />
   </S>
 )
 export const PinIcon = ({ filled = false, size = 13 }: { filled?: boolean; size?: number }) => (
