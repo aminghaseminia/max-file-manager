@@ -15,6 +15,7 @@ import { JobsBar } from './JobsBar'
 import { Pane, type FolderView, type PaneState, type SearchQuery, type View } from './Pane'
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
+import { BreakdownDialog } from './BreakdownDialog'
 import { ConvertDialog, RatingDialog, TagDialog, convertToWebp } from './RatingDialog'
 import { rowsOf } from '../../shared/export.ts'
 import { PresetsDialog } from './PresetsDialog'
@@ -73,6 +74,7 @@ import {
   FileIcon,
   ImageIcon,
   InfoIcon,
+  PieIcon,
   PdfIcon,
   PlayIcon,
   SheetIcon,
@@ -338,6 +340,7 @@ export default function App() {
   const [marksMenu, setMarksMenu] = useState<{ x: number; y: number; pane: number } | null>(null)
   const [openWith, setOpenWith] = useState<string | null>(null)
   const [propsFor, setPropsFor] = useState<string | null>(null)
+  const [breakdownFor, setBreakdownFor] = useState<string | null>(null)
   const [folderLook, setFolderLook] = useState<{ dirs: string[]; name: string; meta: FolderMeta | null } | null>(
     null
   )
@@ -1930,6 +1933,9 @@ export default function App() {
       case 'size':
         void computeSizes(active)
         break
+      case 'breakdown':
+        setBreakdownFor(path ?? tabOf(me))
+        break
       case 'bookmarkDir':
         if (path) toggleMark(active, path)
         break
@@ -2239,6 +2245,7 @@ export default function App() {
         { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
         { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
+        { id: 'breakdown', label: t('نمودار محتوای پوشه…'), icon: <PieIcon /> },
         { id: 'look', label: t('آیکون این پوشه'), icon: <PaletteIcon /> },
         { id: 'columns', label: t('ستون‌ها و اطلاعات…'), icon: <LayersIcon /> },
         { sep: true },
@@ -2273,7 +2280,10 @@ export default function App() {
       { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
       { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
       ...(entry?.dir
-        ? [{ id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem]
+        ? [
+            { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem,
+            { id: 'breakdown', label: t('نمودار محتوا…'), icon: <PieIcon /> } as MenuItem
+          ]
         : []),
       ...(entry && isImage(entry.ext)
         ? [
@@ -2937,7 +2947,7 @@ export default function App() {
         return
       }
       // a modal owns the keyboard: deleting behind the properties sheet would be invisible
-      if (editor || gallery || menu || columnMenu || marksMenu || settingsOpen || openWith || propsFor || confirmAsk) return
+      if (editor || gallery || menu || columnMenu || marksMenu || settingsOpen || openWith || propsFor || breakdownFor || confirmAsk) return
       const me = panes[active]
 
       if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
@@ -3932,6 +3942,8 @@ export default function App() {
           }}
         />
       )}
+
+      {breakdownFor && <BreakdownDialog path={breakdownFor} onClose={() => setBreakdownFor(null)} />}
 
       {columnMenu && (
         <ContextMenu

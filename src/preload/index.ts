@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
+  breakdown: (path: string, mode?: string) => ipcRenderer.invoke('fs:breakdown', { path, mode }),
   debugLog: (msg: string) => ipcRenderer.invoke('debug:log', String(msg)),
   chmod: (p: string, mode: number) => ipcRenderer.invoke('fs:chmod', { path: p, mode }),
   properties: (p: string) => ipcRenderer.invoke('fs:properties', p),

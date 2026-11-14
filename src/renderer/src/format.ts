@@ -257,7 +257,8 @@ const KIND: Record<string, Kind> = {
   html: 'code', json: 'code', yml: 'code', yaml: 'code', toml: 'code', sql: 'code'
 }
 
-export const kindOf = (e: Entry): Kind => (e.dir ? 'dir' : (KIND[e.ext] ?? 'file'))
+export const kindOfExt = (ext: string): Kind => KIND[ext.toLowerCase()] ?? 'file'
+export const kindOf = (e: Entry): Kind => (e.dir ? 'dir' : kindOfExt(e.ext))
 
 /** Persian source names; translated at call time so the language can change at runtime. */
 const LABEL: Record<Kind, string> = {
@@ -269,8 +270,11 @@ const LABEL: Record<Kind, string> = {
 /** Persian type name; unknown extensions show themselves instead of a useless «فایل». */
 export function typeLabel(e: Entry): string {
   const k = kindOf(e)
-  return k === 'file' && e.ext ? e.ext.toUpperCase() : t(LABEL[k])
+  return k === 'file' && e.ext ? e.ext.toUpperCase() : kindLabel(k)
 }
+
+/** Translated name of a kind, for aggregated charts where there is no single entry. */
+export const kindLabel = (k: Kind): string => t(LABEL[k])
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
 
