@@ -666,8 +666,9 @@ app.on('will-quit', () => {
  */
 async function withAppIcons(apps: DesktopApp[]): Promise<DesktopApp[]> {
   if (process.platform !== 'darwin') return apps
+  const dir = path.join(app.getPath('userData'), 'appicons')
   return Promise.all(
-    apps.map(async (a) => (a.iconPath ? a : { ...a, iconPath: await appIconFile(a.id) }))
+    apps.map(async (a) => (a.iconPath ? a : { ...a, iconPath: await appIconFile(a.id, dir) }))
   )
 }
 
