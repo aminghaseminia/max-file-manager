@@ -398,8 +398,16 @@ export default function App() {
   const setView = (v: View | ((cur: View) => View)) => {
     const next = typeof v === 'function' ? v(prefs.view) : v
     updatePrefs({ view: next })
+    const pane = panes?.[active]
+    if (!pane) return
     // a folder with its own format must follow the click instead of snapping back on the next load
     setPanes((p) => (p && p[active]?.fmt ? patch(p, active, { fmt: { ...p[active].fmt!, view: next } }) : p))
+    // …and it is written at once, so leaving and coming back keeps the thumbnails/details choice.
+    // Virtual listings (search, flat view, archive) have no folder of their own to remember.
+    if (pane.virtual || pane.archive) return
+    const dir = tabOf(pane)
+    if (!dir) return
+    void api.setFormat(dir, { ...(pane.fmt ?? {}), view: next })
   }
   const hidden = prefs.showHidden
   const setHidden = (f: boolean | ((h: boolean) => boolean)) =>
