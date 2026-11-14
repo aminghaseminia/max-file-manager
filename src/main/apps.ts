@@ -154,11 +154,45 @@ async function findDesktop(name: string): Promise<string | null> {
 }
 
 /**
+ * The system launcher for a platform that has no `.desktop` registry, or null on Linux.
+ * Pure so the argv is testable without opening a real file.
+ */
+export function systemOpenCommand(
+  platform: NodeJS.Platform | string,
+  file: string
+): [cmd: string, args: string[]] | null {
+  if (platform === 'darwin') return ['open', [file]]
+  if (platform === 'win32') return ['cmd', ['/c', 'start', '', file]]
+  return null
+}
+
+/**
+ * macOS and Windows have no `.desktop` registry: hand the file to the OS launcher and read the
+ * exit code, so a missing handler is reported instead of silently dropped. `open` on macOS exits
+ * non-zero and prints the reason when nothing claims the type.
+ */
+const openWithSystem = (cmd: string, args: string[]): Promise<{ ok: true } | { error: string }> =>
+  new Promise((resolve) => {
+    execFile(cmd, args, { timeout: 8000 }, (err, _out, stderr) => {
+      if (!err) {
+        resolve({ ok: true })
+        return
+      }
+      const msg = String(stderr || err.message || '').trim()
+      resolve({ error: msg || 'open_failed' })
+    })
+  })
+
+/**
  * The system's default handler for this file, launched the same way «Open with» does.
  * `shell.openPath` cannot be trusted to report failure, so the default app is started
  * directly; only when no default exists do the generic openers take over.
  */
 export async function openWithDefault(file: string): Promise<{ ok: true } | { error: string }> {
+  // The `.desktop` path below is Linux-only; every other platform would fall through to
+  // gio/xdg-open/kioclient and report «no application» even when Finder or Explorer has one.
+  const native = systemOpenCommand(process.platform, file)
+  if (native) return openWithSystem(native[0], native[1])
   const desktop = await findDesktop(await defaultDesktopName(mimeForPath(file)))
   if (desktop) {
     const result = await launchApp(desktop, file)
