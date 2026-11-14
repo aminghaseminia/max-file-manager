@@ -77,6 +77,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `apps` | `path` | applications that can open the file |
 | `app_default` | `path` | the default application for the type |
 | `desktop_default_manager` | – | is this app the system default file manager |
+| `portal_status` | – | is the XDG file chooser installed, running and used by other apps |
 | `update_check` | `force?` | compare the running version with the latest release |
 | `image_get` | `path` | data URL (max 40 MB) |
 

@@ -1,3 +1,20 @@
+import type { PortalFilter } from '../../shared/portal-filters.ts'
+
+export type PortalOperation = 'open' | 'save' | 'saveFiles'
+export type PortalRequestData = {
+  id: string
+  operation: PortalOperation
+  title: string
+  multiple: boolean
+  directory: boolean
+  currentFolder: string | null
+  currentName: string
+  acceptLabel: string
+  filters: PortalFilter[]
+  fileNames: string[]
+}
+export type PortalStatus = { supported: boolean; installed: boolean; running: boolean }
+
 export type Entry = {
   name: string
   path: string
@@ -194,6 +211,13 @@ export type FileProperties = {
 
 export type Api = {
 
+  portal: {
+    request(): Promise<PortalRequestData | null>
+    respond(result: { paths: string[]; filter?: PortalFilter | null } | null): Promise<{ ok: true } | { error: string }>
+    rememberDir(dir: string): Promise<boolean>
+    status(): Promise<PortalStatus>
+    configure(enabled: boolean): Promise<PortalStatus & { error?: string }>
+  }
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
   statfs(p: string): Promise<{ free: number; size: number } | null>
   debugLog(msg: string): Promise<boolean>
@@ -388,6 +412,9 @@ export type Api = {
     get(): Promise<StoredState | null>
     set(s: StoredState): Promise<boolean>
     setPrefs(prefs: Record<string, unknown>): Promise<boolean>
+    /** bookmarks live in the shared window state; the dialog and the sidebar read the same list */
+    marks(change?: { path: string; on: boolean }): Promise<string[]>
+    onMarks(cb: (marks: string[]) => void): () => void
   }
 }
 

@@ -71,7 +71,49 @@ Plasma 6 `khotkeys` را حذف کرده و میان‌بر دلخواه از م
 2. اگر دقیقاً `Win+E` لازم است: یا بایند Explorer را با یک remapper عوض کن، یا حالت
    Explorer-replacement را فعال کن (در نقشهٔ راه، فاز انتشار).
 
-## بررسی سلامت
+## انتخابگر فایل برای فایرفاکس و برنامه‌های XDG
+
+فایرفاکس، کروم/الکترون و هر برنامهٔ سازگار با `xdg-desktop-portal` برای «باز کردن» و «ذخیره» فایل،
+دیالوگ خود را از پورتال می‌خواهند. مکس یک بک‌اند پورتال است و می‌تواند همان دیالوگ را بدهد:
+
+1. پیشخوان برنامه → تنظیمات → **راه‌اندازی** → «انتخابگر فایل مکس برای برنامه‌های دیگر» را روشن کن.
+2. برنامه‌های باز را یک بار ببند و باز کن (فایرفاکس تنظیمات پورتال را در آغاز می‌خواند).
+
+این کلید چه فایل‌هایی می‌نویسد (همه در پروفایل خودت، بدون sudo):
+```
+~/.local/share/xdg-desktop-portal/portals/mfm.portal        # معرفی بک‌اند و اینترفیس
+~/.local/share/dbus-1/services/org.freedesktop.impl.portal.desktop.mfm.service
+~/.config/xdg-desktop-portal/portals.conf                   # FileChooser=mfm;gtk;
+```
+
+قواعد نگه‌داری که نباید بشکنند:
+
+- فقط توکن `mfm` به **همان یک کلید** `org.freedesktop.impl.portal.FileChooser` اضافه/حذف می‌شود؛
+  بقیهٔ کلیدها (مثل `default=kde`) و بک‌اندهای دیگر دست‌نخورده می‌مانند تا Settings/Secret/Print
+  سالم بمانند. خاموش‌کردن، فایل را به همان حالت قبل برمی‌گرداند.
+- ترتیب `mfm;gtk;` یعنی اگر مکس خطا داد، `xdg-desktop-portal` سراغ GTK می‌رود؛ پورتال هیچ‌وقت
+  بدون دیالوگ نمی‌ماند.
+- سرویس D-Bus این‌طور اجرا می‌شود: `electron <appDir> --portal-backend`. اگر برنامه باز نباشد،
+  D-Bus خودش آن را بالا می‌آورد، **بدون پنجرهٔ اصلی**، فقط پنجرهٔ انتخاب فایل؛ بعد از پاسخ خارج
+  می‌شود. اگر برنامه باز باشد، همان نمونهٔ باز پاسخ می‌دهد (تک‌نمونه حفظ می‌شود).
+- مرز زمانی حساس است: `bus.export()` **قبل** از `requestName()` انجام می‌شود و پنجره **بعد** از ارسال
+  پاسخ بسته می‌شود. برعکسش دو باگ واقعی بود: «Method OpenFile does not exist» و پاسخ خطای ۲
+  به‌جای فایل انتخاب‌شده.
+- **نشان‌شده‌ها (Bookmarks) مشترک‌اند**: دیالوگ همان `state.marks` را می‌خواند که سایدبار برنامه نشان
+  می‌دهد و ستارهٔ نوار بالای دیالوگ هم همان لیست را عوض می‌کند (IPC `state:marks` در main، سپس
+  پخش `state:marks` به همهٔ پنجره‌ها). هر دو طرف بلافاصله هم‌گام می‌شوند؛ لیست را در دو جا نگه ندار.
+
+بررسی سلامت:
+
+```bash
+busctl --user list | grep desktop.mfm                      # نام D-Bus باید مالک داشته باشد
+cat ~/.config/xdg-desktop-portal/portals.conf              # FileChooser=mfm;gtk;
+gdbus call --session --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.FileChooser.OpenFile "" "Test" '{}'
+```
+
+## بررسی سلامت فایل `.desktop`
 
 ```bash
 xdg-mime query default inode/directory        # باید max-file-manager.desktop باشد

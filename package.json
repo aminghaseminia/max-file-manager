@@ -39,5 +39,8 @@
   },
   "overrides": {
     "prosemirror-model": "1.25.11"
+  },
+  "dependencies": {
+    "dbus-next": "^0.10.2"
   }
 }
