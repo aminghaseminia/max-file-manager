@@ -5,6 +5,9 @@ directories:
 files:
   - out/**/*
   - package.json
+  # dbus-next's Windows-only transport (usocket) is never used: the XDG portal is Linux-only,
+  # and it drags a build-time node-gyp/request/tar chain we do not want in the artifact
+  - "!**/node_modules/usocket/**"
 extraResources:
   - from: build/icon.png
     to: icon.png

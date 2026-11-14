@@ -61,6 +61,7 @@ import {
   opensInEditor,
   orderEntries,
   reorderItem,
+  terminalDir,
   typeLabel,
   type NavMove,
   type SortKey
@@ -1982,8 +1983,9 @@ export default function App() {
         if (path) void api.reveal(path)
         break
       case 'terminal': {
-        // a right-click on a folder opens the terminal in that folder, not in the current one
-        const target = path && entryOf(active, path)?.dir ? path : tabOf(me)
+        // a right-click on a folder opens the terminal in that folder; a file means its own
+        // folder (flat/search results can live outside the tab), never the archive's fake path
+        const target = terminalDir(path, entryOf(active, path)?.dir === true, me.archive ?? null, tabOf(me))
         void api.openTerminal(target).then((r) => {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })

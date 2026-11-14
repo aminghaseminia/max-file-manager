@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -385,3 +385,12 @@ test('matchCustomCommand: matches file extensions and folder patterns accurately
   assert.equal(matchCustomCommand({ pattern: '*' }, '/home/user/myfolder', true), true)
 })
 
+test('terminalDir: a folder is itself, a file is its folder, an archive means the real parent', () => {
+  assert.equal(terminalDir('/home/me/projects', true, null, '/home/me'), '/home/me/projects')
+  assert.equal(terminalDir('/home/me/projects/a.txt', false, null, '/home/me'), '/home/me/projects')
+  // a flat/search hit can point outside the tab: its own folder wins
+  assert.equal(terminalDir('/data/deep/x.log', false, null, '/home/me'), '/data/deep')
+  // inside an archive the entry path is not a real directory
+  assert.equal(terminalDir('/data/set.zip/inner/a.txt', false, '/data/set.zip', '/data/set.zip'), '/data')
+  assert.equal(terminalDir(null, false, null, '/home/me'), '/home')
+})
