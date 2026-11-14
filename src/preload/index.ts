@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld('api', {
   readBytes: (p: string, max?: number) => ipcRenderer.invoke('fs:readBytes', { path: p, max }),
   saveImage: (src: string, dataUrl: string, mode: string) =>
     ipcRenderer.invoke('image:save', { src, dataUrl, mode }),
-  dirs: (dir: string, showHidden = false) => ipcRenderer.invoke('fs:dirs', dir, showHidden),
+  dirs: (dir: string, showHidden = false, followLinks = false) =>
+    ipcRenderer.invoke('fs:dirs', dir, showHidden, followLinks),
   roots: () => ipcRenderer.invoke('fs:roots'),
   home: () => ipcRenderer.invoke('fs:home'),
   size: (p: string) => ipcRenderer.invoke('fs:size', p),

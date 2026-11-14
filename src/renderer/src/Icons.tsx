@@ -189,8 +189,8 @@ export const SearchIcon = () => (
   </S>
 )
 /** A symbolic link: a thin chain, never a badge. */
-export const LinkIcon = () => (
-  <S>
+export const LinkIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M9.5 14.5l5-5" />
     <path d="M11 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1" />
     <path d="M13 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1" />

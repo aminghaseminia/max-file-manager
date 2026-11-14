@@ -4973,3 +4973,8 @@ button.bd-row:hover {
 .tree-split:active {
   background: var(--accent);
 }
+.tree-pane-link {
+  flex: none;
+  display: inline-flex;
+  color: var(--dim);
+}

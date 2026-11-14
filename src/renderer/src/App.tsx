@@ -3359,6 +3359,7 @@ export default function App() {
               side="left"
               width={prefs.treeWidth}
               autoFocus={prefs.treeAutoFocus}
+              showSymlink={prefs.showSymlink}
               onNav={(d) => go(active, d)}
               onAutoFocus={(on) => updatePrefs({ treeAutoFocus: on })}
               onClose={() => updatePrefs({ treePane: 'off' })}
@@ -3573,6 +3574,7 @@ export default function App() {
               side="right"
               width={prefs.treeWidth}
               autoFocus={prefs.treeAutoFocus}
+              showSymlink={prefs.showSymlink}
               onNav={(d) => go(active, d)}
               onAutoFocus={(on) => updatePrefs({ treeAutoFocus: on })}
               onClose={() => updatePrefs({ treePane: 'off' })}

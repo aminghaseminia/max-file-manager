@@ -49,7 +49,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `roots` | – | home folder and mounted drives |
 | `drives_list` | – | connected USB and removable block devices and their mount points |
 | `list` | `path`, `hidden?`, `dims?` | entries + `pins`, `labels`, `ratings`, `notes`, `format`, file colours |
-| `dirs` | `path`, `hidden?` | child folders only |
+| `dirs` | `path`, `hidden?`, `links?` | child folders only (`links`: include symlinked folders, flagged `link`) |
 | `walk` | `dir`, `pattern?`, `regex?`, `content?`, `exclude[]?`, `cap?` | recursive matches with a budget |
 | `properties` | `path` | mode, owner/group, links, inode, timestamps, image size, mime |
 | `statfs` | `path` | free and total bytes |

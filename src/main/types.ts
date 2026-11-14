@@ -23,6 +23,6 @@ export type Entry = {
   /** the entry is a symbolic link (the path itself, not its target) */
   link?: boolean
 }
-export type DirRef = { name: string; path: string }
+export type DirRef = { name: string; path: string; /** the entry itself is a symbolic link */ link?: boolean }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }
 export type Result = { done: number; errors: string[] }

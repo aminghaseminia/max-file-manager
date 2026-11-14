@@ -24,7 +24,7 @@ const TOOLS: McpTool[] = [
   { name: 'roots', description: 'home folder and mounted drives', read: true, input: {} },
   { name: 'drives_list', description: 'connected USB and removable block devices and their mount points', read: true, input: {} },
   { name: 'list', description: 'entries of a folder with metadata, labels, ratings and notes', read: true, input: { path: 'string', hidden: 'boolean?', dims: 'boolean?' } },
-  { name: 'dirs', description: 'sub-folders only', read: true, input: { path: 'string', hidden: 'boolean?' } },
+  { name: 'dirs', description: 'sub-folders only', read: true, input: { path: 'string', hidden: 'boolean?', links: 'boolean?' } },
   { name: 'walk', description: 'recursive list with name/content filters', read: true, input: { dir: 'string', pattern: 'string?', regex: 'boolean?', content: 'string?', hidden: 'boolean?', exclude: 'string[]?', maxDepth: 'number?', cap: 'number?' } },
   { name: 'properties', description: 'name, size, mode, owner, links, timestamps, image size', read: true, input: { path: 'string' } },
   { name: 'statfs', description: 'free and total bytes of a filesystem', read: true, input: { path: 'string' } },

@@ -113,7 +113,7 @@ export type Listing = {
   notes?: Record<string, string>
   format?: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean } | null
 }
-export type DirRef = { name: string; path: string }
+export type DirRef = { name: string; path: string; /** the entry itself is a symbolic link */ link?: boolean }
 export type Drive = {
   id: string
   name: string
@@ -256,7 +256,7 @@ export type Api = {
   imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
   readBytes(p: string, max?: number): Promise<{ data?: Uint8Array; error?: string }>
   saveImage(src: string, dataUrl: string, mode: 'overwrite' | 'copy'): Promise<{ path: string } | { error: string }>
-  dirs(dir: string, showHidden?: boolean): Promise<DirRef[]>
+  dirs(dir: string, showHidden?: boolean, followLinks?: boolean): Promise<DirRef[]>
   roots(): Promise<DirRef[]>
   home(): Promise<string>
   size(p: string): Promise<SizeResult>

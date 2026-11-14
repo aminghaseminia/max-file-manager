@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   FolderIcon,
+  LinkIcon,
   LocateIcon,
   MinusIcon,
   PinIcon,
@@ -20,6 +21,8 @@ type Props = {
   side: 'left' | 'right'
   width: number
   autoFocus: boolean
+  /** show the link badge on symlinked folders, like the listing does */
+  showSymlink: boolean
   onNav(dir: string): void
   onAutoFocus(on: boolean): void
   onClose(): void
@@ -28,7 +31,7 @@ type Props = {
 const ROW = 26
 const OVERSCAN = 8
 
-type Row = { path: string; name: string; depth: number; hasKids: boolean; open: boolean }
+type Row = { path: string; name: string; depth: number; hasKids: boolean; open: boolean; link: boolean }
 
 const parentOf = (p: string): string => {
   if (p === '/' || !p) return '/'
@@ -58,6 +61,7 @@ export function TreePane({
   side,
   width,
   autoFocus,
+  showSymlink,
   onNav,
   onAutoFocus,
   onClose
@@ -74,7 +78,8 @@ export function TreePane({
 
   const load = useCallback(
     async (dir: string): Promise<void> => {
-      const list = await api.dirs(dir, showHidden).catch(() => [])
+      // followLinks: a folder tree must show a linked folder, which still navigates normally
+      const list = await api.dirs(dir, showHidden, true).catch(() => [])
       setKids((k) => ({ ...k, [dir]: list }))
     },
     [showHidden]
@@ -101,12 +106,12 @@ export function TreePane({
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = []
-    const walk = (dir: string, name: string, depth: number): void => {
+    const walk = (dir: string, name: string, depth: number, link = false): void => {
       const list = kids[dir]
       const expanded = !!open[dir]
-      out.push({ path: dir, name, depth, hasKids: list ? list.length > 0 : true, open: expanded })
+      out.push({ path: dir, name, depth, hasKids: list ? list.length > 0 : true, open: expanded, link })
       if (!expanded || !list) return
-      for (const k of list) walk(k.path, k.name, depth + 1)
+      for (const k of list) walk(k.path, k.name, depth + 1, k.link === true)
     }
     walk('/', '/', 0)
     return out
@@ -238,6 +243,11 @@ export function TreePane({
                 >
                   <FolderIcon size={14} />
                   <span>{row.path === '/' ? t('ریشه') : row.name}</span>
+                  {row.link && showSymlink && (
+                    <span className="tree-pane-link" title={t('پیوند نمادین')}>
+                      <LinkIcon size={11} />
+                    </span>
+                  )}
                 </button>
               </div>
             )
