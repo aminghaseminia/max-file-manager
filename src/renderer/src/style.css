@@ -2862,14 +2862,29 @@ html[data-rounded='0'] .app {
   background: var(--bg);
   display: flex;
   flex-direction: column;
+  /* the app's drag region lives in the .topbar behind this overlay: opt out, then make the
+     gallery's own header the drag handle (otherwise real mouse clicks on it are swallowed) */
+  -webkit-app-region: no-drag;
 }
 .gallery-head {
+  flex: none;
+  height: 36px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 0 8px 0 12px;
   color: var(--text);
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
+  user-select: none;
+  /* the gallery header is the title bar: draggable, with every control opted out */
+  -webkit-app-region: drag;
+}
+.gallery-head button,
+.gallery-head .pill,
+.gallery-head .gallery-name,
+.gallery-head .winbtns {
+  -webkit-app-region: no-drag;
 }
 .gallery-name {
   font-size: 12.5px;
@@ -4994,4 +5009,165 @@ button.bd-row:hover {
   flex: none;
   display: inline-flex;
   color: var(--dim);
+}
+
+/* ---------- gallery: exclusive information sidebar ---------- */
+.gallery-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  min-width: 0;
+}
+.gallery-body > .gallery-stage {
+  flex: 1;
+  min-width: 0;
+}
+.gallery-side {
+  flex: none;
+  width: 304px;
+  max-width: 42vw;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-inline-start: 1px solid var(--line);
+  font-size: 11.5px;
+}
+.ginfo-head-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ginfo-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+.ginfo-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 12px;
+}
+.ginfo-section {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 6px 0;
+}
+.ginfo-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: start;
+}
+.ginfo-head:hover {
+  color: var(--text);
+}
+.ginfo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 2px 4px;
+}
+.ginfo-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.ginfo-key {
+  color: var(--dim);
+}
+.ginfo-val {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ginfo-val.ltr {
+  direction: ltr;
+  text-align: start;
+  font-variant-numeric: tabular-nums;
+}
+.ginfo-swatches {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.ginfo-swatch {
+  flex: 1;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+.ginfo-swatch-legend {
+  color: var(--dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 5px;
+}
+.ginfo-hist {
+  width: 100%;
+  height: 48px;
+  display: block;
+  fill: var(--accent);
+  opacity: 0.85;
+}
+.ginfo-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.ginfo-tools .btn {
+  justify-content: center;
+  padding: 4px 6px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.ginfo-sub {
+  color: var(--dim);
+  font-size: 10.5px;
+  margin: 4px 0;
+}
+.ginfo-scales {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ginfo-slider {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  font-size: 10.5px;
+}
+.ginfo-slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.ginfo-slider b {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 10.5px;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.ginfo-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+@media (max-width: 820px) {
+  .gallery-side {
+    width: 244px;
+  }
 }

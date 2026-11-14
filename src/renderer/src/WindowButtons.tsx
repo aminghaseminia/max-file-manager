@@ -10,10 +10,12 @@ type Props = {
   /** physical side; on the left the close button sits at the outer edge (mac), on the right it mirrors */
   side: 'left' | 'right'
   style?: React.CSSProperties
+  /** a full-screen view (the gallery) closes itself instead of taking the app down with it */
+  onClose?(): void
 }
 
 /** Window buttons live in the title-bar row; the row itself is the drag region. */
-export function WindowButtons({ theme, side, style }: Props) {
+export function WindowButtons({ theme, side, style, onClose }: Props) {
   const [max, setMax] = useState(false)
 
   useEffect(() => {
@@ -33,7 +35,11 @@ export function WindowButtons({ theme, side, style }: Props) {
       >
         {max ? <RestoreIcon /> : <MaximizeIcon />}
       </button>
-      <button className="winbtn close" title={t(t('بستن'))} onClick={() => void api.window.close()}>
+      <button
+        className="winbtn close"
+        title={t(t('بستن'))}
+        onClick={() => (onClose ? onClose() : void api.window.close())}
+      >
         <XIcon size={12} />
       </button>
     </div>

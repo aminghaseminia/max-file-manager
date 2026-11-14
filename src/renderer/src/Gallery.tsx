@@ -3,22 +3,22 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
 import { fa, mediaUrl } from './format'
 import { copyImageContent } from './clipboard'
+import { GalleryInfo } from './GalleryInfo'
+import { WindowButtons } from './WindowButtons'
+import type { Prefs } from './prefs'
+import { NO_ADJ, adjustFilter, isNeutral, type Adj } from './imageinfo'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  ConfirmIcon,
   CopyIcon,
-  DupeIcon,
+  InfoIcon,
   MaximizeIcon,
   MinusIcon,
   PauseIcon,
   PlayIcon,
   PlusIcon,
   RestoreIcon,
-  RotateIcon,
-  SplitIcon,
   StarIcon,
-  XIcon
 } from './Icons'
 
 type Props = {
@@ -34,6 +34,10 @@ type Props = {
   loop: boolean
   imageFormat: ImageFormat
   imageQuality: number
+  /** the gallery header is the title bar, so the caption buttons belong here too */
+  chrome: { customTitlebar: boolean }
+  titlebarButtons: Prefs['titlebarButtons']
+  titlebarSide: 'left' | 'right'
 }
 
 export type ImageFormat = 'png' | 'jpeg' | 'webp'
@@ -59,6 +63,9 @@ export function Gallery({
   loop,
   imageFormat,
   imageQuality,
+  chrome,
+  titlebarButtons,
+  titlebarSide,
   onClose,
   onFullscreen,
   onSaved,
@@ -79,6 +86,10 @@ export function Gallery({
   const [cropping, setCropping] = useState(false)
   const [resize, setResize] = useState<{ w: number; h: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  /** live-only colour/light adjustments; applied with one click, never saved silently */
+  const [adj, setAdj] = useState<Adj>(NO_ADJ)
+  const [info, setInfo] = useState(true)
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const activeThumb = useRef<HTMLButtonElement | null>(null)
   const copyRef = useRef<() => void>(() => {})
@@ -115,6 +126,7 @@ export function Gallery({
     setEdit(null)
     setCrop(null)
     setCropping(false)
+    setAdj(NO_ADJ)
     resetView()
   }
 
@@ -158,15 +170,16 @@ export function Gallery({
     resetView()
   }
 
-  const rotate = async (dir: 1 | -1) => {
+  const rotate = async (deg: 90 | -90 | 180) => {
     const c = await loadCanvas()
     if (!c) return
+    const swap = deg !== 180
     const out = document.createElement('canvas')
-    out.width = c.height
-    out.height = c.width
+    out.width = swap ? c.height : c.width
+    out.height = swap ? c.width : c.height
     const ctx = out.getContext('2d')!
     ctx.translate(out.width / 2, out.height / 2)
-    ctx.rotate((dir * Math.PI) / 2)
+    ctx.rotate((deg * Math.PI) / 180)
     ctx.drawImage(c, -c.width / 2, -c.height / 2)
     commit(out)
   }
@@ -212,6 +225,55 @@ export function Gallery({
     commit(out)
   }
 
+  /** Bake the previewed sliders into the working pixels (one undoable step, like a rotate). */
+  const applyAdjustments = async () => {
+    if (isNeutral(adj)) return
+    const c = await loadCanvas()
+    if (!c) return
+    const out = document.createElement('canvas')
+    out.width = c.width
+    out.height = c.height
+    const ctx = out.getContext('2d')!
+    ctx.filter = adjustFilter(adj)
+    ctx.drawImage(c, 0, 0)
+    setAdj(NO_ADJ)
+    commit(out)
+  }
+
+  /** Scale by a percentage of the current size (25/50/75/100 buttons). */
+  const applyScale = async (pct: number) => {
+    const c = await loadCanvas()
+    if (!c) return
+    const w = Math.max(1, Math.round((c.width * pct) / 100))
+    const h = Math.max(1, Math.round((c.height * pct) / 100))
+    const out = document.createElement('canvas')
+    out.width = w
+    out.height = h
+    const ctx = out.getContext('2d')!
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(c, 0, 0, w, h)
+    commit(out)
+  }
+
+  /** Draw the working image through a CSS/2D filter and encode it in `fmt`. */
+  const bakeAdjust = async (source: string, fmt: ImageFormat): Promise<string> => {
+    if (isNeutral(adj)) return source
+    const img = new Image()
+    img.src = source
+    try {
+      await img.decode()
+    } catch {
+      return source
+    }
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth
+    c.height = img.naturalHeight
+    const ctx = c.getContext('2d')!
+    ctx.filter = adjustFilter(adj)
+    ctx.drawImage(img, 0, 0)
+    return encode(c, fmt, imageQuality)
+  }
+
   /** Re-encodes the working data URL — this is where the preferred format and quality land. */
   const reencode = async (dataUrl: string, fmt: ImageFormat, quality: number) => {
     if (!dataUrl.startsWith(`data:${MIME[fmt]}`) || fmt === 'png' !== (quality === 100)) {
@@ -235,7 +297,8 @@ export function Gallery({
     if (!cur || !edit) return
     setBusy(true)
     const fmt = mode === 'overwrite' ? formatOf(cur.path) : imageFormat
-    const url = await reencode(edit.url, fmt, imageQuality)
+    const adjusted = await bakeAdjust(edit.url, fmt)
+    const url = await reencode(adjusted, fmt, imageQuality)
     const r = await api.saveImage(cur.path, url, mode)
     setBusy(false)
     if ('error' in r) {
@@ -389,6 +452,11 @@ export function Gallery({
           e.preventDefault()
           onFullscreen()
           break
+        case 'i':
+        case 'I':
+          e.preventDefault()
+          setInfo((v) => !v)
+          break
       }
     }
     window.addEventListener('keydown', onKey)
@@ -408,6 +476,9 @@ export function Gallery({
   copyRef.current = () => void copyImage()
 
   const src = edit?.url ?? (cur ? mediaUrl(cur.path) : '')
+  const dims = edit
+    ? { w: edit.w, h: edit.h }
+    : natural ?? { w: cur?.w ?? 0, h: cur?.h ?? 0 }
 
   return (
     <div className="gallery" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -424,43 +495,16 @@ export function Gallery({
           </span>
         )}
         <span className="spacer" />
+        <button
+          className={'tb' + (info ? ' on' : '')}
+          title={t('اطلاعات تصویر و ویرایش (I)')}
+          aria-pressed={info}
+          onClick={() => setInfo((v) => !v)}
+        >
+          <InfoIcon />
+        </button>
         <button className="tb" title={t('کپی تصویر در کلیپ‌بورد (Ctrl+C)')} onClick={() => void copyImage()}>
           <CopyIcon />
-        </button>
-        <button className="tb" title={t(t('چرخش به راست (R)'))} onClick={() => void rotate(1)}>
-          <RotateIcon />
-        </button>
-        <button className="tb" title={t(t('چرخش به چپ'))} onClick={() => void rotate(-1)}>
-          <RestoreIcon />
-        </button>
-        <button className="tb" title={t(t('آینهٔ افقی'))} onClick={() => void flip('y')}>
-          <DupeIcon />
-        </button>
-        <button className="tb" title={t(t('آینهٔ عمودی'))} onClick={() => void flip('x')}>
-          <ConfirmIcon />
-        </button>
-        <button
-          className={'tb' + (cropping ? ' on' : '')}
-          title={t(t('برش (روی تصویر بکش)'))}
-          onClick={() => {
-            setCropping((c) => !c)
-            setCrop(null)
-            resetView()
-          }}
-        >
-          <SplitIcon />
-        </button>
-        <button
-          className="tb"
-          title={t(t('تغییر اندازه'))}
-          onClick={() =>
-            setResize({
-              w: edit?.w ?? imgRef.current?.naturalWidth ?? 0,
-              h: edit?.h ?? imgRef.current?.naturalHeight ?? 0
-            })
-          }
-        >
-          <MaximizeIcon />
         </button>
         <span className="divider" />
         <button
@@ -490,9 +534,18 @@ export function Gallery({
         <button className="tb" title={t(t('تمام‌صفحه (F)'))} onClick={onFullscreen}>
           {fullscreen ? <RestoreIcon /> : <MaximizeIcon />}
         </button>
-        <button className="tb" title={t(t('بستن (Esc)'))} onClick={onClose}>
-          <XIcon size={13} />
-        </button>
+        {chrome.customTitlebar && (
+          <WindowButtons
+            theme={titlebarButtons}
+            side={titlebarSide}
+            /* the title-bar close ends the preview, not the file manager behind it */
+            onClose={onClose}
+            style={{
+              order:
+                (titlebarSide === 'left') !== (document.documentElement.dir === 'rtl') ? -1 : 99
+            }}
+          />
+        )}
       </div>
 
       {cropping && (
@@ -528,12 +581,19 @@ export function Gallery({
           <button className="btn ghost" disabled={busy} onClick={() => void save('overwrite')}>
             {t('جایگزینی فایل اصلی')}
           </button>
-          <button className="btn ghost" onClick={() => setEdit(null)}>
+          <button
+            className="btn ghost"
+            onClick={() => {
+              setEdit(null)
+              setAdj(NO_ADJ)
+            }}
+          >
             {t('دور انداختن')}
           </button>
         </div>
       )}
 
+      <div className="gallery-body">
       <div
         className={
           'gallery-stage' +
@@ -562,16 +622,24 @@ export function Gallery({
               src={src}
               alt={cur.name}
               draggable={false}
+              onLoad={(e) =>
+                setNatural({
+                  w: e.currentTarget.naturalWidth,
+                  h: e.currentTarget.naturalHeight
+                })
+              }
               style={
                 fit
                   ? {
                       maxWidth: '100%',
                       maxHeight: '100%',
+                      filter: adjustFilter(adj),
                       transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rot}deg)`
                     }
                   : {
                       maxWidth: 'none',
                       maxHeight: 'none',
+                      filter: adjustFilter(adj),
                       transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rot}deg)`
                     }
               }
@@ -601,6 +669,36 @@ export function Gallery({
         <button className="gallery-nav next" title={t(t('بعدی (→)'))} onClick={() => go(1)}>
           <ChevronLeftIcon />
         </button>
+      </div>
+
+      {info && cur && (
+        <GalleryInfo
+          entry={cur}
+          width={dims.w}
+          height={dims.h}
+          analysisKey={`${src}|${dims.w}x${dims.h}`}
+          src={edit?.url ?? ''}
+          adjust={adj}
+          onAdjust={setAdj}
+          onApplyAdjust={() => void applyAdjustments()}
+          onResetAdjust={() => setAdj(NO_ADJ)}
+          onRotate={(deg) => void rotate(deg)}
+          onFlip={(axis) => void flip(axis)}
+          onCrop={() => {
+            setCropping(true)
+            setCrop(null)
+            resetView()
+          }}
+          onResize={() =>
+            setResize({
+              w: dims.w || imgRef.current?.naturalWidth || 0,
+              h: dims.h || imgRef.current?.naturalHeight || 0
+            })
+          }
+          onScale={(pct) => void applyScale(pct)}
+          onClose={() => setInfo(false)}
+        />
+      )}
       </div>
 
       {resize && (
@@ -633,6 +731,29 @@ export function Gallery({
               }}
             />
           </label>
+          <label className="inline-field">
+            {t('مقیاس ٪')}
+            <input
+              dir="ltr"
+              type="number"
+              min={1}
+              max={400}
+              value={Math.round(
+                (resize.w /
+                  Math.max(1, edit?.w ?? imgRef.current?.naturalWidth ?? resize.w)) *
+                  100
+              )}
+              onChange={(e) => {
+                const pct = Math.min(400, Math.max(1, Number(e.target.value) || 100))
+                const srcW = edit?.w ?? imgRef.current?.naturalWidth ?? 1
+                const srcH = edit?.h ?? imgRef.current?.naturalHeight ?? 1
+                setResize({
+                  w: Math.max(1, Math.round((srcW * pct) / 100)),
+                  h: Math.max(1, Math.round((srcH * pct) / 100))
+                })
+              }}
+            />
+          </label>
           <span className="hint">{t(t('نسبت حفظ می‌شود'))}</span>
           <span className="spacer" />
           <button className="btn" onClick={() => void applyResize()}>
@@ -657,6 +778,7 @@ export function Gallery({
                 setEdit(null)
                 setCrop(null)
                 setCropping(false)
+                setAdj(NO_ADJ)
                 resetView()
               }}
             >

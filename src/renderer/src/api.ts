@@ -43,6 +43,22 @@ export type Breakdown = {
   children: BreakdownChild[]
 }
 
+export type Tags = {
+  title?: string
+  artist?: string
+  album?: string
+  year?: string
+  track?: string
+  date?: string
+  camera?: string
+  iso?: string
+  fnumber?: string
+  exposure?: string
+  focal?: string
+  size?: string
+  kind: 'id3' | 'exif' | 'both' | 'none'
+}
+
 export type Entry = {
   name: string
   path: string
@@ -331,7 +347,7 @@ export type Api = {
     export(prefs: unknown): Promise<{ path: string } | { canceled: true } | { error: string }>
     import(): Promise<{ prefs: Record<string, unknown> } | { canceled: true } | { error: string }>
   }
-  tags(paths: string[]): Promise<Record<string, Record<string, string>>>
+  tags(paths: string[]): Promise<Record<string, Tags>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
   saveImageAs(src: string, dataUrl: string): Promise<{ path: string } | { error: string }>
   convertImages(
