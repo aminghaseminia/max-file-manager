@@ -1,6 +1,7 @@
 import { app, nativeImage } from 'electron'
 import { promises as fs } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import path from 'node:path'
 
 /** Thumbnails are cached on disk keyed by path + mtime + size, so a second visit is instant. */
@@ -44,6 +45,40 @@ async function prune(): Promise<void> {
   }
 }
 
+/**
+ * Decoding a full-resolution photo with `nativeImage` blocks the main thread, and a page jump asks
+ * for a screenful of thumbnails at once — the app beachballs while it decodes them. On macOS the
+ * work is handed to `sips` (a child process), with a small concurrency cap so a burst cannot swamp
+ * the machine. Elsewhere, and whenever sips fails, the in-process decoder stays as the fallback.
+ */
+const MAX_PARALLEL = 3
+let running = 0
+const waiting: (() => void)[] = []
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_PARALLEL) await new Promise<void>((r) => waiting.push(r))
+  running++
+  try {
+    return await fn()
+  } finally {
+    running--
+    waiting.shift()?.()
+  }
+}
+
+const sipsThumb = (src: string, out: string, side: number): Promise<boolean> =>
+  withSlot(
+    () =>
+      new Promise<boolean>((resolve) => {
+        execFile(
+          'sips',
+          ['-s', 'format', 'png', '-Z', String(side), src, '--out', out],
+          { timeout: 20_000 },
+          (err) => resolve(!err)
+        )
+      })
+  )
+
 /** Returns the cached thumbnail path, generating it when needed. `null` = not an image. */
 export async function thumbFor(p: string, side = 256): Promise<string | null> {
   if (!path.isAbsolute(p)) return null
@@ -59,6 +94,19 @@ export async function thumbFor(p: string, side = 256): Promise<string | null> {
     await fs.utimes(file, now, now).catch(() => {})
     return file
   }
+  if (process.platform === 'darwin') {
+    await fs.mkdir(d, { recursive: true }).catch(() => undefined)
+    const tmp = `${file}.${process.pid}.png`
+    if (await sipsThumb(p, tmp, capped)) {
+      await fs.rename(tmp, file).catch(() => undefined)
+      if (await fs.stat(file).catch(() => null)) {
+        if (++writes % 50 === 0) void prune()
+        return file
+      }
+    }
+    await fs.rm(tmp, { force: true }).catch(() => undefined)
+  }
+
   const img = nativeImage.createFromPath(p)
   if (img.isEmpty()) return null
   const size = img.getSize()
