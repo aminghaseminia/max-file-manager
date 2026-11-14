@@ -48,8 +48,10 @@ import {
   openWithDefault,
   openWithInfo,
   setDefaultApp,
-  setDefaultFileManager
+  setDefaultFileManager,
+  type DesktopApp
 } from './apps.ts'
+import { appIconFile } from './appicons.ts'
 import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
@@ -643,6 +645,17 @@ app.on('will-quit', () => {
   portalServer.stop()
   void stopMcp()
 })
+
+/**
+ * Fill in the icons a platform did not resolve itself. macOS hands back `.app` paths and no icon,
+ * so Electron reads the bundle icon once per app and caches the PNG (see `appicons.ts`).
+ */
+async function withAppIcons(apps: DesktopApp[]): Promise<DesktopApp[]> {
+  if (process.platform !== 'darwin') return apps
+  return Promise.all(
+    apps.map(async (a) => (a.iconPath ? a : { ...a, iconPath: await appIconFile(a.id) }))
+  )
+}
 
 app.whenReady().then(async () => {
   protocol.handle('mfm', async (req) => {
@@ -1466,9 +1479,11 @@ app.whenReady().then(async () => {
   )
 
   ipcMain.handle('apps:list', (_e, p: string) => (path.isAbsolute(p) ? listApps(p) : []))
-  ipcMain.handle('apps:openWith', (_e, a: { path?: string; all?: boolean }) =>
-    path.isAbsolute(a?.path ?? '') ? openWithInfo(a.path!, !!a.all) : { mime: '', canSetDefault: false, apps: [] }
-  )
+  ipcMain.handle('apps:openWith', async (_e, a: { path?: string; all?: boolean }) => {
+    if (!path.isAbsolute(a?.path ?? '')) return { mime: '', canSetDefault: false, apps: [] }
+    const info = await openWithInfo(a.path!, !!a.all)
+    return { ...info, apps: await withAppIcons(info.apps) }
+  })
   ipcMain.handle('apps:setDefault', (_e, a: { path?: string; id?: string }) =>
     path.isAbsolute(a?.path ?? '') && typeof a?.id === 'string'
       ? setDefaultApp(a.path!, a.id)
