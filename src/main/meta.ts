@@ -13,6 +13,8 @@ export type FolderMeta = {
   pins?: string[]
   /** name → label id, for the coloured labels the user assigns */
   labels?: Record<string, string>
+  /** file name → hex colour shown as a dot before the name */
+  colors?: Record<string, string>
   /** name → 0..5 stars */
   ratings?: Record<string, number>
   /** name → a short free-form description */
@@ -90,6 +92,15 @@ const cleanPins = (raw: unknown): string[] =>
         .slice(0, 200)
     : []
 
+const cleanEntryColors = (raw: unknown): Record<string, string> => {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (bare(name) && typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v)) out[name] = v
+  }
+  return out
+}
+
 const MAX_META = 4096
 
 export async function readMeta(dir: string): Promise<FolderMeta | null> {
@@ -100,13 +111,18 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
     if (!m || typeof m !== 'object') return null
     const out: FolderMeta = {}
     if (typeof m.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(m.color)) out.color = m.color
-    if (typeof m.icon === 'string' && (m.icon.startsWith('g:') || path.isAbsolute(m.icon))) {
+    if (
+      typeof m.icon === 'string' &&
+      (m.icon.startsWith('g:') || m.icon.startsWith('p:') || path.isAbsolute(m.icon))
+    ) {
       out.icon = m.icon
     }
     const pins = cleanPins(m.pins)
     if (pins.length) out.pins = pins
     const labels = cleanLabels(m.labels)
     if (Object.keys(labels).length) out.labels = labels
+    const colors = cleanEntryColors(m.colors)
+    if (Object.keys(colors).length) out.colors = colors
     const ratings = cleanRatings(m.ratings)
     if (Object.keys(ratings).length) out.ratings = ratings
     const notes = cleanNotes(m.notes)
@@ -119,6 +135,7 @@ export async function readMeta(dir: string): Promise<FolderMeta | null> {
       out.icon ||
       out.pins ||
       out.labels ||
+      out.colors ||
       out.ratings ||
       out.notes ||
       out.format ||
@@ -163,6 +180,9 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
   const labels = cleanLabels(next.labels)
   if (Object.keys(labels).length) next.labels = labels
   else delete next.labels
+  const colors = cleanEntryColors(next.colors)
+  if (Object.keys(colors).length) next.colors = colors
+  else delete next.colors
   const ratings = cleanRatings(next.ratings)
   if (Object.keys(ratings).length) next.ratings = ratings
   else delete next.ratings
@@ -180,6 +200,7 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
     !next.icon &&
     !next.pins &&
     !next.labels &&
+    !next.colors &&
     !next.ratings &&
     !next.notes &&
     !next.format &&
@@ -190,6 +211,22 @@ async function writeMeta(dir: string, patch: FolderMeta): Promise<FolderMeta | n
   }
   await fs.writeFile(file, JSON.stringify(next, null, 2))
   return next
+}
+
+/** Sets or clears the coloured dot of one file in this folder (serialised like every writer). */
+export async function setEntryColor(
+  dir: string,
+  name: string,
+  color: string
+): Promise<FolderMeta | null> {
+  if (!bare(name)) return null
+  return serial(dir, async () => {
+    const cur = (await readMeta(dir)) ?? {}
+    const colors = { ...(cur.colors ?? {}) }
+    if (color) colors[name] = color
+    else delete colors[name]
+    return writeMeta(dir, { colors })
+  })
 }
 
 /** Adds or removes one name; returns the folder's pins after the change. */

@@ -1,27 +1,38 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
 import { api } from './api'
-import { baseName } from './format'
+import { baseName, matchCustomCommand } from './format'
 import { PlayIcon } from './Icons'
+import type { CustomCommand } from './prefs'
 
 type Props = {
   path: string
+  customCommands?: CustomCommand[]
+  isDir?: boolean
   onClose(): void
   onNote(msg: string): void
 }
 
 /** The desktop's «Open with» list: the .desktop files that claim this MIME type. */
-export function OpenWithDialog({ path, onClose, onNote }: Props) {
+export function OpenWithDialog({ path, customCommands, isDir, onClose, onNote }: Props) {
   const [apps, setApps] = useState<{ id: string; name: string }[] | null>(null)
 
   useEffect(() => {
     void api.apps.list(path).then(setApps).catch(() => setApps([]))
   }, [path])
 
+  const matchingCustom = (customCommands ?? []).filter((c) => matchCustomCommand(c, path, !!isDir))
+
   const launch = async (id: string) => {
     const result = await api.apps.launch(id, path)
     onClose()
     if ('error' in result) onNote(t('برنامه باز نشد'))
+  }
+
+  const launchCustom = async (cmd: CustomCommand) => {
+    onClose()
+    const result = await api.runCustomCommand(cmd.command, path)
+    if ('error' in result) onNote(`${cmd.label}: ${result.error}`)
   }
 
   const systemDefault = async () => {
@@ -47,8 +58,27 @@ export function OpenWithDialog({ path, onClose, onNote }: Props) {
         </div>
 
         <div className="open-with-list">
+          {matchingCustom.length > 0 && (
+            <div className="open-with-custom-section">
+              {matchingCustom.map((cmd) => (
+                <button key={cmd.id} className="open-with-row" onClick={() => void launchCustom(cmd)}>
+                  <span className="open-with-icon">
+                    <PlayIcon />
+                  </span>
+                  <span className="open-with-name" dir="auto">
+                    {cmd.label}
+                  </span>
+                  <span className="hint" dir="ltr" style={{ fontSize: '0.85em', opacity: 0.7 }}>
+                    {cmd.command}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {apps === null && <p className="hint">{t('در حال خواندن برنامه‌ها…')}</p>}
-          {apps?.length === 0 && <p className="hint">{t('برنامه‌ای برای این نوع فایل پیدا نشد.')}</p>}
+          {apps?.length === 0 && matchingCustom.length === 0 && (
+            <p className="hint">{t('برنامه‌ای برای این نوع فایل پیدا نشد.')}</p>
+          )}
           {apps?.map((app) => (
             <button key={app.id} className="open-with-row" onClick={() => void launch(app.id)}>
               <span className="open-with-icon">

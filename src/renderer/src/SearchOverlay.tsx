@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type SearchHit } from './api'
-import { fmtDate, fmtSize } from './format'
+import { useEffect, useRef, useState } from 'react'
+import { api, type SearchHit, type SearchProgress } from './api'
+import { fa, fmtDate, fmtSize } from './format'
 import { FolderIcon, RefreshIcon, SearchIcon, XIcon } from './Icons'
 
 type Props = {
@@ -13,24 +13,27 @@ type Props = {
   onClose(): void
 }
 
-const DEBOUNCE = 160
+/** wait until typing settles; a query per keystroke hammers the index for nothing */
+const DEBOUNCE = 500
 
 /** Fast overlay over the indexed database: type, arrow through hits, Enter reveals. */
 export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onClose }: Props) {
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [stats, setStats] = useState<{ files: number; dirs: number; lastIndex: number } | null>(null)
-  const [busy, setBusy] = useState('')
+  const [status, setStatus] = useState<SearchProgress | null>(null)
+  const [doneMsg, setDoneMsg] = useState('')
   const [at, setAt] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    void api.search.stats().then(setStats)
+    void api.search.status().then((s) => {
+      setStatus(s)
+      setStats(s.stats)
+    })
     input.current?.focus()
-    const off = api.search.onProgress((p) =>
-      setBusy(`ایندکس: ${p.scanned} بررسی‌شده · پوشهٔ ${p.done}/${p.total}`)
-    )
+    const off = api.search.onProgress((p) => setStatus((cur) => ({ ...cur, ...p })))
     return off
   }, [])
 
@@ -54,17 +57,24 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
   }, [q])
 
   const reindex = async () => {
-    setBusy(t('شروع ایندکس…'))
+    setDoneMsg('')
+    setStatus((cur) => (cur ? { ...cur, running: true, scanned: 0, done: 0 } : cur))
     const r = await api.search.index({ roots, exclude })
     setStats(r.stats)
-    setBusy(`ایندکس شد: ${r.files} فایل در ${Math.round(r.durationMs / 100) / 10}s`)
+    setDoneMsg(
+      t('ایندکس شد: {files} فایل در {seconds} ثانیه', {
+        files: fa(r.files),
+        seconds: fa(Math.round(r.durationMs / 100) / 10)
+      })
+    )
   }
 
-  const age = useMemo(() => {
+  // not memoized: a live language switch must translate this line too
+  const age = (() => {
     if (!stats?.lastIndex) return t('هنوز ایندکس نشده')
     const mins = Math.round((Date.now() - stats.lastIndex) / 60000)
-    return mins < 1 ? t('همین حالا') : `${mins} دقیقه پیش`
-  }, [stats])
+    return mins < 1 ? t('همین حالا') : `${fa(mins)} ${t('دقیقه پیش')}`
+  })()
 
   const onKey = (ev: React.KeyboardEvent) => {
     if (ev.key === 'Escape') return onClose()
@@ -93,13 +103,20 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
           <SearchIcon />
           <input
             ref={input}
+            autoFocus
             className="search-input"
             placeholder={t(t('نام فایل یا پوشه… (پیشوند و چند کلمه هم کار می‌کند)'))}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
           <span className="dim search-stats">
-            {stats ? t('{files} فایل · {dirs} پوشه · {age}', { files: stats.files, dirs: stats.dirs, age }) : '…'}
+            {stats
+              ? t('{files} فایل · {dirs} پوشه · {age}', {
+                  files: fa(stats.files),
+                  dirs: fa(stats.dirs),
+                  age
+                })
+              : '…'}
           </span>
           <button className="tb" title={t(t('به‌روزرسانی ایندکس'))} onClick={() => void reindex()}>
             <RefreshIcon />
@@ -112,10 +129,22 @@ export function SearchOverlay({ roots, exclude, onReveal, onOpen, onManage, onCl
           </button>
         </div>
 
-        {busy && <div className="search-busy dim">{busy}</div>}
+        {status?.running ? (
+          <div className="search-busy dim">
+            {t('ایندکس: {scanned} بررسی‌شده · {done}/{total} پوشه', {
+              scanned: fa(status.scanned),
+              done: fa(status.done),
+              total: fa(status.total)
+            })}
+          </div>
+        ) : doneMsg ? (
+          <div className="search-busy dim">{doneMsg}</div>
+        ) : status?.error ? (
+          <div className="search-busy dim">{t('ایندکس متوقف شد: {error}', { error: status.error })}</div>
+        ) : null}
 
         <div className="search-results" ref={list}>
-          {q && hits.length === 0 && !busy && (
+          {q && hits.length === 0 && !status?.running && (
             <div className="dim search-empty">{t(t('چیزی پیدا نشد — اگر تازه اضافه شده، ایندکس را به‌روز کن'))}</div>
           )}
           {hits.map((h, i) => (

@@ -1,13 +1,15 @@
 import type { ReactElement, ReactNode } from 'react'
 import type { Entry } from './api'
 import { kindOf, mediaUrl, type Kind } from './format'
+import { pureIconUrl } from './pure-set'
 
 /** One stroke style for every icon: flat, 1.7px, inherits the text colour. */
-const S = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
+const S = ({ children, size = 15, className }: { children: ReactNode; size?: number; className?: string }) => (
   <svg
     width={size}
     height={size}
     viewBox="0 0 24 24"
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={1.7}
@@ -39,6 +41,18 @@ const FileBase = () => (
 export const FileIcon = ({ size = 15 }: { size?: number }) => (
   <S size={size}>
     <FileBase />
+  </S>
+)
+export const FilePlusIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <FileBase />
+    <path d="M12 11v6M9 14h6" />
+  </S>
+)
+export const TerminalIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <polyline points="4 17 10 11 4 5" />
+    <line x1="12" y1="19" x2="20" y2="19" />
   </S>
 )
 export const ImageIcon = ({ size = 15 }: { size?: number }) => (
@@ -138,12 +152,12 @@ export const ArrowUpIcon = () => (
   </S>
 )
 export const ChevronLeftIcon = ({ size = 15 }: { size?: number }) => (
-  <S size={size}>
+  <S size={size} className="dir-arrow">
     <path d="M14.5 6l-6 6 6 6" />
   </S>
 )
 export const ChevronRightIcon = ({ size = 15 }: { size?: number }) => (
-  <S size={size}>
+  <S size={size} className="dir-arrow">
     <path d="M9.5 6l6 6-6 6" />
   </S>
 )
@@ -235,6 +249,12 @@ export const StarIcon = ({ filled = false, size = 15 }: { filled?: boolean; size
     <path d="M12 3.6l2.6 5.3 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.8z" />
   </svg>
 )
+export const TrashXIcon = () => (
+  <S>
+    <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l1 13h9l1-13" />
+    <path d="M10.2 11.2l3.6 3.6M13.8 11.2l-3.6 3.6" />
+  </S>
+)
 export const TrashIcon = () => (
   <S>
     <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l1 13h9l1-13" />
@@ -244,6 +264,20 @@ export const CopyIcon = () => (
   <S>
     <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
     <path d="M15.5 5.5h-9a2 2 0 0 0-2 2v9" />
+  </S>
+)
+export const CutIcon = () => (
+  <S>
+    <circle cx="6.5" cy="7" r="2.2" />
+    <circle cx="6.5" cy="17" r="2.2" />
+    <path d="M8.4 8.6L19 18M8.4 15.4L19 6" />
+  </S>
+)
+export const PasteIcon = () => (
+  <S>
+    <rect x="5" y="4.5" width="14" height="16" rx="2" />
+    <path d="M9 4.5V3h6v1.5" />
+    <path d="M12 10v5M9.6 12.6L12 15l2.4-2.4" />
   </S>
 )
 export const MoveIcon = () => (
@@ -269,10 +303,26 @@ export const HomeIcon = () => (
     <path d="M4 11l8-7 8 7v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
   </S>
 )
-export const DriveIcon = () => (
-  <S>
+export const DriveIcon = ({ size = 14 }: { size?: number }) => (
+  <S size={size}>
     <rect x="3" y="6" width="18" height="12" rx="2" />
     <path d="M7 12h.01M17 12h.01" />
+  </S>
+)
+export const UsbIcon = ({ size = 14 }: { size?: number }) => (
+  <S size={size}>
+    <circle cx="12" cy="18" r="1.5" />
+    <path d="M12 16.5V4M8 8l4-4 4 4" />
+    <path d="M12 11h-3a2 2 0 0 0-2 2v1" />
+    <path d="M12 8h3a2 2 0 0 1 2 2v2" />
+    <circle cx="7" cy="15" r="1" />
+    <rect x="16" y="12" width="2" height="2" />
+  </S>
+)
+export const EjectIcon = ({ size = 13 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M12 4l7 9H5z" />
+    <path d="M5 18h14" />
   </S>
 )
 export const PauseIcon = () => (
@@ -373,6 +423,20 @@ const BUILTIN: Record<string, (p: { size?: number }) => ReactElement> = {
 
 /** A folder's own look: built-in glyph, a themed svg/png from disk, or the plain type icon. */
 export function FolderGlyph({ entry, size = 15 }: { entry: Entry; size?: number }) {
+  if (entry.icon?.startsWith('p:')) {
+    const url = pureIconUrl(entry.icon)
+    if (url) {
+      return (
+        <img
+          className="ic-img"
+          src={url}
+          alt=""
+          style={{ width: size, height: size }}
+          draggable={false}
+        />
+      )
+    }
+  }
   if (entry.icon?.startsWith('g:')) {
     const Glyph = BUILTIN[entry.icon.slice(2)]
     if (Glyph) {
@@ -410,14 +474,21 @@ export function EntryIcon({
   size?: number
   iconSet?: Record<string, string>
 }) {
-  if (entry.icon) return <FolderGlyph entry={entry} size={size} />
-  // a colour from .mfm.json only exists on our own glyph, so it wins over the theme icon
-  const src = entry.color ? '' : (iconSet?.[kindOf(entry)] ?? '')
+  // our own built-in/pack icon wins; a colour wins over an OS icon stored as an absolute path
+  if (entry.icon && (entry.icon.startsWith('g:') || entry.icon.startsWith('p:') || !entry.color)) {
+    return <FolderGlyph entry={entry} size={size} />
+  }
+  // only folders take a coloured icon variant; a file's colour is the dot before its name
+  const colored =
+    entry.dir && entry.color ? (iconSet?.['dir:' + entry.color.toLowerCase()] ?? '') : ''
+  const src = entry.dir
+    ? colored || (entry.color ? '' : (iconSet?.[kindOf(entry)] ?? ''))
+    : (iconSet?.[kindOf(entry)] ?? '')
   if (src) {
     return (
       <img
         className="ic-img"
-        src={mediaUrl(src)}
+        src={src.startsWith('data:') ? src : mediaUrl(src)}
         alt=""
         style={{ width: size, height: size }}
         draggable={false}
@@ -449,6 +520,18 @@ export const ConfirmIcon = () => (
   <S>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 8v4.5M12 16h.01" />
+  </S>
+)
+export const LockIcon = ({ size = 13 }: { size?: number }) => (
+  <S size={size}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </S>
+)
+export const UnlockIcon = ({ size = 13 }: { size?: number }) => (
+  <S size={size}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 7-2.6" />
   </S>
 )
 export const PinIcon = ({ filled = false, size = 13 }: { filled?: boolean; size?: number }) => (

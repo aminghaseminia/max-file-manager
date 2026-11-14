@@ -29,6 +29,22 @@ export type SearchHit = {
   mtime: number
   ext: string
 }
+
+export type SearchProgress = {
+  running: boolean
+  scanned: number
+  added: number
+  done: number
+  total: number
+  root: string
+  startedAt: number
+  finishedAt: number
+  files: number
+  dirs: number
+  lastIndex: number
+  error: string
+}
+export type SearchStatus = SearchProgress & { stats: { files: number; dirs: number; lastIndex: number } }
 export type SyncRow = {
   rel: string
   state: string
@@ -53,6 +69,16 @@ export type Listing = {
   format?: { view?: string; columns?: string[]; sortKey?: string; sortAsc?: boolean } | null
 }
 export type DirRef = { name: string; path: string }
+export type Drive = {
+  id: string
+  name: string
+  device: string
+  mountpoint: string | null
+  size: string
+  fsType: string
+  removable: boolean
+  mounted: boolean
+}
 export type Result = { done: number; errors: string[] }
 export type SizeResult = { bytes: number; files: number; capped: boolean }
 
@@ -89,7 +115,13 @@ export type Job = {
 }
 
 export type StoredState = {
-  panes?: { tabs: string[]; ti: number }[]
+  panes?: {
+    tabs: string[]
+    ti: number
+    pinCount?: number
+    names?: Record<string, string>
+    locks?: Record<string, boolean>
+  }[]
   active?: number
   hidden?: boolean
   theme?: 'dark' | 'light'
@@ -161,11 +193,14 @@ export type FileProperties = {
 }
 
 export type Api = {
+
   list(dir: string, showHidden: boolean, dims?: boolean): Promise<Listing>
   statfs(p: string): Promise<{ free: number; size: number } | null>
+  debugLog(msg: string): Promise<boolean>
   chmod(p: string, mode: number): Promise<{ ok: true } | { error: string }>
   properties(p: string): Promise<FileProperties | { error: string }>
   imageData(p: string): Promise<{ dataUrl?: string; error?: string }>
+  readBytes(p: string, max?: number): Promise<{ data?: Uint8Array; error?: string }>
   saveImage(src: string, dataUrl: string, mode: 'overwrite' | 'copy'): Promise<{ path: string } | { error: string }>
   dirs(dir: string, showHidden?: boolean): Promise<DirRef[]>
   roots(): Promise<DirRef[]>
@@ -181,8 +216,11 @@ export type Api = {
     path?: string,
     dir?: string
   ): Promise<{ ok: true; output: string } | { error: string }>
+  runCustomCommand(command: string, path: string): Promise<{ ok: true } | { error: string }>
   openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
+  isDefaultFileManager(): Promise<boolean>
+  setDefaultFileManager(): Promise<{ ok: boolean; error?: string }>
   /** hands the files to the OS so they can be dropped into another app */
   dragOut(files: string[]): void
   clearThumbs(): Promise<{ removed: number }>
@@ -193,9 +231,16 @@ export type Api = {
       port: number
       mode: string
       token: string
+      error: string
       log: string[]
     }>
     token(): Promise<string>
+    onUi(cb: (msg: unknown) => void): () => void
+  }
+  drives: {
+    list(): Promise<Drive[]>
+    mount(device: string): Promise<{ ok: boolean; mountpoint?: string; error?: string }>
+    unmount(deviceOrMount: string): Promise<{ ok: boolean; error?: string }>
   }
   update: {
     check(force?: boolean): Promise<{
@@ -215,12 +260,19 @@ export type Api = {
       dirs: number
       durationMs: number
       stats: { files: number; dirs: number; lastIndex: number }
+      alreadyRunning?: boolean
+      status?: SearchStatus
     }>
     query(query: string, limit?: number): Promise<SearchHit[]>
     stats(): Promise<{ files: number; dirs: number; lastIndex: number }>
+    status(): Promise<SearchStatus>
     sizes(dirs: string[]): Promise<Record<string, { bytes: number; files: number }>>
     clear(): Promise<{ files: number; dirs: number; lastIndex: number }>
-    onProgress(cb: (p: { scanned: number; added: number; done: number; total: number; root: string }) => void): () => void
+    onProgress(cb: (p: SearchProgress) => void): () => void
+  }
+  settings: {
+    export(prefs: unknown): Promise<{ path: string } | { canceled: true } | { error: string }>
+    import(): Promise<{ prefs: Record<string, unknown> } | { canceled: true } | { error: string }>
   }
   tags(paths: string[]): Promise<Record<string, Record<string, string>>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
@@ -262,6 +314,7 @@ export type Api = {
   getMeta(dir: string): Promise<FolderMeta | null>
   labelPalette(): Promise<{ id: string; name: string; color: string }[]>
   setLabel(dir: string, name: string, label: string | null): Promise<Record<string, string>>
+  setEntryColor(dir: string, name: string, color: string): Promise<FolderMeta | null>
   setRating(dir: string, name: string, stars: number): Promise<Record<string, number>>
   setFormat(
     dir: string,
@@ -274,10 +327,19 @@ export type Api = {
   iconsIn(themeDir: string): Promise<IconRef[]>
   /** kind → icon file from the preferred theme (Pure); empty when no theme is installed */
   iconSet(): Promise<Record<string, string>>
+  folderLook(p: string): Promise<{ color?: string; icon?: string }>
   mkdir(dir: string, name: string): Promise<Result>
+  createFile(dir: string, name: string, content?: string): Promise<Result>
+  symlink(
+    target: string,
+    linkPath: string
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }>
   renameMany(pairs: { from: string; to: string }[]): Promise<Result>
   open(p: string): Promise<{ ok: true } | { error: string }>
   clipboard: {
+    releaseFiles(): Promise<boolean>
+    copyFiles(paths: string[], cut?: boolean): Promise<'files' | 'text'>
+    writeText(text: string): Promise<boolean>
     saveImage(dir: string, name: string, data: Uint8Array): Promise<{ path: string } | { error: string }>
   }
   apps: {
@@ -302,7 +364,11 @@ export type Api = {
     clear(): Promise<void>
     onUpdate(cb: (job: Job) => void): () => void
   }
-  app: { onOpenPath(cb: (p: string) => void): () => void }
+  app: {
+    onOpenPath(cb: (p: string) => void): () => void
+    /** the path the process was launched with (null when started normally) */
+    launchPath(): Promise<string | null>
+  }
   undo: { run(): Promise<{ done: number; label: string }>; depth(): Promise<number> }
   window: {
     minimize(): Promise<void>
@@ -312,9 +378,17 @@ export type Api = {
     setFullscreen(on: boolean): Promise<boolean>
     getChrome(): Promise<Chrome>
     setChrome(c: Chrome): Promise<Chrome>
+    setTray(a: { minimize: boolean; close: boolean; show: string; quit: string }): Promise<{
+      minimize: boolean
+      close: boolean
+    }>
     onMaximized(cb: (max: boolean) => void): () => void
   }
-  state: { get(): Promise<StoredState | null>; set(s: StoredState): Promise<boolean> }
+  state: {
+    get(): Promise<StoredState | null>
+    set(s: StoredState): Promise<boolean>
+    setPrefs(prefs: Record<string, unknown>): Promise<boolean>
+  }
 }
 
 declare global {

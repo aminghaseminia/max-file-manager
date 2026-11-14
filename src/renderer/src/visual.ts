@@ -41,7 +41,7 @@ const autoDirection = $prose(
     })
 )
 
-const LABELS = {
+const labels = () => ({
   placeholder: t('بنویس… «/» برای منو'),
   groupText: t('متن'),
   text: t('پاراگراف'),
@@ -81,7 +81,7 @@ const LABELS = {
   code: t('کد'),
   latex: t('فرمول'),
   link: t('پیوند')
-}
+})
 
 const item = (label: string) => (label ? { label } : undefined)
 
@@ -99,6 +99,9 @@ export async function createVisualEditor(
 ): Promise<VisualEditor> {
   root.dir = 'rtl'
   root.classList.add('visual-editor')
+
+  // built per editor so the menu follows the language chosen in settings
+  const LABELS = labels()
 
   const crepe = new Crepe({
     root,

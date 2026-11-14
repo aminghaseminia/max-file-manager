@@ -256,3 +256,86 @@ export async function launchApp(
     return { error: 'launch_failed' }
   }
 }
+
+/** Query whether max-file-manager is currently the default handler for inode/directory. */
+export async function isDefaultFileManager(): Promise<boolean> {
+  if (process.platform === 'linux') {
+    const current = await defaultDesktopName('inode/directory')
+    return current.includes('max-file-manager') || current.includes('mfm')
+  }
+  return false
+}
+
+/** Set max-file-manager as the system default file manager (inode/directory). */
+export async function setDefaultFileManager(
+  execPath?: string,
+  appPath?: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (process.platform === 'linux') {
+    const home = os.homedir()
+    const appDir = path.join(home, '.local', 'share', 'applications')
+    const desktopFile = path.join(appDir, 'max-file-manager.desktop')
+    const bin = execPath || process.execPath
+    const dir = appPath || process.cwd()
+    const iconPath = path.join(dir, 'build', 'icon.png')
+    const content = `[Desktop Entry]
+Type=Application
+Version=1.0
+Name=مدیر فایل مکس
+Name[en]=Max File Manager
+Comment=File manager (dual pane, tabs, sync)
+Comment[en]=Dual-pane file manager
+Exec=${bin} ${dir} %U
+Icon=${iconPath}
+Terminal=false
+Categories=System;FileManager;Utility;
+MimeType=inode/directory;x-scheme-handler/file;application/x-gnome-saved-search;
+Keywords=files;manager;explorer;
+StartupNotify=true
+StartupWMClass=max-file-manager
+`
+    await fs.mkdir(appDir, { recursive: true }).catch(() => {})
+    await fs.writeFile(desktopFile, content, 'utf8').catch(() => {})
+
+    // Install org.freedesktop.FileManager1 DBus services so Firefox, Chrome, etc. use max-file-manager
+    const dbusDir = path.join(home, '.local', 'share', 'dbus-1', 'services')
+    const bridgeScript = path.join(dir, 'src', 'main', 'filemanager1-bridge.py')
+    if (await fs.access(bridgeScript).then(() => true, () => false)) {
+      await fs.mkdir(dbusDir, { recursive: true }).catch(() => {})
+      const srvContent = `[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=${bridgeScript}\n`
+      await fs.writeFile(path.join(dbusDir, 'org.freedesktop.FileManager1.service'), srvContent, 'utf8').catch(() => {})
+      await fs.writeFile(path.join(dbusDir, 'org.kde.dolphin.FileManager1.service'), srvContent, 'utf8').catch(() => {})
+
+      // Mask & stop plasma-dolphin.service if on KDE so it does not intercept FileManager1
+      execFile('systemctl', ['--user', 'stop', 'plasma-dolphin.service'], { timeout: 2000 }, () => {})
+      execFile('systemctl', ['--user', 'mask', 'plasma-dolphin.service'], { timeout: 2000 }, () => {})
+
+      // Start the bridge in background
+      try {
+        const child = spawn(bridgeScript, [], { detached: true, stdio: 'ignore' })
+        child.unref()
+      } catch {}
+    }
+
+    return new Promise((resolve) => {
+      execFile(
+        'xdg-mime',
+        ['default', 'max-file-manager.desktop', 'inode/directory'],
+        { timeout: 5000 },
+        (err) => {
+          if (err) {
+            resolve({ ok: false, error: err.message })
+            return
+          }
+          execFile(
+            'xdg-mime',
+            ['default', 'max-file-manager.desktop', 'x-scheme-handler/file'],
+            { timeout: 3000 },
+            () => resolve({ ok: true })
+          )
+        }
+      )
+    })
+  }
+  return { ok: false, error: 'پشتیبانی فقط روی لینوکس فعال است' }
+}

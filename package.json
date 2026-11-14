@@ -1,13 +1,13 @@
 {
   "name": "max-file-manager",
-  "version": "0.25.0",
+  "version": "1.0.8",
   "description": "Dual-pane file manager for KDE and Windows (Directory Opus class), Electron + TypeScript",
   "license": "MIT",
   "author": "Majid Asgari <majidasgari@users.noreply.github.com>",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && (gcc -O2 -Wall src/main/wayland-clip/wayland-clip.c src/main/wayland-clip/ext-data-control-v1-protocol.c src/main/wayland-clip/wlr-data-control-unstable-v1-protocol.c -lwayland-client -o out/main/wayland-clip 2>/dev/null && strip out/main/wayland-clip 2>/dev/null || true)",
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "node --test src/main/*.test.ts src/renderer/src/*.test.ts",

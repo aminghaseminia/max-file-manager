@@ -41,10 +41,10 @@ export function PresetsDialog({
         <div className="dialog-title">{t(t('چیدمان‌ها و فیلترها'))}</div>
         <div className="seg">
           <button className={tab === 'layouts' ? 'on' : ''} onClick={() => setTab('layouts')}>
-            چیدمان‌ها
+            {t('چیدمان‌ها')}
           </button>
           <button className={tab === 'filters' ? 'on' : ''} onClick={() => setTab('filters')}>
-            فیلترها
+            {t('فیلترها')}
           </button>
         </div>
 
@@ -57,10 +57,10 @@ export function PresetsDialog({
                   <span className="preset-name">{name}</span>
                   <span className="dim preset-desc">
                     {l.layout === 'single' ? t('تک‌پنجره') : t('دوپنجره')} ·{' '}
-                    {l.view === 'grid' ? t('شبکه') : t('فهرست')} · {fa((l.columns ?? []).length)} ستون
+                    {l.view === 'grid' ? t('شبکه') : t('فهرست')} · {t('{n} ستون', { n: fa((l.columns ?? []).length) })}
                   </span>
                   <button className="btn ghost" onClick={() => onApplyLayout(name)}>
-                    اعمال
+                    {t('اعمال')}
                   </button>
                   <button className="tb" title={t(t('حذف'))} onClick={() => onDeleteLayout(name)}>
                     <XIcon size={11} />
@@ -83,7 +83,7 @@ export function PresetsDialog({
                   setLayoutName('')
                 }}
               >
-                ذخیرهٔ چیدمان فعلی
+                {t('ذخیرهٔ چیدمان فعلی')}
               </button>
             </div>
           </>
@@ -98,7 +98,7 @@ export function PresetsDialog({
                     {pattern}
                   </span>
                   <button className="btn ghost" onClick={() => onApplyFilter(pattern)}>
-                    اعمال
+                    {t('اعمال')}
                   </button>
                   <button className="tb" title={t(t('حذف'))} onClick={() => onDeleteFilter(name)}>
                     <XIcon size={11} />
@@ -128,7 +128,7 @@ export function PresetsDialog({
                   setFilterName('')
                 }}
               >
-                ذخیره
+                {t('ذخیره')}
               </button>
             </div>
           </>
@@ -136,7 +136,7 @@ export function PresetsDialog({
 
         <div className="dialog-actions">
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            <XIcon size={11} /> {t('بستن')}
           </button>
         </div>
       </div>

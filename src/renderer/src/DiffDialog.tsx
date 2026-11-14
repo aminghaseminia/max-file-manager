@@ -25,8 +25,8 @@ export function DiffDialog({ a, b, result, onClose }: Props) {
           <span dir="auto">{b}</span>
         </div>
         <div className="sync-summary">
-          <span className="chip add">{fa(result.added)} افزوده</span>
-          <span className="chip del">{fa(result.removed)} حذف‌شده</span>
+          <span className="chip add">{t('{n} افزوده', { n: fa(result.added) })}</span>
+          <span className="chip del">{t('{n} حذف‌شده', { n: fa(result.removed) })}</span>
           {result.binary && <span className="chip warn">{t(t('باینری'))}</span>}
           {result.coarse && <span className="chip warn">{t(t('مقایسهٔ خطی تقریبی (فایل بزرگ)'))}</span>}
         </div>
@@ -42,7 +42,7 @@ export function DiffDialog({ a, b, result, onClose }: Props) {
         </div>
         <div className="dialog-actions">
           <button className="btn ghost" onClick={onClose}>
-            <XIcon size={11} /> بستن
+            <XIcon size={11} /> {t('بستن')}
           </button>
         </div>
       </div>

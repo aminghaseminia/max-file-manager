@@ -1,30 +1,21 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {
-  baseName,
-  crumbs,
-  dirOf,
-  fa,
-  fmtDate,
-  fmtSize,
-  groupLabel,
-  joinPath,
-  kindOf,
-  mediaUrl,
-  modeString,
-  navIndex,
-  opensInEditor,
-  orderEntries,
-  permLevel,
-  permMode,
-  planRename,
-  sortEntries,
-  toJalali,
-  typeLabel
-} from './format.ts'
+import {baseName, crumbs, dirOf, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, toJalali, typeLabel, downloadUrl} from './format.ts'
 
-type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number; ext: string }
+type Entry = {
+  name: string
+  path: string
+  dir: boolean
+  size: number
+  mtime: number
+  ext: string
+  mode?: number
+  uid?: number
+  nlink?: number
+  w?: number
+  h?: number
+}
 
 const e = (name: string, dir: boolean, size = 0, mtime = 0, ext = ''): Entry => ({
   name,
@@ -286,3 +277,111 @@ test('permMode: files keep their execute bit, folders follow read with x', () =>
   assert.equal(permMode(0o755, 1, 'rw', true), 0o775)
   assert.equal(permMode(0o755, 2, 'none', true), 0o750)
 })
+
+test('menuTargets: the clicked row wins unless it is part of the selection', () => {
+  assert.deepEqual(menuTargets(['/a', '/b'], '/a'), ['/a', '/b'])
+  assert.deepEqual(menuTargets(['/a', '/b'], '/c'), ['/c'])
+  assert.deepEqual(menuTargets(['/a'], null), ['/a'])
+})
+
+test('fileUri: external drags get a real file URL, spaces and non-Latin names encoded', () => {
+  assert.equal(fileUri('/home/max/My File.mp3'), 'file:///home/max/My%20File.mp3')
+  assert.equal(fileUri('/home/max/آهنگ.mp3'), 'file:///home/max/%D8%A2%D9%87%D9%86%DA%AF.mp3')
+  assert.equal(fileUri('C:\\Users\\max\\a b.txt'), 'file:///C:/Users/max/a%20b.txt')
+})
+
+test('sortEntries: optional columns (mode, owner, links, dims, rating) sort too', () => {
+  const mk = (name: string, extra: Partial<Entry>): Entry => ({
+    name,
+    path: '/' + name,
+    dir: false,
+    size: 0,
+    mtime: 0,
+    ext: '',
+    ...extra
+  })
+  const list = [
+    mk('a', { mode: 0o644, uid: 1000, nlink: 1, w: 10, h: 10 }),
+    mk('b', { mode: 0o755, uid: 0, nlink: 3, w: 100, h: 50 }),
+    mk('c', { mode: 0o600, uid: 1001, nlink: 2, w: 20, h: 20 })
+  ]
+  assert.deepEqual(sortEntries(list, 'mode', true, false).map((e) => e.name), ['c', 'a', 'b'])
+  assert.deepEqual(sortEntries(list, 'owner', true, false).map((e) => e.name), ['b', 'a', 'c'])
+  assert.deepEqual(sortEntries(list, 'links', false, false).map((e) => e.name), ['b', 'c', 'a'])
+  assert.deepEqual(sortEntries(list, 'dims', true, false).map((e) => e.name), ['a', 'c', 'b'])
+  const ratings = { a: 1, b: 5, c: 3 }
+  assert.deepEqual(sortEntries(list, 'rating', false, false, ratings).map((e) => e.name), ['b', 'c', 'a'])
+})
+
+test('orderEntries: size keeps folders first, date interleaves them', () => {
+  const list = [
+    e('zdir', true, 7),
+    e('a.txt', false, 30),
+    e('b.txt', false, 5),
+    e('c.txt', false, 10)
+  ]
+  assert.deepEqual(
+    orderEntries(list, 'size', true).map((x) => x.name),
+    ['zdir', 'b.txt', 'c.txt', 'a.txt']
+  )
+  assert.deepEqual(
+    orderEntries(list, 'name', true).map((x) => x.name),
+    ['zdir', 'a.txt', 'b.txt', 'c.txt']
+  )
+  const dated = [
+    { ...e('zdir', true, 7), mtime: 3 },
+    { ...e('a.txt', false, 30), mtime: 1 },
+    { ...e('b.txt', false, 5), mtime: 2 }
+  ]
+  assert.deepEqual(
+    orderEntries(dated, 'mtime', true).map((x) => x.name),
+    ['a.txt', 'b.txt', 'zdir']
+  )
+})
+
+test('downloadUrl hands browser drop zones a real file payload', () => {
+  assert.equal(
+    downloadUrl('/tmp/a b.txt'),
+    'application/octet-stream:a b.txt:file:///tmp/a%20b.txt'
+  )
+  // a colon in the name would split the three-part payload
+  assert.equal(
+    downloadUrl('/tmp/a:b.txt'),
+    'application/octet-stream:a_b.txt:file:///tmp/a%3Ab.txt'
+  )
+})
+
+test('reorderItem: shifts elements correctly before and after', () => {
+  const items = ['a', 'b', 'c', 'd']
+  // Move 0 ('a') to before 2 ('c') -> ['b', 'a', 'c', 'd']
+  assert.deepEqual(reorderItem(items, 0, 2, 'before'), ['b', 'a', 'c', 'd'])
+  // Move 0 ('a') to after 2 ('c') -> ['b', 'c', 'a', 'd']
+  assert.deepEqual(reorderItem(items, 0, 2, 'after'), ['b', 'c', 'a', 'd'])
+  // Move 3 ('d') to before 1 ('b') -> ['a', 'd', 'b', 'c']
+  assert.deepEqual(reorderItem(items, 3, 1, 'before'), ['a', 'd', 'b', 'c'])
+  // Move 3 ('d') to after 1 ('b') -> ['a', 'b', 'd', 'c']
+  assert.deepEqual(reorderItem(items, 3, 1, 'after'), ['a', 'b', 'd', 'c'])
+  // Move to same index or out of bounds returns unchanged
+  assert.deepEqual(reorderItem(items, 1, 1, 'before'), items)
+  assert.deepEqual(reorderItem(items, -1, 2, 'before'), items)
+  assert.deepEqual(reorderItem(items, 0, 5, 'after'), items)
+})
+
+test('matchCustomCommand: matches file extensions and folder patterns accurately', () => {
+  // Extension matching
+  assert.equal(matchCustomCommand({ pattern: 'pdf' }, '/docs/invoice.pdf', false), true)
+  assert.equal(matchCustomCommand({ pattern: '.pdf' }, '/docs/invoice.PDF', false), true)
+  assert.equal(matchCustomCommand({ pattern: 'jpg, png, webp' }, '/img/photo.PNG', false), true)
+  assert.equal(matchCustomCommand({ pattern: 'jpg, png, webp' }, '/img/photo.gif', false), false)
+  // Folder matching
+  assert.equal(matchCustomCommand({ pattern: 'folder' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'dir' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'directory' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'پوشه' }, '/home/user/myfolder', true), true)
+  assert.equal(matchCustomCommand({ pattern: 'folder' }, '/home/user/file.txt', false), false)
+  assert.equal(matchCustomCommand({ pattern: 'txt' }, '/home/user/myfolder', true), false)
+  // Wildcard matching
+  assert.equal(matchCustomCommand({ pattern: '*' }, '/home/user/file.xyz', false), true)
+  assert.equal(matchCustomCommand({ pattern: '*' }, '/home/user/myfolder', true), true)
+})
+

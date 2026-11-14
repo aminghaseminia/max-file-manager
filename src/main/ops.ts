@@ -38,3 +38,46 @@ export async function remove(
   }
   return { done, errors }
 }
+
+export type LinkResult = { ok: true; path: string } | { ok: false; error: string }
+
+/** Windows needs `junction` for folders (no admin); files need Developer Mode for `file`. */
+export const symlinkType = (platform: string, isDir: boolean): 'junction' | 'dir' | 'file' =>
+  platform === 'win32' ? (isDir ? 'junction' : 'file') : isDir ? 'dir' : 'file'
+
+/**
+ * Create a symbolic link next to the target. Never overwrites: an existing link path is refused.
+ * On Windows folders become junctions (works without elevation) and files use a real symlink;
+ * a hard link is deliberately not used as a fallback because it is not what the user asked for.
+ */
+export async function createSymlink(
+  target: string,
+  linkPath: string,
+  platform = process.platform
+): Promise<LinkResult> {
+  if (!path.isAbsolute(target) || !path.isAbsolute(linkPath)) {
+    return { ok: false, error: 'absolute paths required' }
+  }
+  const src = path.resolve(target)
+  const dst = path.resolve(linkPath)
+  if (src === dst) return { ok: false, error: 'target and link are the same path' }
+  const st = await fs.stat(src).catch(() => null)
+  if (!st) return { ok: false, error: 'target does not exist' }
+  const parent = await fs.stat(path.dirname(dst)).catch(() => null)
+  if (!parent?.isDirectory()) return { ok: false, error: 'link folder does not exist' }
+  if (await fs.lstat(dst).then(() => true, () => false)) {
+    return { ok: false, error: 'link path already exists' }
+  }
+  try {
+    await fs.symlink(src, dst, symlinkType(platform, st.isDirectory()))
+    return { ok: true, path: dst }
+  } catch (e: any) {
+    if (e?.code === 'EPERM') {
+      return {
+        ok: false,
+        error: 'permission denied (on Windows enable Developer Mode or run as administrator)'
+      }
+    }
+    return { ok: false, error: e?.code ?? e?.message ?? String(e) }
+  }
+}

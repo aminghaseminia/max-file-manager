@@ -38,25 +38,51 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
   const ta = useRef<HTMLTextAreaElement>(null)
   const hl = useRef<HTMLPreElement>(null)
   const gutter = useRef<HTMLDivElement>(null)
+  /** the last fully-loaded buffer, so switching files can save the old one first */
+  const buf = useRef<{ path: string; text: string | null; saved: string }>({ path, text: null, saved: '' })
+  const [loadedPath, setLoadedPath] = useState<string | null>(null)
 
   const isMd = MD.test(path)
   const lang = useMemo(() => langFor(path), [path])
 
+  // keep the buffer current while typing (only when the loaded file matches the prop)
+  useEffect(() => {
+    if (loadedPath === path && text !== null) buf.current = { path, text, saved }
+  }, [loadedPath, path, text, saved])
+
+  // A change of file must not lose unsaved work: write the previous buffer, then load the new
+  // one into the same component (the key no longer contains the path, so no remount).
   useEffect(() => {
     let live = true
-    void api.readText(path).then((r) => {
+    const prev = buf.current
+    void (async () => {
+      if (prev.path !== path && prev.text !== null && prev.text !== prev.saved) {
+        const w = await api.writeText(prev.path, prev.text)
+        if ('error' in w) onNote(`${baseName(prev.path)} ذخیره نشد — ${w.error}`)
+        else {
+          onNote(t('{name} ذخیره شد', { name: baseName(prev.path) }))
+          onSaved()
+        }
+      }
+      const r = await api.readText(path)
       if (!live) return
       if ('error' in r) {
         setErr(r.error)
         setText('')
+        setSaved('')
+        setLoadedPath(path)
         return
       }
+      setErr('')
       setText(r.text)
       setSaved(r.text)
-    })
+      setMode('visual')
+      setLoadedPath(path)
+    })()
     return () => {
       live = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
   const dirty = text !== null && text !== saved
@@ -114,7 +140,7 @@ export function Editor({ path, theme, docked = false, onToggleMax, onClose, onNo
     onNote(t('در حال ساخت PDF…'))
     const body = isMd
       ? renderMarkdown(text)
-      : `<pre dir="ltr">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`
+      : `<pre dir="ltr" style="white-space:pre-wrap;unicode-bidi:plaintext;text-align:start">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`
     const out = path.replace(/\.[^./\\]+$/, '') + '.pdf'
     // paper is light: a dark PDF is unreadable when printed or previewed
     const r = await api.htmlToPdf(body, out, 'light')

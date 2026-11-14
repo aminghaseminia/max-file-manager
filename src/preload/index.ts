@@ -1,13 +1,23 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+// mcp:ui messages are buffered until the renderer subscribes, so an early agent call is not lost
+let uiListener: ((msg: unknown) => void) | null = null
+const uiQueue: unknown[] = []
+ipcRenderer.on('mcp:ui', (_e, msg) => {
+  if (uiListener) uiListener(msg)
+  else uiQueue.push(msg)
+})
+
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
   list: (dir: string, showHidden: boolean, dims = false) =>
     ipcRenderer.invoke('fs:list', dir, showHidden, dims),
   statfs: (p: string) => ipcRenderer.invoke('fs:statfs', p),
+  debugLog: (msg: string) => ipcRenderer.invoke('debug:log', String(msg)),
   chmod: (p: string, mode: number) => ipcRenderer.invoke('fs:chmod', { path: p, mode }),
   properties: (p: string) => ipcRenderer.invoke('fs:properties', p),
   imageData: (p: string) => ipcRenderer.invoke('fs:imageData', p),
+  readBytes: (p: string, max?: number) => ipcRenderer.invoke('fs:readBytes', { path: p, max }),
   saveImage: (src: string, dataUrl: string, mode: string) =>
     ipcRenderer.invoke('image:save', { src, dataUrl, mode }),
   dirs: (dir: string, showHidden = false) => ipcRenderer.invoke('fs:dirs', dir, showHidden),
@@ -22,14 +32,31 @@ contextBridge.exposeInMainWorld('api', {
   registerHotkey: (accel: string) => ipcRenderer.invoke('hotkey:register', accel),
   runScript: (command: string, path?: string, dir?: string) =>
     ipcRenderer.invoke('app:runScript', { command, path, dir }),
+  runCustomCommand: (command: string, path: string) =>
+    ipcRenderer.invoke('app:runCustomCommand', { command, path }),
   openTerminal: (dir: string) => ipcRenderer.invoke('app:terminal', dir),
   reveal: (path: string) => ipcRenderer.invoke('app:reveal', path),
+  isDefaultFileManager: () => ipcRenderer.invoke('desktop:isDefaultFileManager'),
+  setDefaultFileManager: () => ipcRenderer.invoke('desktop:setDefaultFileManager'),
   dragOut: (files: string[]) => ipcRenderer.send('app:dragOut', files),
   clearThumbs: () => ipcRenderer.invoke('thumbs:clear'),
   mcp: {
     status: () => ipcRenderer.invoke('mcp:status'),
     configure: (patch: unknown) => ipcRenderer.invoke('mcp:configure', patch),
-    token: () => ipcRenderer.invoke('mcp:token')
+    token: () => ipcRenderer.invoke('mcp:token'),
+    // buffered here: an agent may call before the window has mounted its listener
+    onUi: (cb: (msg: unknown) => void) => {
+      uiListener = cb
+      for (const m of uiQueue.splice(0)) cb(m)
+      return () => {
+        if (uiListener === cb) uiListener = null
+      }
+    }
+  },
+  drives: {
+    list: () => ipcRenderer.invoke('drives:list'),
+    mount: (device: string) => ipcRenderer.invoke('drives:mount', device),
+    unmount: (deviceOrMount: string) => ipcRenderer.invoke('drives:unmount', deviceOrMount)
   },
   update: {
     check: (force?: boolean) => ipcRenderer.invoke('update:check', force),
@@ -39,6 +66,7 @@ contextBridge.exposeInMainWorld('api', {
     index: (cfg: unknown) => ipcRenderer.invoke('search:index', cfg),
     query: (query: string, limit?: number) => ipcRenderer.invoke('search:query', { query, limit }),
     stats: () => ipcRenderer.invoke('search:stats'),
+    status: () => ipcRenderer.invoke('search:status'),
     sizes: (dirs: string[]) => ipcRenderer.invoke('search:sizes', dirs),
     clear: () => ipcRenderer.invoke('search:clear'),
     onProgress: (cb: (p: unknown) => void) => {
@@ -46,6 +74,10 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('search:progress', fn)
       return () => ipcRenderer.removeListener('search:progress', fn)
     }
+  },
+  settings: {
+    export: (prefs: unknown) => ipcRenderer.invoke('settings:export', { prefs }),
+    import: () => ipcRenderer.invoke('settings:import')
   },
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
@@ -76,16 +108,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('meta:setNote', { dir, name, text }),
   setLabel: (dir: string, name: string, label: string | null) =>
     ipcRenderer.invoke('meta:setLabel', { dir, name, label }),
+  setEntryColor: (dir: string, name: string, color: string) =>
+    ipcRenderer.invoke('meta:setEntryColor', { dir, name, color }),
   togglePin: (dir: string, name: string, on?: boolean) =>
     ipcRenderer.invoke('meta:togglePin', { dir, name, on }),
   setMeta: (dir: string, meta: unknown) => ipcRenderer.invoke('meta:set', { dir, meta }),
   iconThemes: (extra: string[]) => ipcRenderer.invoke('icons:themes', extra),
   iconsIn: (themeDir: string) => ipcRenderer.invoke('icons:in', themeDir),
   iconSet: () => ipcRenderer.invoke('icons:set'),
+  folderLook: (p: string) => ipcRenderer.invoke('icons:folderLook', p),
   mkdir: (dir: string, name: string) => ipcRenderer.invoke('fs:mkdir', dir, name),
+  createFile: (dir: string, name: string, content?: string) =>
+    ipcRenderer.invoke('fs:createFile', dir, name, content),
+  symlink: (target: string, linkPath: string) =>
+    ipcRenderer.invoke('fs:symlink', target, linkPath),
   renameMany: (pairs: { from: string; to: string }[]) => ipcRenderer.invoke('fs:renameMany', pairs),
   open: (p: string) => ipcRenderer.invoke('shell:open', p),
   clipboard: {
+    releaseFiles: () => ipcRenderer.invoke('clipboard:releaseFiles'),
+    copyFiles: (paths: string[], cut = false) => ipcRenderer.invoke('clipboard:copyFiles', { paths, cut }),
+    writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
     saveImage: (dir: string, name: string, data: Uint8Array) =>
       ipcRenderer.invoke('clipboard:saveImage', { dir, name, data })
   },
@@ -117,7 +159,8 @@ contextBridge.exposeInMainWorld('api', {
       const fn = (_e: unknown, p: string) => cb(p)
       ipcRenderer.on('app:open-path', fn)
       return () => ipcRenderer.removeListener('app:open-path', fn)
-    }
+    },
+    launchPath: () => ipcRenderer.invoke('app:launchPath')
   },
   undo: { run: () => ipcRenderer.invoke('undo:run'), depth: () => ipcRenderer.invoke('undo:depth') },
   window: {
@@ -129,6 +172,8 @@ contextBridge.exposeInMainWorld('api', {
     getChrome: () => ipcRenderer.invoke('window:getChrome'),
     setChrome: (c: { customTitlebar: boolean; rounded: boolean }) =>
       ipcRenderer.invoke('window:setChrome', c),
+    setTray: (a: { minimize: boolean; close: boolean; show: string; quit: string }) =>
+      ipcRenderer.invoke('window:setTray', a),
     onMaximized: (cb: (max: boolean) => void) => {
       const fn = (_e: unknown, max: boolean) => cb(max)
       ipcRenderer.on('window:maximized', fn)
@@ -137,6 +182,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   state: {
     get: () => ipcRenderer.invoke('state:get'),
-    set: (s: unknown) => ipcRenderer.invoke('state:set', s)
+    set: (s: unknown) => ipcRenderer.invoke('state:set', s),
+    setPrefs: (prefs: unknown) => ipcRenderer.invoke('state:setPrefs', prefs)
   }
 })

@@ -1,4 +1,4 @@
-import { t } from './i18n.ts'
+import { getLang, t } from './i18n.ts'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { baseName, dirOf, fa, joinPath, planRename, type RenameMode } from './format'
@@ -57,10 +57,10 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
 
         <div className="seg">
           <button className={mode === 'template' ? 'on' : ''} onClick={() => setMode('template')}>
-            الگو
+            {t('الگو')}
           </button>
           <button className={mode === 'regex' ? 'on' : ''} onClick={() => setMode('regex')}>
-            عبارت باقاعده
+            {t('عبارت باقاعده')}
           </button>
         </div>
 
@@ -116,7 +116,7 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
           {names.slice(0, 8).map((n, i) => (
             <div key={n + i} className={'rn-row' + (planned[i] === n ? '' : ' chg')}>
               <span dir="auto" className="old">{n}</span>
-              <span className="arrow">←</span>
+              <span className="arrow">{getLang() === 'fa' ? '←' : '→'}</span>
               <span dir="auto" className="new">{planned[i]}</span>
             </div>
           ))}
@@ -129,7 +129,7 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
 
         <div className="dlg-actions">
           <button disabled={!canApply} onClick={() => onApply(pairs)}>
-            اعمال {fa(pairs.length)} تغییر
+            {t('اعمال {n} تغییر', { n: fa(pairs.length) })}
           </button>
           <button onClick={onClose}>{t(t('انصراف'))}</button>
         </div>

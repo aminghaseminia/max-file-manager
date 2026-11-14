@@ -1,10 +1,13 @@
 import { t } from './i18n.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Entry, Listing } from './api'
+import { api, type Entry, type Listing } from './api'
+import { keepDragPaths } from './drag'
+import { dragLog } from './draglog'
 import type { ColId } from './prefs'
 import {
   crumbs,
   fa,
+  fileUri,
   fmtDate,
   fmtSize,
   groupLabel,
@@ -17,9 +20,10 @@ import {
   type SortKey
 } from './format'
 import { PreviewPanel } from './PreviewPanel'
-import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon } from './Icons'
+import { EntryIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon } from './Icons'
 import {
   ArrowUpIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -48,7 +52,12 @@ export type FolderView = { view?: View; columns?: string[]; sortKey?: string; so
 
 export type PaneState = {
   tabs: string[]
+  tabIds?: string[]
   ti: number
+  /** custom tab titles keyed by folder path */
+  tabNames: Record<string, string>
+  /** locked tabs keep their folder; navigation opens a new tab */
+  tabLocks: Record<string, boolean>
   /** tabs before this index are pinned: first, protected from closing, no boundary crossing */
   pinCount: number
   hist: string[]
@@ -91,11 +100,14 @@ type Props = {
   tileSize: number
   /** a pane with one tab shows no tab strip */
   hideSingleTab: boolean
+  /** dual layout with a multi-tab sibling: keep both strips so the panes stay symmetric */
+  forceTabStrip?: boolean
   /** kind → icon file of the preferred desktop theme; empty means our line glyphs */
   iconSet?: Record<string, string>
   sizeFormat: 'human' | 'bytes'
   dateFormat: 'iso' | 'jalali' | 'short'
   showSeconds: boolean
+  showSymlink?: boolean
   sizes: Record<string, string>
   marked: boolean
   /** Ctrl+wheel in the grid resizes the tiles (icons and thumbnails alike) */
@@ -103,6 +115,10 @@ type Props = {
   /** the command bar's «filter» bumps this to open the floating input */
   filterTick: number
   filterRef(el: HTMLInputElement | null): void
+  /** Ctrl+L bumps this to edit the current path in place of the breadcrumbs */
+  addrTick: number
+  /** the user's home folder, so `~` in the address field resolves */
+  home: string
   onActivate(): void
   onSort(key: SortKey): void
   onNav(dir: string): void
@@ -120,10 +136,18 @@ type Props = {
   onTabMove(from: number, to: number): void
   middleClickClosesTab: boolean
   palette: { id: string; name: string; color: string }[]
+  /** folder path → tab colour chosen in the tab menu */
+  tabColors: Record<string, string>
+  /** folder path → its own colour/icon for the tab strip */
+  tabIcons: Record<string, { color?: string; icon?: string }>
+  /** settings switch: show the folder icon inside each tab */
+  showTabIcons: boolean
   typeColors: Record<string, string>
   onOp(kind: 'copy' | 'move' | 'trash' | 'mkdir' | 'rename'): void
   onSize(): void
   onBookmark(): void
+  /** open the bookmarks list for this pane, anchored at the caret */
+  onBookmarksMenu(x: number, y: number): void
   onFlat(): void
   onDupes(): void
   onSearch(q: SearchQuery): void
@@ -135,11 +159,12 @@ type Props = {
   onGallery?(): void
   onContext(path: string | null, x: number, y: number): void
   onDropInternal(paths: string[], dest: string, copy: boolean): void
-  onDropFiles(files: File[], dest: string): void
+  onDropFiles(files: File[], dest: string, copy: boolean): void
   /** visible columns/rows, so the app can move the selection by a page or a grid row */
   onMetrics?(m: { cols: number; rows: number }): void
   /** bump `tick` to scroll this entry into view */
   reveal?: { path: string; tick: number } | null
+  style?: React.CSSProperties
 }
 
 const ROW = 28
@@ -171,6 +196,10 @@ export function Pane(props: Props) {
   const marquee = useRef<{ x: number; y: number; base: Set<string> } | null>(null)
   const filterInput = useRef<HTMLInputElement | null>(null)
   const lastFilterTick = useRef(props.filterTick)
+  /** the inline address field; null means the breadcrumbs are showing */
+  const [addrEdit, setAddrEdit] = useState<string | null>(null)
+  const addrInput = useRef<HTMLInputElement | null>(null)
+  const lastAddrTick = useRef(props.addrTick)
   const [query, setQuery] = useState('')
   const [content, setContent] = useState('')
   const [regex, setRegex] = useState(false)
@@ -194,8 +223,56 @@ export function Pane(props: Props) {
     if (props.filterTick === lastFilterTick.current) return
     lastFilterTick.current = props.filterTick
     setFilterOpen(true)
-    setTimeout(() => filterInput.current?.focus(), 0)
+    setTimeout(() => {
+      const el = filterInput.current
+      el?.focus()
+      el?.setSelectionRange(el.value.length, el.value.length)
+    }, 0)
   }, [props.filterTick])
+
+  /** Ctrl+L, or a double-click on the breadcrumbs, edits the path where it is displayed. */
+  const startAddrEdit = (path?: string): void => {
+    setAddrEdit(path ?? props.pane.tabs[props.pane.ti])
+    setTimeout(() => {
+      addrInput.current?.focus()
+      addrInput.current?.select()
+    }, 0)
+  }
+
+  // Ctrl+L: the breadcrumbs turn into an address field in place, not a bar over the panes
+  useEffect(() => {
+    if (props.addrTick === lastAddrTick.current) return
+    lastAddrTick.current = props.addrTick
+    startAddrEdit()
+  }, [props.addrTick])
+
+  // clicking anywhere outside the field closes it; blur alone is unreliable (the window may lose focus)
+  useEffect(() => {
+    if (addrEdit === null) return
+    const onDown = (ev: MouseEvent) => {
+      const el = ev.target as HTMLElement | null
+      if (el?.closest('.addr-edit')) return
+      setAddrEdit(null)
+    }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setAddrEdit(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [addrEdit])
+
+  /** `~` is the only shorthand; everything else goes to the loader as typed. */
+  const commitAddr = (): void => {
+    const raw = (addrEdit ?? '').trim()
+    setAddrEdit(null)
+    if (!raw) return
+    const path = raw === '~' ? props.home : raw.startsWith('~/') ? props.home + raw.slice(1) : raw
+    if (path) props.onNav(path)
+  }
 
   /** Drag on empty space to select everything the rectangle touches. */
   const startMarquee = (ev: React.PointerEvent) => {
@@ -278,7 +355,7 @@ export function Pane(props: Props) {
 
   const cur = pane.tabs[pane.ti]
   // a single tab needs no strip; the + then lives in the path row so a new tab is still one click away
-  const showTabs = pane.tabs.length > 1 || !props.hideSingleTab
+  const showTabs = props.forceTabStrip || pane.tabs.length > 1 || !props.hideSingleTab
   const TILE = tileGeo(props.tileSize, props.nameLines, props.gridMeta.length)
   const TILE_W = TILE.w
   const TILE_H = TILE.h
@@ -378,11 +455,11 @@ export function Pane(props: Props) {
     type: { label: t('نوع'), width: 88, sort: 'ext' },
     size: { label: t('اندازه'), width: 94, sort: 'size', end: true },
     date: { label: t('تاریخ'), width: 120, sort: 'mtime' },
-    mode: { label: t('مجوز'), width: 92 },
-    owner: { label: t('مالک'), width: 72, end: true },
-    links: { label: t('لینک'), width: 52, end: true },
-    dims: { label: t('ابعاد'), width: 90, end: true },
-    rating: { label: t('امتیاز'), width: 74, end: true }
+    mode: { label: t('مجوز'), width: 92, sort: 'mode' },
+    owner: { label: t('مالک'), width: 72, sort: 'owner', end: true },
+    links: { label: t('لینک'), width: 52, sort: 'links', end: true },
+    dims: { label: t('ابعاد'), width: 90, sort: 'dims', end: true },
+    rating: { label: t('امتیاز'), width: 74, sort: 'rating', end: true }
   }
 
   const widthOf = (c: ColId) => props.colWidths[c] ?? COL_META[c].width
@@ -416,10 +493,16 @@ export function Pane(props: Props) {
   // rows carry their own paths (not text) so a drag between panes stays typed
   const dragPaths = (path: string) => (pane.sel.includes(path) ? pane.sel : [path])
 
-  const startDrag = (ev: React.DragEvent, path: string) => {
-    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(dragPaths(path)))
-    // the sidebar asks for `link` when bookmarking; `copyMove` would cancel that drop
+  const startDrag = (ev: React.DragEvent, path: string, _dir = false) => {
+    const paths = dragPaths(path)
+    if (!paths.length) return
+    keepDragPaths(paths)
+    dragLog(`start ${path} all='${paths.join(',')}'`)
+    ev.dataTransfer.setData('application/x-mfm', JSON.stringify(paths))
+    ev.dataTransfer.setData('text/uri-list', paths.map(fileUri).join('\r\n'))
+    ev.dataTransfer.setData('text/plain', paths.join('\n'))
     ev.dataTransfer.effectAllowed = 'all'
+    api.dragOut(paths)
   }
 
   const allowDrop = (ev: React.DragEvent) => {
@@ -443,7 +526,7 @@ export function Pane(props: Props) {
       return
     }
     const files = [...ev.dataTransfer.files]
-    if (files.length) props.onDropFiles(files, dest)
+    if (files.length) props.onDropFiles(files, dest, ev.ctrlKey)
   }
 
   const menu = (ev: React.MouseEvent, path: string | null) => {
@@ -460,17 +543,26 @@ export function Pane(props: Props) {
   return (
     <section
       className={'pane' + (active ? ' active' : '')}
+      style={props.style}
       onMouseDown={props.onActivate}
     >
       {showTabs && (
       <div className="tabs">
-        <span className={'badge' + (active ? ' on' : '')}>{props.index === 0 ? t('مبدأ') : t('مقصد')}</span>
         {pane.tabs.map((tabPath, i) => {
+          const tabId = pane.tabIds?.[i] ?? ('t_' + i)
           const pinned = i < pane.pinCount
+          const locked = pane.tabLocks[tabId] === true
+          const title = pane.tabNames[tabPath] || tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath
+          const tabColor = props.tabColors[tabPath]
           return (
             <div
-              key={tabPath + i}
+              key={tabId}
               className={'tab' + (i === pane.ti ? ' on' : '') + (pinned ? ' pinned' : '')}
+              style={
+                tabColor && i === pane.ti
+                  ? { background: `color-mix(in srgb, ${tabColor} 18%, var(--panel))` }
+                  : undefined
+              }
               draggable
               onDragStart={(ev) => {
                 ev.dataTransfer.setData('application/x-mfm-tab', String(i))
@@ -488,7 +580,7 @@ export function Pane(props: Props) {
               }}
               onClick={() => props.onTabPick(i)}
               onAuxClick={(ev) => {
-                if (ev.button === 1 && props.middleClickClosesTab) {
+                if (ev.button === 1 && props.middleClickClosesTab && !locked) {
                   ev.preventDefault()
                   props.onTabClose(i)
                 }
@@ -501,8 +593,26 @@ export function Pane(props: Props) {
               title={tabPath}
             >
               {pinned && <PinIcon filled />}
-              <span dir="auto">{tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath}</span>
-              {!pinned && pane.tabs.length > 1 && (
+              {locked && <LockIcon size={11} />}
+              {props.showTabIcons && (
+                <EntryIcon
+                  size={14}
+                  iconSet={props.iconSet}
+                  entry={{
+                    name: tabPath.split(/[\\/]/).filter(Boolean).pop() || tabPath,
+                    path: tabPath,
+                    dir: true,
+                    size: 0,
+                    mtime: 0,
+                    ext: '',
+                    color: props.tabIcons[tabPath]?.color,
+                    icon: props.tabIcons[tabPath]?.icon
+                  }}
+                />
+              )}
+              {tabColor && <span className="tab-dot" style={{ background: tabColor }} />}
+              <span dir="auto">{title}</span>
+              {!pinned && !locked && pane.tabs.length > 1 && (
                 <button
                   className="x"
                   title={t(t('بستن تب'))}
@@ -523,7 +633,17 @@ export function Pane(props: Props) {
       </div>
       )}
 
-      <div className="path">
+      <div
+        className="path"
+        onDoubleClick={(ev) => {
+          const el = ev.target as HTMLElement
+          // nav/action buttons and the field itself keep their own double-click behaviour
+          if (el instanceof HTMLInputElement || el.closest('button:not(.crumb)')) return
+          ev.preventDefault()
+          // the first click already navigated; edit the crumb under the pointer, not a stale path
+          startAddrEdit((el.closest('.crumb') as HTMLElement | null)?.dataset.path)
+        }}
+      >
         <button className="tb" title={t(t('بازگشت (Alt+←)'))} onClick={props.onBack}>
           <ChevronRightIcon />
         </button>
@@ -536,16 +656,52 @@ export function Pane(props: Props) {
         <button className="tb" title={t(t('نوسازی (Ctrl+R)'))} onClick={props.onRefresh}>
           <RefreshIcon />
         </button>
-        <div className="crumbs">
-          {crumbs(cur).map((c) => (
-            <span key={c.path} className="crumb-wrap">
-              <button className="crumb" dir="auto" title={c.path} onClick={() => props.onNav(c.path)}>
-                {c.name}
-              </button>
-              <ChevronLeftIcon size={11} />
-            </span>
-          ))}
-        </div>
+        {addrEdit === null ? (
+          <div className="crumbs">
+            {crumbs(cur).map((c) => (
+              <span key={c.path} className="crumb-wrap">
+                <button
+                  className="crumb"
+                  dir="auto"
+                  data-path={c.path}
+                  title={c.path}
+                  onClick={(ev) => {
+                    // the second click of a double-click opens the editor instead of navigating again
+                    if (ev.detail > 1) return
+                    props.onNav(c.path)
+                  }}
+                >
+                  {c.name}
+                </button>
+                <ChevronLeftIcon size={11} />
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="addr-edit">
+            <input
+              ref={addrInput}
+              dir="ltr"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={t('مسیر')}
+              title={t('مسیر را بنویس و Enter بزن · Esc انصراف')}
+              placeholder="/path/to/folder"
+              value={addrEdit}
+              onChange={(e) => setAddrEdit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setAddrEdit(null)
+                  return
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitAddr()
+                }
+              }}
+            />
+          </div>
+        )}
         {pane.virtual && (
           <span className="vchip">
             {pane.virtual.label}
@@ -586,6 +742,17 @@ export function Pane(props: Props) {
           onClick={props.onBookmark}
         >
           <StarIcon filled={props.marked} />
+        </button>
+        <button
+          className="tb tb-caret"
+          title={t(t('نشان‌ها'))}
+          aria-haspopup="menu"
+          onClick={(ev) => {
+            const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+            props.onBookmarksMenu(Math.round(r.right), Math.round(r.bottom + 4))
+          }}
+        >
+          <ChevronDownIcon size={11} />
         </button>
       </div>
 
@@ -749,7 +916,7 @@ export function Pane(props: Props) {
                 style={{ top: (start + k) * ROW, gridTemplateColumns: gridTemplate }}
                 title={e.path}
                 draggable
-                onDragStart={(ev) => startDrag(ev, e.path)}
+                onDragStart={(ev) => startDrag(ev, e.path, e.dir)}
                 onDragOver={allowDrop}
                 onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                 onContextMenu={(ev) => menu(ev, e.path)}
@@ -761,11 +928,14 @@ export function Pane(props: Props) {
                     <span
                       className="ftdot"
                       style={{ background: props.typeColors[(e.ext || '').toLowerCase()] }}
-                      title={`نوع ${e.ext}`}
+                      title={`${t('نوع')} ${e.ext}`}
                     />
                   )}
                   {labelColor(e.name) && (
                     <span className="lbl" style={{ background: labelColor(e.name) }} title={t(t('برچسب'))} />
+                  )}
+                  {!e.dir && e.color && (
+                    <span className="file-color" style={{ background: e.color }} title={t('رنگ')} />
                   )}
                   {pinSet.has(e.name) && (
                     <span className="pinmark" title={t(t('سنجاق‌شده'))}>
@@ -779,7 +949,7 @@ export function Pane(props: Props) {
                   )}
                   <EntryIcon entry={e} iconSet={props.iconSet} />
                   <span dir="auto" className="trunc">{e.name}</span>
-                  {e.link && (
+                  {props.showSymlink && e.link && (
                     <span className="symmark" title={t('پیوند نمادین')}>
                       <LinkIcon />
                     </span>
@@ -811,7 +981,7 @@ export function Pane(props: Props) {
                   }
                   style={{ top: r * TILE_H, insetInlineStart: c * TILE_W, width: TILE_W - 6, height: TILE_H - 6 }}
                   draggable
-                  onDragStart={(ev) => startDrag(ev, e.path)}
+                  onDragStart={(ev) => startDrag(ev, e.path, e.dir)}
                   onDragOver={allowDrop}
                   onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
                   onContextMenu={(ev) => menu(ev, e.path)}
@@ -840,17 +1010,22 @@ export function Pane(props: Props) {
                         title={t(t('برچسب'))}
                       />
                     )}
-                    {e.link && (
-                      <span className="symmark symmark-tile" title={t('پیوند نمادین')}>
+                  </span>
+                  <span className="tile-name-row">
+                    {!e.dir && e.color && (
+                      <span className="file-color" style={{ background: e.color }} title={t('رنگ')} />
+                    )}
+                    <span
+                      className="tile-name"
+                      dir="auto"
+                      style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
+                    >{e.name}</span>
+                    {props.showSymlink && e.link && (
+                      <span className="symmark tile-link" title={t('پیوند نمادین')}>
                         <LinkIcon />
                       </span>
                     )}
                   </span>
-                  <span
-                    className="tile-name"
-                    dir="auto"
-                    style={{ WebkitLineClamp: props.nameLines, fontSize: TILE.font }}
-                  >{e.name}</span>
                   {metaParts.length > 0 && (
                     <span className="tile-meta" dir="auto">
                       {metaParts.map((part, mi) => (

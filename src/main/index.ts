@@ -1,7 +1,11 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
+  dialog,
   globalShortcut,
+  Menu,
+  Tray,
   ipcMain,
   nativeImage,
   net,
@@ -9,11 +13,12 @@ import {
   screen,
   shell
 } from 'electron'
-import { constants as fsConstants, readFileSync, writeFileSync, promises as fs } from 'node:fs'
+import { constants as fsConstants, existsSync, readFileSync, writeFileSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { extract, listArchive, createZip, type ZipLevel } from './archives.ts'
+import { targetPath } from './launch-path.ts'
 import { saveImage, saveImageAs } from './image.ts'
 import { hashMany } from './hash.ts'
 import { iconSetPaths, iconsIn, themeDirs } from './icons.ts'
@@ -22,6 +27,7 @@ import { preview } from './preview.ts'
 import {
   LABELS,
   readMeta,
+  setEntryColor,
   setFormat,
   setLabel,
   setMeta,
@@ -33,8 +39,16 @@ import {
 } from './meta.ts'
 import { htmlToPdf, readTextFile, writeTextFile } from './editor.ts'
 import { fitWindow } from './window-bounds.ts'
-import { defaultApp, launchApp, listApps, mimeForPath, openWithDefault } from './apps.ts'
-import { openTerminal, revealFile, startFileDrag } from './desktop.ts'
+import {
+  defaultApp,
+  isDefaultFileManager,
+  launchApp,
+  listApps,
+  mimeForPath,
+  openWithDefault,
+  setDefaultFileManager
+} from './apps.ts'
+import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
 import { clearThumbs, thumbFor } from './thumbs.ts'
@@ -47,8 +61,10 @@ import {
   type IndexConfig
 } from './searchdb.ts'
 import { checkUpdate, openRelease } from './updates.ts'
+import { migrateLegacyStore, readStore, writeStore } from './store.ts'
 import {
   mcpFile,
+  logMcpError,
   mcpLogTail,
   mcpTools,
   readMcpConfig,
@@ -58,12 +74,14 @@ import {
   type McpMode
 } from './mcp.ts'
 import { randomBytes } from 'node:crypto'
+import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
 import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
-import { freeName, remove } from './ops.ts'
+import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
+import { listDrives, mountDrive, unmountDrive } from './drives.ts'
 import type { DirRef, Entry } from './types.ts'
 
 // mfm:// serves local files to <img> so the renderer never gets a filesystem API.
@@ -75,6 +93,8 @@ protocol.registerSchemesAsPrivileged([
 type Chrome = { customTitlebar: boolean; rounded: boolean }
 
 const idCache = new Map<string, string>()
+/** one drag-debug session per process: the header line is written once */
+let debugLogStarted = false
 
 /** Resolve a uid/gid to a name with `getent`; a missing entry keeps the number. */
 function ownerName(kind: 'passwd' | 'group', id: number): Promise<string> {
@@ -98,12 +118,11 @@ function ownerName(kind: 'passwd' | 'group', id: number): Promise<string> {
   })
 }
 
-const statePath = () => path.join(app.getPath('userData'), 'state.json')
-
 /** Read synchronously, before `ready`: frame/transparent and the instance lock need it that early. */
 function bootState(): any {
   try {
-    return JSON.parse(readFileSync(statePath(), 'utf8'))
+    migrateLegacyStore()
+    return readStore('state') ?? {}
   } catch {
     return {}
   }
@@ -119,7 +138,7 @@ let chrome: Chrome = {
 }
 let win: BrowserWindow | null = null
 
-const firstPath = process.argv.slice(1).find((a) => path.isAbsolute(a))
+const firstPath = targetPath(process.argv, app.getAppPath() || process.cwd())
 
 // macOS hands "open this folder" over as an Apple event, not argv; queue it until the window exists
 const pendingOpens: string[] = []
@@ -136,19 +155,20 @@ app.on('open-file', (e, p) => {
 })
 
 // single instance: a second launch focuses the window and opens the path it was given
-if (bootPrefs.singleInstance !== false) {
+if (bootPrefs.singleInstance !== false && !process.env['SMOKE_SHOT']) {
   if (!app.requestSingleInstanceLock()) {
-    app.quit()
-  } else {
-    app.on('second-instance', (_e, argv) => {
-      if (!win) return
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-      const target = argv.slice(1).find((a) => path.isAbsolute(a))
-      if (target) win.webContents.send('app:open-path', target)
-    })
+    // Exit synchronously: app.quit() still let `whenReady` run and bind the MCP port that the
+    // first instance owns, which surfaced as EADDRINUSE + a main-process error dialog.
+    process.exit(0)
   }
+  app.on('second-instance', (_e, argv) => {
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    const target = targetPath(argv, app.getAppPath() || process.cwd())
+    if (target) win.webContents.send('app:open-path', target)
+  })
 }
 
 /** Sizes/mtimes need one stat per file; chunked so a 10k-file folder can't exhaust fds. */
@@ -292,39 +312,191 @@ async function dirSize(root: string): Promise<{ bytes: number; files: number; ca
   return { bytes, files, capped }
 }
 
-const stateFile = () => path.join(app.getPath('userData'), 'state.json')
-
-
 async function readState(): Promise<any> {
-  const raw = await fs.readFile(stateFile(), 'utf8').catch(() => '')
-  try {
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+  return readStore('state')
 }
 
 /** Writes only the chrome key, so the renderer's session state is never clobbered. */
 async function saveChrome(next: Chrome): Promise<void> {
   const st = (await readState()) ?? {}
-  st.chrome = next
-  await fs.mkdir(path.dirname(stateFile()), { recursive: true })
-  await fs.writeFile(stateFile(), JSON.stringify(st, null, 2))
+  writeStore('state', { ...st, chrome: next })
 }
 
-/** Size/position of the window; separate from state.json because main owns it alone. */
-const boundsPath = () => path.join(app.getPath('userData'), 'window.json')
+
+/** Settings export/import: one JSON file with the preference object, validated by the renderer. */
+async function writeSettingsFile(file: string, prefs: unknown) {
+  const payload = {
+    app: 'max-file-manager',
+    format: 1,
+    exportedAt: new Date().toISOString(),
+    prefs
+  }
+  const partial = file + '.part'
+  await fs.writeFile(partial, JSON.stringify(payload, null, 2))
+  await fs.rename(partial, file)
+  return { path: file }
+}
+
+function parseSettings(raw: string): { prefs?: Record<string, unknown>; error?: string } {
+  try {
+    const j = JSON.parse(raw)
+    const prefs = j && typeof j === 'object' && 'prefs' in j ? j.prefs : j
+    if (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) return { error: 'not a settings file' }
+    return { prefs: prefs as Record<string, unknown> }
+  } catch {
+    return { error: 'invalid JSON' }
+  }
+}
+
+async function readSettingsFile(file: string) {
+  const raw = await fs.readFile(file, 'utf8').catch(() => '')
+  if (!raw) return { error: 'file is not readable' }
+  return parseSettings(raw)
+}
+
+/** Native file pickers; the MCP path variant never shows a dialog. */
+async function saveSettingsDialog(prefs: unknown) {
+  const opts = {
+    title: 'Export settings',
+    defaultPath: path.join(os.homedir(), 'max-file-manager-settings.json'),
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  }
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+  if (r.canceled || !r.filePath) return { canceled: true }
+  return writeSettingsFile(r.filePath, prefs)
+}
+
+async function openSettingsDialog() {
+  const opts = {
+    title: 'Import settings',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile' as const]
+  }
+  const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+  if (r.canceled || !r.filePaths[0]) return { canceled: true }
+  return readSettingsFile(r.filePaths[0])
+}
+
+/** Run the user's own script text with {path}/{dir} shell-quoted; shared with the MCP tool. */
+async function runScriptCommand(a: { command?: string; path?: string; dir?: string }) {
+  const cmd = String(a?.command ?? '').trim()
+  if (!cmd) return { error: 'دستوری تعریف نشده' }
+  const dir = path.isAbsolute(a?.dir ?? '') ? a!.dir! : os.homedir()
+  const target = a?.path && path.isAbsolute(a.path) ? a.path : ''
+  const line = cmd
+    .replace(/\{path\}|%f/g, target ? `'${target.replace(/'/g, `'\\''`)}'` : '')
+    .replace(/\{dir\}|%d/g, `'${dir.replace(/'/g, `'\\''`)}'`)
+  return new Promise<Record<string, unknown>>((resolve) => {
+    execFile('sh', ['-c', line], { cwd: dir, timeout: 60_000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+      const out = `${stdout ?? ''}${stderr ?? ''}`.trim().slice(0, 2000)
+      resolve(err ? { error: out || err.message } : { ok: true, output: out })
+    })
+  })
+}
+
+/** Save pasted/clipboard image bytes as a normal file; the free name never overwrites. */
+async function saveClipboardImage(dir: string, name: string, data: Uint8Array) {
+  if (!path.isAbsolute(dir)) return { error: 'bad_dir' }
+  const stat = await fs.stat(dir).catch(() => null)
+  if (!stat?.isDirectory()) return { error: 'bad_dir' }
+  const buf = Buffer.from(data ?? [])
+  if (!buf.length || buf.length > 50 * 1024 * 1024) return { error: 'bad_image' }
+  const safe = /^[\w.-]{1,80}$/.test(name ?? '') ? name : 'clipboard.png'
+  const target = await freeName(path.join(dir, safe))
+  const partial = target + '.part'
+  await fs.writeFile(partial, buf)
+  await fs.rename(partial, target)
+  return { path: target }
+}
+
+/** Everything the properties dialog shows, in one stat round-trip; also the MCP `properties` tool. */
+async function propertiesOf(p: string): Promise<Record<string, unknown>> {
+  if (!path.isAbsolute(p)) return { error: 'bad_path' }
+  const link = await fs.lstat(p).catch(() => null)
+  if (!link) return { error: 'not_found' }
+  const symbolic = link.isSymbolicLink()
+  const target = symbolic ? await fs.readlink(p).catch(() => '') : ''
+  const st = symbolic ? await fs.stat(p).catch(() => null) : link
+  if (!st) return { error: 'not_found' }
+  const [readable, writable, executable, user, group] = await Promise.all([
+    fs.access(p, fsConstants.R_OK).then(() => true, () => false),
+    fs.access(p, fsConstants.W_OK).then(() => true, () => false),
+    fs.access(p, fsConstants.X_OK).then(() => true, () => false),
+    ownerName('passwd', st.uid),
+    ownerName('group', st.gid)
+  ])
+  const ext = path.extname(p).slice(1).toLowerCase()
+  const dir = st.isDirectory()
+  let items: number | null = null
+  if (dir) items = (await fs.readdir(p).catch(() => [])).length
+  let dims: { w: number; h: number } | null = null
+  if (!dir && IMAGE_EXT.has(ext)) {
+    const size = nativeImage.createFromPath(p).getSize()
+    if (size.width) dims = { w: size.width, h: size.height }
+  }
+  return {
+    name: path.basename(p) || p,
+    path: p,
+    dir,
+    size: st.size,
+    ext,
+    mode: st.mode & 0o777,
+    readable,
+    writable,
+    executable,
+    uid: st.uid,
+    gid: st.gid,
+    user,
+    group,
+    nlink: st.nlink,
+    inode: Number(st.ino),
+    device: Number(st.dev),
+    birthtime: st.birthtimeMs,
+    mtime: st.mtimeMs,
+    atime: st.atimeMs,
+    ctime: st.ctimeMs,
+    link: symbolic,
+    target,
+    mime: mimeForPath(p),
+    items,
+    dims
+  }
+}
+
+/** Image bytes as a data URL; shared by the gallery editor and the MCP `image_get` tool. */
+async function readImageData(p: string): Promise<{ dataUrl?: string; error?: string }> {
+  if (!path.isAbsolute(p)) return { error: 'مسیر نامعتبر' }
+  const st = await fs.stat(p).catch(() => null)
+  if (!st || st.size > 40_000_000) return { error: 'فایل بیش از ۴۰ مگابایت است' }
+  const ext = path.extname(p).slice(1).toLowerCase()
+  const mime = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext === 'webp' ? 'webp' : 'png'
+  const buf = await fs.readFile(p).catch(() => null)
+  if (!buf) return { error: 'خواندن فایل ممکن نشد' }
+  return { dataUrl: `data:image/${mime};base64,${buf.toString('base64')}` }
+}
+
+/** Register the single global shortcut; a failure (Wayland) is reported, never hidden. */
+function registerHotkey(accel: string): { ok: boolean; accel: string } {
+  globalShortcut.unregisterAll()
+  const a = String(accel ?? '').trim()
+  if (!a) return { ok: false, accel: '' }
+  // Win+E is owned by Explorer on Windows and needs a portal on Wayland; the caller shows the result
+  const ok = globalShortcut.register(a, () => {
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
+  return { ok, accel: a }
+}
 
 type SavedBounds = { x: number; y: number; width: number; height: number; maximized?: boolean }
 
 function readBounds(): SavedBounds | null {
-  try {
-    const b = JSON.parse(readFileSync(boundsPath(), 'utf8'))
-    const ok = ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(b?.[k]))
-    return ok ? (b as SavedBounds) : null
-  } catch {
-    return null
-  }
+  const b = readStore<SavedBounds>('window')
+  const ok =
+    !!b && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite((b as Record<string, unknown>)[k]))
+  return ok ? b : null
 }
 
 /** Persist the *normal* bounds, so un-maximizing later still restores the last free size. */
@@ -332,7 +504,7 @@ function saveBounds(w: BrowserWindow | null): void {
   if (!w || w.isDestroyed()) return
   try {
     const b = w.getNormalBounds()
-    writeFileSync(boundsPath(), JSON.stringify({ ...b, maximized: w.isMaximized() }))
+    writeStore('window', { ...b, maximized: w.isMaximized() })
   } catch {
     // a read-only config dir must not take the window down
   }
@@ -352,11 +524,68 @@ function windowBounds(): { x: number; y: number; width: number; height: number }
   })
 }
 
+function windowIcon(): string | undefined {
+  const dev = path.join(app.getAppPath(), 'build/icon.png')
+  if (existsSync(dev)) return dev
+  const packed = path.join(process.resourcesPath ?? '', 'icon.png')
+  return existsSync(packed) ? packed : undefined
+}
+
+let tray: Tray | null = null
+let trayPrefs = { minimize: false, close: false }
+let quitting = false
+const singleInstanceEnabled = bootPrefs.singleInstance !== false
+
+function showWindow(): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function ensureTray(labels: { show: string; quit: string }): void {
+  const wanted = singleInstanceEnabled && (trayPrefs.minimize || trayPrefs.close)
+  if (!wanted) {
+    tray?.destroy()
+    tray = null
+    return
+  }
+  if (!tray) {
+    try {
+      const src = windowIcon()
+      const image = src ? nativeImage.createFromPath(src) : nativeImage.createEmpty()
+      tray = new Tray(image.resize({ width: 22, height: 22 }))
+      tray.setToolTip('Max File Manager')
+      tray.on('click', showWindow)
+      tray.on('double-click', showWindow)
+    } catch {
+      // no usable tray host: never hide the window with no way back
+      tray = null
+      trayPrefs = { minimize: false, close: false }
+      return
+    }
+  }
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: labels.show, click: showWindow },
+      { type: 'separator' },
+      {
+        label: labels.quit,
+        click: () => {
+          quitting = true
+          app.quit()
+        }
+      }
+    ])
+  )
+}
+
 function createWindow(): BrowserWindow {
   const frameless = chrome.customTitlebar
   const transparent = frameless && chrome.rounded
   const saved = readBounds()
   const w = new BrowserWindow({
+    title: 'Max File Manager',
     ...windowBounds(),
     minWidth: 780,
     minHeight: 480,
@@ -364,6 +593,7 @@ function createWindow(): BrowserWindow {
     transparent,
     backgroundColor: transparent ? '#00000000' : '#16181d',
     hasShadow: false,
+    icon: windowIcon(),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -373,6 +603,18 @@ function createWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  const icon = windowIcon()
+  if (icon) w.setIcon(icon)
+  if (singleInstanceEnabled) {
+    w.on('minimize', () => {
+      if (trayPrefs.minimize) w.hide()
+    })
+    w.on('close', (e) => {
+      if (!trayPrefs.close || quitting) return
+      e.preventDefault()
+      w.hide()
+    })
+  }
   w.on('ready-to-show', () => {
     w.show()
     if (saved?.maximized) w.maximize()
@@ -434,6 +676,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
     const l = await list(dir, showHidden, dims)
     const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
+    // file colours live in the parent folder's marker; folders carry their own colour already
+    if (meta?.colors) {
+      for (const e of l.entries) if (!e.dir && meta.colors[e.name]) e.color = meta.colors[e.name]
+    }
     return {
       ...l,
       pins: meta?.pins ?? [],
@@ -444,58 +690,26 @@ app.whenReady().then(async () => {
     }
   })
   /** Everything the properties dialog shows, in one stat round-trip. */
-  ipcMain.handle('fs:properties', async (_e, p: string) => {
-    if (!path.isAbsolute(p)) return { error: 'bad_path' }
-    const link = await fs.lstat(p).catch(() => null)
-    if (!link) return { error: 'not_found' }
-    const symbolic = link.isSymbolicLink()
-    const target = symbolic ? await fs.readlink(p).catch(() => '') : ''
-    const st = symbolic ? await fs.stat(p).catch(() => null) : link
-    if (!st) return { error: 'not_found' }
-    const [readable, writable, executable, user, group] = await Promise.all([
-      fs.access(p, fsConstants.R_OK).then(() => true, () => false),
-      fs.access(p, fsConstants.W_OK).then(() => true, () => false),
-      fs.access(p, fsConstants.X_OK).then(() => true, () => false),
-      ownerName('passwd', st.uid),
-      ownerName('group', st.gid)
-    ])
-    const ext = path.extname(p).slice(1).toLowerCase()
-    const isDir = st.isDirectory()
-    let items: number | null = null
-    if (isDir) items = (await fs.readdir(p).catch(() => [])).length
-    let dims: { w: number; h: number } | null = null
-    if (!isDir && IMAGE_EXT.has(ext)) {
-      const size = nativeImage.createFromPath(p).getSize()
-      if (size.width) dims = { w: size.width, h: size.height }
-    }
-    return {
-      name: path.basename(p) || p,
-      path: p,
-      dir: isDir,
-      size: st.size,
-      ext,
-      mode: st.mode & 0o777,
-      readable,
-      writable,
-      executable,
-      uid: st.uid,
-      gid: st.gid,
-      user,
-      group,
-      nlink: st.nlink,
-      inode: Number(st.ino),
-      device: Number(st.dev),
-      birthtime: st.birthtimeMs,
-      mtime: st.mtimeMs,
-      atime: st.atimeMs,
-      ctime: st.ctimeMs,
-      link: symbolic,
-      target,
-      mime: mimeForPath(p),
-      items,
-      dims
+  /** Drag debugging: MFM_DRAG_DEBUG=1 keeps one session's drag lifecycle in userData. */
+  ipcMain.handle('debug:log', (_e, msg: string) => {
+    if (process.env.MFM_DRAG_DEBUG !== '1') return false
+    const file = path.join(app.getPath('userData'), 'drag-debug.log')
+    try {
+      if (!debugLogStarted) {
+        debugLogStarted = true
+        writeFileSync(
+          file,
+          `${new Date().toISOString()} session start · electron ${process.versions.electron} · app ${app.getVersion()} · WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY ?? ''} · DISPLAY=${process.env.DISPLAY ?? ''}\n`
+        )
+      }
+      void fs.appendFile(file, `${new Date().toISOString()} ${String(msg)}\n`)
+      return true
+    } catch {
+      return false
     }
   })
+
+  ipcMain.handle('fs:properties', (_e, p: string) => propertiesOf(p))
 
   /** chmod from the permissions tab; only the permission bits are accepted. */
   ipcMain.handle('fs:chmod', async (_e, a: { path?: string; mode?: number }) => {
@@ -515,22 +729,27 @@ app.whenReady().then(async () => {
     const s = await fs.statfs(p).catch(() => null)
     return s ? { free: Number(s.bavail) * Number(s.bsize), size: Number(s.blocks) * Number(s.bsize) } : null
   })
-  ipcMain.handle('fs:imageData', async (_e, p: string) => {
-    if (!path.isAbsolute(p)) return { error: 'مسیر نامعتبر' }
+  /** Raw bytes for the drag-out cache: a web drop zone needs a real File, not just a path. */
+  ipcMain.handle('fs:readBytes', async (_e, a: { path?: string; max?: number }) => {
+    const p = a?.path ?? ''
+    if (!path.isAbsolute(p)) return { error: 'bad_path' }
+    const max = Math.min(32 * 1024 * 1024, Math.max(1, Number(a?.max ?? 32 * 1024 * 1024)))
     const st = await fs.stat(p).catch(() => null)
-    if (!st || st.size > 40_000_000) return { error: 'فایل بیش از ۴۰ مگابایت است' }
-    const ext = path.extname(p).slice(1).toLowerCase()
-    const mime = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext === 'webp' ? 'webp' : 'png'
-    const buf = await fs.readFile(p).catch(() => null)
-    if (!buf) return { error: 'خواندن فایل ممکن نشد' }
-    return { dataUrl: `data:image/${mime};base64,${buf.toString('base64')}` }
+    if (!st?.isFile()) return { error: 'not_a_file' }
+    if (st.size > max) return { error: 'too_large' }
+    const data = await fs.readFile(p).catch(() => null)
+    return data ? { data } : { error: 'read_failed' }
   })
+  ipcMain.handle('fs:imageData', (_e, p: string) => readImageData(p))
   ipcMain.handle('image:save', (_e, a: { src: string; dataUrl: string; mode: 'overwrite' | 'copy' }) =>
     saveImage(a.src, a.dataUrl, a.mode)
   )
   ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false) => dirs(dir, !!showHidden))
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
+  ipcMain.handle('drives:list', () => listDrives())
+  ipcMain.handle('drives:mount', (_e, dev: string) => mountDrive(dev))
+  ipcMain.handle('drives:unmount', (_e, dev: string) => unmountDrive(dev))
   ipcMain.handle('fs:size', (_e, p: string) =>
     path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
   )
@@ -564,159 +783,470 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:set', (_e, a: { dir: string; meta: FolderMeta }) =>
     path.isAbsolute(a.dir) ? setMeta(a.dir, a.meta ?? {}) : null
   )
-  ipcMain.handle('hotkey:register', (_e, accel: string) => {
-    globalShortcut.unregisterAll()
-    const a = String(accel ?? '').trim()
-    if (!a) return { ok: false, accel: '' }
-    // Win+E is owned by Explorer on Windows and needs a portal on Wayland; the caller shows the result
-    const ok = globalShortcut.register(a, () => {
-      if (!win) return
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-    })
-    return { ok, accel: a }
-  })
-  ipcMain.handle('app:runScript', async (_e, a: { command: string; path?: string; dir?: string }) => {
-    const cmd = String(a?.command ?? '').trim()
-    if (!cmd) return { error: 'دستوری تعریف نشده' }
-    const dir = path.isAbsolute(a?.dir ?? '') ? a!.dir! : os.homedir()
-    const target = a?.path && path.isAbsolute(a.path) ? a.path : ''
-    // the command is the user's own text from prefs; {path}/{dir} are shell-quoted
-    const line = cmd
-      .replace(/\{path\}/g, target ? `'${target.replace(/'/g, `'\\''`)}'` : '')
-      .replace(/\{dir\}/g, `'${dir.replace(/'/g, `'\\''`)}'`)
-    return new Promise((resolve) => {
-      execFile(
-        'sh',
-        ['-c', line],
-        { cwd: dir, timeout: 60_000, maxBuffer: 1 << 20 },
-        (err, stdout, stderr) => {
-          const out = `${stdout ?? ''}${stderr ?? ''}`.trim().slice(0, 2000)
-          resolve(err ? { error: out || err.message } : { ok: true, output: out })
-        }
-      )
-    })
-  })
+  ipcMain.handle('hotkey:register', (_e, accel: string) => registerHotkey(accel))
+  ipcMain.handle('app:runScript', (_e, a: { command?: string; path?: string; dir?: string }) => runScriptCommand(a))
+  ipcMain.handle('app:runCustomCommand', (_e, a: { command?: string; path?: string }) =>
+    runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
+  )
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? [])
   })
+  /**
+   * Search indexing is one run at a time and its state is global: the pending state, the settings
+   * page and MCP clients all read the same object, so «is it indexing?» has a truthful answer.
+   */
+  type SearchIndexStatus = {
+    running: boolean
+    scanned: number
+    added: number
+    done: number
+    total: number
+    root: string
+    startedAt: number
+    finishedAt: number
+    files: number
+    dirs: number
+    lastIndex: number
+    error: string
+  }
+  let indexStatus: SearchIndexStatus = {
+    running: false,
+    scanned: 0,
+    added: 0,
+    done: 0,
+    total: 0,
+    root: '',
+    startedAt: 0,
+    finishedAt: 0,
+    files: 0,
+    dirs: 0,
+    lastIndex: 0,
+    error: ''
+  }
+  let indexRun: Promise<unknown> | null = null
+
+  function clearSearchIndex() {
+    clearIndex(searchDbFile())
+    const stats = indexStats(searchDbFile())
+    if (!indexStatus.running) indexStatus = { ...indexStatus, ...stats }
+    return stats
+  }
+
+  function runSearchIndex(
+    cfg: IndexConfig,
+    emit?: (st: SearchIndexStatus) => void
+  ): Promise<Record<string, unknown>> {
+    if (indexRun) return Promise.resolve({ alreadyRunning: true, status: indexStatus })
+    indexStatus = {
+      running: true,
+      scanned: 0,
+      added: 0,
+      done: 0,
+      total: cfg.roots.length,
+      root: '',
+      startedAt: Date.now(),
+      finishedAt: 0,
+      files: 0,
+      dirs: 0,
+      lastIndex: 0,
+      error: ''
+    }
+    const push = () => {
+      emit?.(indexStatus)
+      // broadcast to the window too: an index started by MCP must be visible in the status bar
+      if (win && !win.isDestroyed()) win.webContents.send('search:progress', indexStatus)
+    }
+    push()
+    const chain = indexRoots(searchDbFile(), cfg, (p) => {
+      Object.assign(indexStatus, p)
+      push()
+    })
+      .then((r) => {
+        const stats = indexStats(searchDbFile())
+        indexStatus = { ...indexStatus, running: false, finishedAt: Date.now(), ...stats }
+        push()
+        return { ...r, stats, status: indexStatus }
+      })
+      .catch((e) => {
+        indexStatus = {
+          ...indexStatus,
+          running: false,
+          finishedAt: Date.now(),
+          error: e instanceof Error ? e.message : String(e)
+        }
+        push()
+        throw e
+      })
+      .finally(() => {
+        indexRun = null
+      })
+    indexRun = chain
+    return chain as Promise<Record<string, unknown>>
+  }
+
+  /**
+   * Every MCP tool goes through here: the same functions the IPC handlers use, so an agent can
+   * reach every capability of the app without a second implementation drifting away.
+   */
   const mcpHandler = async (tool: string, args: Record<string, any>): Promise<unknown> => {
     const abs = (v: unknown) => (typeof v === 'string' && path.isAbsolute(v) ? v : null)
+    const absList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => abs(x) !== null) : [])
+    const needAbs = (v: unknown): string => {
+      const p = abs(v)
+      if (!p) throw new Error('absolute path required')
+      return p
+    }
+    /** Anything the window itself must do is sent to the renderer, which owns that state. */
+    const ui = (extra: Record<string, unknown> = {}) => {
+      win?.webContents.send('mcp:ui', { tool, args, ...extra })
+      return { ok: true }
+    }
     switch (tool) {
       case 'roots':
         return { home: os.homedir(), roots: await roots() }
+      case 'drives_list':
+        return listDrives()
+      case 'drive_mount':
+        return mountDrive(String(args.device ?? ''))
+      case 'drive_unmount':
+        return unmountDrive(String(args.device ?? ''))
       case 'list': {
-        const dir = abs(args.path)
-        if (!dir) throw new Error('absolute path required')
-        const l = await list(dir, !!args.hidden, false)
+        const dir = needAbs(args.path)
+        const l = await list(dir, !!args.hidden, !!args.dims)
         const meta = await readMeta(dir)
-        return { ...l, pins: meta?.pins ?? [], labels: meta?.labels ?? {}, ratings: meta?.ratings ?? {}, notes: meta?.notes ?? {} }
+        if (meta?.colors) for (const e of l.entries) if (!e.dir && meta.colors[e.name]) e.color = meta.colors[e.name]
+        return {
+          ...l,
+          pins: meta?.pins ?? [],
+          labels: meta?.labels ?? {},
+          ratings: meta?.ratings ?? {},
+          notes: meta?.notes ?? {},
+          format: meta?.format ?? null
+        }
       }
-      case 'dirs': {
-        const dir = abs(args.path)
-        if (!dir) throw new Error('absolute path required')
-        return dirs(dir)
+      case 'dirs':
+        return dirs(needAbs(args.path), !!args.hidden)
+      case 'walk':
+        return walk(needAbs(args.dir), {
+          query: args.pattern ? String(args.pattern) : undefined,
+          regex: !!args.regex,
+          content: args.content ? String(args.content) : undefined,
+          includeDirs: true,
+          exclude: Array.isArray(args.exclude) ? args.exclude.map(String) : undefined,
+          limit: Number.isFinite(Number(args.cap)) ? Number(args.cap) : 2000
+        })
+      case 'properties':
+        return propertiesOf(needAbs(args.path))
+      case 'statfs': {
+        const st = await fs.statfs(needAbs(args.path)).catch(() => null)
+        return st ? { free: Number(st.bavail) * Number(st.bsize), size: Number(st.blocks) * Number(st.bsize) } : null
       }
+      case 'size':
+        return dirSize(needAbs(args.path))
+      case 'hash':
+        return hashMany(absList(args.paths), String(args.algo ?? 'sha256'))
+      case 'dupes':
+        return findDupes(needAbs(args.dir), { limit: Number(args.limit ?? 4000) })
       case 'search':
         return searchIndex(searchDbFile(), String(args.query ?? ''), Number(args.limit ?? 100))
-      case 'preview': {
-        const p = abs(args.path)
-        if (!p) throw new Error('absolute path required')
-        return preview(p, Number(args.maxKB ?? 200))
+      case 'search_stats':
+        return indexStats(searchDbFile())
+      case 'search_sizes':
+        return indexSizes(searchDbFile(), absList(args.dirs).slice(0, 500))
+      case 'preview':
+        return preview(needAbs(args.path), Number(args.maxKB ?? 200))
+      case 'read_text':
+        return readTextFile(needAbs(args.path))
+      case 'archive_list':
+        return listArchive(needAbs(args.path))
+      case 'diff':
+        return diffFiles(needAbs(args.a), needAbs(args.b))
+      case 'tags': {
+        const out: Record<string, unknown> = {}
+        for (const pp of absList(args.paths).slice(0, 200)) out[pp] = await readTags(pp)
+        return out
       }
-      case 'read_text': {
-        const p = abs(args.path)
-        if (!p) throw new Error('absolute path required')
-        return readTextFile(p)
+      case 'meta_get':
+        return (await readMeta(needAbs(args.dir))) ?? {}
+      case 'labels':
+        return LABELS
+      case 'folder_look': {
+        const p = needAbs(args.path)
+        const meta = await readMeta(p)
+        if (meta?.icon || meta?.color) return { color: meta.color, icon: meta.icon }
+        const native = await readNativeFolderLook(p)
+        return native.icon ? { icon: native.icon, color: '' } : {}
       }
-      case 'archive_list': {
-        const p = abs(args.path)
-        if (!p) throw new Error('absolute path required')
-        return listArchive(p)
+      case 'icons': {
+        const extra = Array.isArray(args.extra) ? args.extra.map(String) : []
+        const themes = await themeDirs(extra)
+        if (typeof args.theme !== 'string' || !args.theme) return { themes, set: iconSetPaths() }
+        const theme = themes.find((d) => d.dir === args.theme || d.name === args.theme)
+        return theme ? iconsIn(theme.dir) : []
       }
-      case 'meta_get': {
-        const dir = abs(args.dir)
-        if (!dir) throw new Error('absolute path required')
-        return (await readMeta(dir)) ?? {}
-      }
-      case 'hash':
-        return hashMany((args.paths ?? []).filter((p: string) => abs(p)), String(args.algo ?? 'sha256'))
       case 'jobs_list':
         return engine.list()
-      case 'state': {
-        const raw = readFileSync(statePath(), 'utf8')
-        return JSON.parse(raw)
+      case 'undo_depth':
+        return engine.undoDepth()
+      case 'state':
+        return readStore('state') ?? {}
+      case 'mcp_status': {
+        const cfg = await readMcpConfig()
+        return { mode: cfg.mode, port: cfg.port, log: await mcpLogTail(50) }
       }
-      case 'write_text': {
-        const p = abs(args.path)
-        if (!p) throw new Error('absolute path required')
-        return writeTextFile(p, String(args.text ?? ''))
+      case 'apps':
+        return listApps(needAbs(args.path))
+      case 'app_default': {
+        const d = await defaultApp(needAbs(args.path))
+        return d ?? {}
       }
-      case 'mkdir': {
-        const dir = abs(args.dir)
-        if (!dir) throw new Error('absolute path required')
-        return engine.makeDir(dir, String(args.name ?? ''))
-      }
+      case 'desktop_default_manager':
+        return { default: await isDefaultFileManager() }
+      case 'update_check':
+        return checkUpdate(!!args.force)
+      case 'write_text':
+        return writeTextFile(needAbs(args.path), String(args.text ?? ''))
+      case 'mkdir':
+        return engine.makeDir(needAbs(args.dir), String(args.name ?? ''))
+      case 'create_file':
+        return engine.createFile(needAbs(args.dir), String(args.name ?? ''), typeof args.content === 'string' ? args.content : '')
       case 'rename': {
-        const p = abs(args.path)
-        if (!p) throw new Error('absolute path required')
-        const target = path.join(path.dirname(p), String(args.name ?? ''))
-        return engine.renameMany([{ from: p, to: target }])
+        const from = needAbs(args.path)
+        return engine.renameMany([{ from, to: path.join(path.dirname(from), String(args.name ?? '')) }])
+      }
+      case 'rename_many': {
+        const pairs: { from: string; to: string }[] = []
+        for (const x of Array.isArray(args.pairs) ? args.pairs : []) {
+          const from = abs(x?.from)
+          const to = abs(x?.to)
+          if (from && to) pairs.push({ from, to })
+        }
+        if (!pairs.length) throw new Error('pairs with absolute from/to are required')
+        return engine.renameMany(pairs)
       }
       case 'copy':
       case 'move': {
-        const dest = abs(args.dest)
-        const files = (args.paths ?? []).filter((p: string) => abs(p))
-        if (!dest || !files.length) throw new Error('paths and dest are required')
-        return engine.start(tool === 'copy' ? 'copy' : 'move', files, dest)
+        const dest = needAbs(args.dest)
+        const files = absList(args.sources ?? args.paths)
+        if (!files.length) throw new Error('paths are required')
+        const opts: JobOpts = {
+          skipExisting: !!args.skipExisting,
+          newerOnly: !!args.newerOnly,
+          limitBps: Number(args.limitBps ?? 0) || 0
+        }
+        return engine.start(tool === 'copy' ? 'copy' : 'move', files, dest, opts)
       }
-      case 'trash': {
-        const files = (args.paths ?? []).filter((p: string) => abs(p))
-        return remove(files, { trash: (p) => shell.trashItem(p) })
-      }
+      case 'trash':
+        return remove(absList(args.paths), { trash: (p) => shell.trashItem(p) })
       case 'delete': {
         if (args.confirm !== true) throw new Error('permanent delete needs confirm:true')
-        const files = (args.paths ?? []).filter((p: string) => abs(p))
-        return remove(files, {})
+        return remove(absList(args.paths), {})
       }
-      case 'extract': {
-        const archive = abs(args.archive)
-        const dest = abs(args.dest)
-        if (!archive || !dest) throw new Error('archive and dest are required')
-        return extract(archive, Array.isArray(args.names) ? args.names : [], dest)
-      }
-      case 'create_zip': {
-        const dir = abs(args.dir)
-        if (!dir) throw new Error('absolute path required')
-        const level = Math.min(9, Math.max(0, Number(args.level ?? 6))) as ZipLevel
-        return createZip(dir, String(args.name ?? 'archive'), (args.sources ?? []).filter((p: string) => abs(p)), level)
-      }
-      case 'label_set': {
-        const dir = abs(args.dir)
-        if (!dir) throw new Error('absolute path required')
-        return setLabel(dir, String(args.name ?? ''), args.label ? String(args.label) : null)
-      }
-      case 'pin_set': {
-        const dir = abs(args.dir)
-        if (!dir) throw new Error('absolute path required')
-        return togglePin(dir, String(args.name ?? ''), Boolean(args.on))
-      }
-      case 'note':
-      case 'goto': {
-        win?.webContents.send('mcp:ui', { tool, args })
+      case 'symlink':
+        return createSymlink(needAbs(args.target), needAbs(args.link))
+      case 'chmod': {
+        const mode = Number(args.mode)
+        if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) throw new Error('mode must be 0..0o7777')
+        await fs.chmod(needAbs(args.path), mode)
         return { ok: true }
       }
+      case 'extract':
+        return extract(needAbs(args.archive), Array.isArray(args.names) ? args.names : [], needAbs(args.dest))
+      case 'create_zip': {
+        const level = Math.min(9, Math.max(0, Number(args.level ?? 6))) as ZipLevel
+        return createZip(needAbs(args.dir), String(args.name ?? 'archive'), absList(args.sources), level)
+      }
+      case 'tags_write':
+        return writeId3(needAbs(args.path), (args.fields ?? {}) as Record<string, string>)
+      case 'export_listing':
+        return exportListing(
+          needAbs(args.dir),
+          String(args.name ?? 'listing'),
+          (Array.isArray(args.rows) ? args.rows : []) as ExportRow[],
+          args.format === 'pdf' ? 'pdf' : 'csv',
+          String(args.theme ?? 'dark')
+        )
+      case 'pdf':
+        return htmlToPdf(String(args.html ?? ''), needAbs(args.out), String(args.theme ?? 'light'))
+      case 'image_get':
+        return readImageData(needAbs(args.path))
+      case 'image_save':
+        return saveImage(needAbs(args.src), String(args.dataUrl ?? ''), args.mode === 'overwrite' ? 'overwrite' : 'copy')
+      case 'image_save_as':
+        return saveImageAs(needAbs(args.src), String(args.dataUrl ?? ''))
+      case 'image_convert':
+        return convertImages(absList(args.files).slice(0, 500), {
+          format: args.format === 'png' ? 'png' : args.format === 'webp' ? 'webp' : 'jpeg',
+          maxSide: Number(args.maxSide ?? 0) || 0,
+          quality: Math.min(100, Math.max(1, Number(args.quality ?? 90))),
+          dest: abs(args.dest) ?? undefined
+        })
+      case 'thumbs_clear':
+        clearThumbs()
+        return { ok: true }
+      case 'label_set':
+        return setLabel(needAbs(args.dir), String(args.name ?? ''), args.label ? String(args.label) : null)
+      case 'file_color_set':
+        return setEntryColor(needAbs(args.dir), String(args.name ?? ''), String(args.color ?? ''))
+      case 'rating_set':
+        return setRating(needAbs(args.dir), String(args.name ?? ''), Number(args.stars ?? 0))
+      case 'note_set':
+        return setNote(needAbs(args.dir), String(args.name ?? ''), String(args.text ?? ''))
+      case 'meta_set':
+        return setMeta(needAbs(args.dir), (args.patch ?? {}) as FolderMeta)
+      case 'sort_set': {
+        const dir = needAbs(args.dir)
+        const cur = (await readMeta(dir))?.format ?? {}
+        return setFormat(dir, { ...cur, sortKey: String(args.key ?? 'name'), sortAsc: args.asc !== false })
+      }
+      case 'pin_set':
+        return togglePin(needAbs(args.dir), String(args.name ?? ''), Boolean(args.on))
+      case 'job_start':
+        return engine.start(
+          (args.kind === 'move' ? 'move' : args.kind === 'copy' ? 'copy' : 'copy') as JobKind,
+          absList(args.sources),
+          needAbs(args.dest),
+          (args.opts ?? {}) as JobOpts
+        )
+      case 'job_pause':
+        return engine.pause(String(args.id ?? ''))
+      case 'job_resume':
+        return engine.resume(String(args.id ?? ''))
+      case 'job_cancel':
+        return engine.cancel(String(args.id ?? ''))
+      case 'job_clear':
+        return engine.clear()
+      case 'undo':
+        return engine.undo()
+      case 'search_index': {
+        const cfg = {
+          roots: absList(args.roots),
+          exclude: Array.isArray(args.exclude) ? args.exclude.map(String) : []
+        }
+        if (args.wait === false) {
+          void runSearchIndex(cfg).catch(() => undefined)
+          return { started: true, status: indexStatus }
+        }
+        return runSearchIndex(cfg)
+      }
+      case 'search_status': {
+        const stats = indexStats(searchDbFile())
+        return { ...indexStatus, ...stats, stats }
+      }
+      case 'search_clear':
+        return clearSearchIndex()
+      case 'prefs_set': {
+        const patch = (args.patch ?? {}) as Record<string, unknown>
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('patch object required')
+        const st = (await readState()) ?? {}
+        const prefs = { ...(st.prefs ?? {}), ...patch }
+        writeStore('state', { ...st, prefs })
+        return ui({ prefs })
+      }
+      case 'open':
+        return openWithDefault(needAbs(args.path))
+      case 'reveal':
+        return revealFile(needAbs(args.path))
+      case 'terminal':
+        return openTerminal(needAbs(args.dir))
+      case 'apps_launch':
+        return launchApp(needAbs(args.id), needAbs(args.path))
+      case 'set_default_manager':
+        return setDefaultFileManager()
+      case 'update_open':
+        return openRelease(String(args.url ?? ''))
+      case 'hotkey':
+        return registerHotkey(String(args.accel ?? ''))
+      case 'sync_compare':
+        return compareTrees(needAbs(args.left), needAbs(args.right), !!args.deep, {
+          compareBy: args.compareBy === 'ctime' || args.compareBy === 'hash' ? args.compareBy : 'mtime',
+          ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : []
+        })
+      case 'sync_apply':
+        return applySync(
+          needAbs(args.left),
+          needAbs(args.right),
+          (Array.isArray(args.rows) ? args.rows : []) as SyncRow[],
+          args.mode === 'rtl' ? 'rtl' : 'ltr',
+          !!args.deleteExtra,
+          (p) => shell.trashItem(p)
+        )
+      case 'run_script':
+        return runScriptCommand({
+          command: String(args.command ?? ''),
+          path: abs(args.path) ?? undefined,
+          dir: abs(args.dir) ?? undefined
+        })
+      case 'run_custom_command':
+        return runCustomCommand(String(args.command ?? ''), needAbs(args.path))
+      case 'clipboard_image':
+        return saveClipboardImage(needAbs(args.dir), String(args.name ?? 'clipboard.png'), Buffer.from(String(args.base64 ?? ''), 'base64'))
+      case 'window': {
+        if (!win) throw new Error('no window')
+        const action = String(args.action ?? '')
+        if (action === 'minimize') win.minimize()
+        else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
+        else if (action === 'close') win.close()
+        else if (action === 'show') {
+          win.show()
+          win.focus()
+        } else if (action === 'fullscreen') win.setFullScreen(args.on !== false)
+        else if (action === 'chrome') return chrome
+        else throw new Error('action must be minimize, maximize, close, show, fullscreen or chrome')
+        return { ok: true, maximized: win.isMaximized(), fullscreen: win.isFullScreen() }
+      }
+      case 'settings_export': {
+        const st = (await readState()) ?? {}
+        const file = abs(args.path)
+        return file ? writeSettingsFile(file, st.prefs ?? {}) : saveSettingsDialog(st.prefs ?? {})
+      }
+      case 'settings_import': {
+        const file = abs(args.path)
+        const got = file ? await readSettingsFile(file) : await openSettingsDialog()
+        if ('error' in got && got.error) throw new Error(got.error)
+        if ('canceled' in got) return got
+        const prefs = (got as { prefs?: Record<string, unknown> }).prefs ?? {}
+        if (args.apply !== false) {
+          const st = (await readState()) ?? {}
+          writeStore('state', { ...st, prefs })
+          win?.webContents.send('mcp:ui', { tool: 'prefs_set', args: {}, prefs })
+        }
+        return { prefs, applied: args.apply !== false }
+      }
+      case 'bookmark': {
+        if (args.action !== 'list') return ui()
+        const st = (await readState()) ?? {}
+        return { marks: Array.isArray(st.marks) ? st.marks : [] }
+      }
+      case 'command':
+      case 'goto':
+      case 'select':
+      case 'filter':
+      case 'tab':
+      case 'open_editor':
+      case 'open_gallery':
+      case 'open_preview':
+      case 'properties_dialog':
+      case 'note':
+        return ui()
       default:
         throw new Error(`unknown tool ${tool}`)
     }
   }
 
-  void readMcpConfig().then((cfg) => {
-    if (cfg.mode !== 'off') void startMcp(mcpHandler)
-  })
+  void readMcpConfig()
+    .then(async (cfg) => {
+      if (cfg.mode === 'off') return
+      try {
+        await startMcp(mcpHandler)
+      } catch (e) {
+        // a busy loopback port must not become an uncaught main-process error dialog
+        await logMcpError(`listen failed: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    })
+    .catch(() => undefined)
 
   ipcMain.handle('mcp:status', async () => {
     const cfg = await readMcpConfig()
@@ -729,23 +1259,38 @@ app.whenReady().then(async () => {
       port: Number(patch?.port) > 1024 && Number(patch?.port) < 65535 ? Number(patch.port) : cur.port,
       token: cur.token
     })
-    const st = await startMcp(mcpHandler)
-    return { ...st, token: cfg.token, log: await mcpLogTail(20) }
+    let st: { running: boolean; port: number; mode: McpMode }
+    let error = ''
+    try {
+      st = await startMcp(mcpHandler)
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+      st = { running: false, port: cfg.port, mode: cfg.mode }
+      await logMcpError(`listen failed: ${error}`)
+    }
+    return { ...st, token: cfg.token, error, log: await mcpLogTail(20) }
   })
   ipcMain.handle('mcp:token', async () => {
     const cur = await readMcpConfig()
     const cfg = await writeMcpConfig({ ...cur, token: randomBytes(24).toString('hex') })
-    if (cfg.mode !== 'off') await startMcp(mcpHandler)
+    if (cfg.mode !== 'off') {
+      try {
+        await startMcp(mcpHandler)
+      } catch (e) {
+        await logMcpError(`listen failed: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
     return cfg.token
   })
   ipcMain.handle('update:check', (_e, force?: boolean) => checkUpdate(!!force))
   ipcMain.handle('update:open', (_e, url: string) => openRelease(String(url ?? '')))
   const searchDbFile = () => path.join(app.getPath('userData'), 'search.db')
-  ipcMain.handle('search:index', async (e, cfg: IndexConfig) => {
-    const r = await indexRoots(searchDbFile(), cfg ?? { roots: [], exclude: [] }, (p) =>
-      e.sender.send('search:progress', p)
-    )
-    return { ...r, stats: indexStats(searchDbFile()) }
+  ipcMain.handle('search:index', (e, cfg: IndexConfig) =>
+    runSearchIndex(cfg ?? { roots: [], exclude: [] }, (st) => e.sender.send('search:progress', st))
+  )
+  ipcMain.handle('search:status', () => {
+    const stats = indexStats(searchDbFile())
+    return { ...indexStatus, ...stats, stats }
   })
   ipcMain.handle('search:query', (_e, a: { query: string; limit?: number }) =>
     searchIndex(searchDbFile(), String(a?.query ?? ''), a?.limit ?? 200)
@@ -754,10 +1299,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('search:sizes', (_e, dirs: string[]) =>
     indexSizes(searchDbFile(), (dirs ?? []).filter((d) => path.isAbsolute(d)).slice(0, 500))
   )
-  ipcMain.handle('search:clear', () => {
-    clearIndex(searchDbFile())
-    return indexStats(searchDbFile())
-  })
+  ipcMain.handle('search:clear', () => clearSearchIndex())
   ipcMain.handle('fs:tags', async (_e, ps: string[]) => {
     const out: Record<string, unknown> = {}
     for (const p of (ps ?? []).slice(0, 200)) {
@@ -825,6 +1367,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('meta:setNote', (_e, a: { dir: string; name: string; text: string }) =>
     path.isAbsolute(a?.dir ?? '') ? setNote(a.dir, String(a.name ?? ''), String(a.text ?? '')) : {}
   )
+  ipcMain.handle('meta:setEntryColor', (_e, a: { dir: string; name: string; color: string }) =>
+    path.isAbsolute(a?.dir ?? '') ? setEntryColor(a.dir, String(a.name ?? ''), String(a.color ?? '')) : null
+  )
   ipcMain.handle('meta:setLabel', (_e, a: { dir: string; name: string; label: string | null }) =>
     path.isAbsolute(a?.dir ?? '') ? setLabel(a.dir, String(a.name ?? ''), a.label ?? null) : {}
   )
@@ -835,7 +1380,23 @@ app.whenReady().then(async () => {
   ipcMain.handle('icons:themes', (_e, extra: string[]) => themeDirs(extra ?? []))
   ipcMain.handle('icons:in', (_e, dir: string) => (path.isAbsolute(dir) ? iconsIn(dir) : []))
   ipcMain.handle('icons:set', () => iconSetPaths())
+  ipcMain.handle('icons:folderLook', async (_e, p: string) => {
+    if (typeof p !== 'string' || !path.isAbsolute(p)) return {}
+    const meta = await readMeta(p)
+    if (meta?.icon || meta?.color) return { color: meta.color, icon: meta.icon }
+    const native = await readNativeFolderLook(p)
+    return native.icon ? { icon: native.icon } : {}
+  })
   ipcMain.handle('fs:mkdir', (_e, dir: string, name: string) => engine.makeDir(dir, name))
+  ipcMain.handle('fs:createFile', (_e, dir: string, name: string, content?: string) =>
+    engine.createFile(dir, name, content)
+  )
+  ipcMain.handle('app:launchPath', () => firstPath)
+  ipcMain.handle('fs:symlink', (_e, target: string, linkPath: string) =>
+    typeof target === 'string' && typeof linkPath === 'string'
+      ? createSymlink(target, linkPath)
+      : { ok: false, error: 'invalid paths' }
+  )
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
   )
@@ -861,20 +1422,22 @@ app.whenReady().then(async () => {
   })
 
   /** Save an image from the renderer's clipboard as a normal file in the target folder. */
-  ipcMain.handle('clipboard:saveImage', async (_e, a: { dir: string; name: string; data: Uint8Array }) => {
-    const dir = a?.dir ?? ''
-    if (!path.isAbsolute(dir)) return { error: 'bad_dir' }
-    const stat = await fs.stat(dir).catch(() => null)
-    if (!stat?.isDirectory()) return { error: 'bad_dir' }
-    const data = Buffer.from(a?.data ?? [])
-    if (!data.length || data.length > 50 * 1024 * 1024) return { error: 'bad_image' }
-    const safe = /^[\w.-]{1,80}$/.test(a?.name ?? '') ? a.name : 'clipboard.png'
-    const target = await freeName(path.join(dir, safe))
-    const partial = target + '.part'
-    await fs.writeFile(partial, data)
-    await fs.rename(partial, target)
-    return { path: target }
+  /** Main-process clipboard write works even when the renderer is not focused. */
+  /** A real file list (text/uri-list) so Telegram/Dolphin paste the file, not its path. */
+  ipcMain.handle('clipboard:copyFiles', (_e, a: { paths?: string[]; cut?: boolean }) =>
+    copyFilesToClipboard((a?.paths ?? []).filter((p) => path.isAbsolute(p)), !!a?.cut)
+  )
+  ipcMain.handle('clipboard:releaseFiles', () => {
+    releaseFileClipboard()
+    return true
   })
+  ipcMain.handle('clipboard:writeText', (_e, text: string) => {
+    clipboard.writeText(String(text ?? ''))
+    return true
+  })
+  ipcMain.handle('clipboard:saveImage', (_e, a: { dir: string; name: string; data: Uint8Array }) =>
+    saveClipboardImage(a?.dir ?? '', a?.name ?? '', a?.data ?? new Uint8Array())
+  )
 
   ipcMain.handle('apps:list', (_e, p: string) => (path.isAbsolute(p) ? listApps(p) : []))
   ipcMain.handle('apps:default', (_e, p: string) => (path.isAbsolute(p) ? defaultApp(p) : null))
@@ -882,6 +1445,10 @@ app.whenReady().then(async () => {
     if (!path.isAbsolute(id) || !path.isAbsolute(p)) return { error: 'bad_path' }
     return launchApp(id, p)
   })
+  ipcMain.handle('desktop:isDefaultFileManager', () => isDefaultFileManager())
+  ipcMain.handle('desktop:setDefaultFileManager', () =>
+    setDefaultFileManager(process.execPath, app.getAppPath())
+  )
   ipcMain.handle('window:control', (_e, action: 'minimize' | 'maximize' | 'close') => {
     if (!win) return
     if (action === 'minimize') win.minimize()
@@ -894,10 +1461,29 @@ app.whenReady().then(async () => {
     return !!on
   })
   ipcMain.handle('window:getChrome', () => chrome)
+  app.on('before-quit', () => {
+    quitting = true
+  })
+  ipcMain.handle(
+    'window:setTray',
+    (
+      _e,
+      a: { minimize?: boolean; close?: boolean; show?: string; quit?: string }
+    ) => {
+      trayPrefs = singleInstanceEnabled
+        ? { minimize: a?.minimize === true, close: a?.close === true }
+        : { minimize: false, close: false }
+      ensureTray({
+        show: String(a?.show ?? 'Show window'),
+        quit: String(a?.quit ?? 'Quit')
+      })
+      return trayPrefs
+    }
+  )
   ipcMain.handle('window:setChrome', async (_e, next: Chrome) => {
     chrome = { customTitlebar: !!next.customTitlebar, rounded: !!next.rounded }
     await saveChrome(chrome)
-    // frame/transparent cannot change on a live window: rebuild it, the UI comes back from state.json
+    // frame/transparent cannot change on a live window: rebuild it, the UI comes back from the store
     const old = win
     protocol.handle('thumb', async (req) => {
     const url = new URL(req.url)
@@ -918,10 +1504,20 @@ app.whenReady().then(async () => {
     if (old && !old.isDestroyed()) old.destroy()
     return chrome
   })
+  ipcMain.handle('settings:export', async (_e, a: { prefs?: unknown }) => {
+    const st = (await readState()) ?? {}
+    return saveSettingsDialog(a?.prefs ?? st.prefs ?? {})
+  })
+  ipcMain.handle('settings:import', () => openSettingsDialog())
   ipcMain.handle('state:get', () => readState())
   ipcMain.handle('state:set', async (_e, s: unknown) => {
-    await fs.mkdir(path.dirname(stateFile()), { recursive: true })
-    await fs.writeFile(stateFile(), JSON.stringify(s, null, 2))
+    writeStore('state', s)
+    return true
+  })
+  /** Preferences are written at once: closing right after a change must not lose it. */
+  ipcMain.handle('state:setPrefs', async (_e, prefs: unknown) => {
+    const st = (await readState()) ?? {}
+    writeStore('state', { ...st, prefs })
     return true
   })
 

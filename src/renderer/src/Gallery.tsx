@@ -2,10 +2,12 @@ import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
 import { fa, mediaUrl } from './format'
+import { copyImageContent } from './clipboard'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ConfirmIcon,
+  CopyIcon,
   DupeIcon,
   MaximizeIcon,
   MinusIcon,
@@ -67,6 +69,9 @@ export function Gallery({
   const [zoom, setZoom] = useState(1)
   const [rot, setRot] = useState(0)
   const [fit, setFit] = useState(true)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [panning, setPanning] = useState(false)
+  const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const [slide, setSlide] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
   const [crop, setCrop] = useState<Rect | null>(null)
@@ -76,6 +81,7 @@ export function Gallery({
   const [busy, setBusy] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const activeThumb = useRef<HTMLButtonElement | null>(null)
+  const copyRef = useRef<() => void>(() => {})
 
   const total = images.length
   const cur = images[Math.min(at, total - 1)]
@@ -96,6 +102,7 @@ export function Gallery({
     setZoom(1)
     setRot(0)
     setFit(true)
+    setPan({ x: 0, y: 0 })
   }
 
   const go = (d: number) => {
@@ -240,7 +247,7 @@ export function Gallery({
     onChanged()
   }
 
-  const ratio = (ev: React.MouseEvent) => {
+  const ratio = (ev: React.MouseEvent | React.PointerEvent) => {
     const el = imgRef.current
     if (!el) return null
     const b = el.getBoundingClientRect()
@@ -251,23 +258,63 @@ export function Gallery({
     }
   }
 
-  const onStageDown = (ev: React.MouseEvent) => {
-    if (!cropping) return
-    const p = ratio(ev)
-    if (!p) return
-    setDrag(p)
-    setCrop({ x: p.x, y: p.y, w: 0, h: 0 })
+  const onStageDown = (ev: React.PointerEvent) => {
+    if ((ev.target as HTMLElement).closest('.gallery-nav, .gallery-bar, button, input')) return
+    if (cropping) {
+      const p = ratio(ev)
+      if (!p) return
+      setDrag(p)
+      setCrop({ x: p.x, y: p.y, w: 0, h: 0 })
+      return
+    }
+    if (ev.button !== 0 && ev.button !== 1) return
+    panStart.current = {
+      x: ev.clientX,
+      y: ev.clientY,
+      panX: pan.x,
+      panY: pan.y
+    }
+    setPanning(true)
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    } catch {}
   }
-  const onStageMove = (ev: React.MouseEvent) => {
-    if (!cropping || !drag) return
-    const p = ratio(ev)
-    if (!p) return
-    setCrop({
-      x: Math.min(drag.x, p.x),
-      y: Math.min(drag.y, p.y),
-      w: Math.abs(p.x - drag.x),
-      h: Math.abs(p.y - drag.y)
-    })
+
+  const onStageMove = (ev: React.PointerEvent) => {
+    if (cropping) {
+      if (!drag) return
+      const p = ratio(ev)
+      if (!p) return
+      setCrop({
+        x: Math.min(drag.x, p.x),
+        y: Math.min(drag.y, p.y),
+        w: Math.abs(p.x - drag.x),
+        h: Math.abs(p.y - drag.y)
+      })
+      return
+    }
+    if (panStart.current) {
+      const dx = ev.clientX - panStart.current.x
+      const dy = ev.clientY - panStart.current.y
+      setPan({
+        x: panStart.current.panX + dx,
+        y: panStart.current.panY + dy
+      })
+    }
+  }
+
+  const onStageUp = (ev: React.PointerEvent) => {
+    if (cropping) {
+      setDrag(null)
+      return
+    }
+    if (panStart.current) {
+      try {
+        (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId)
+      } catch {}
+      panStart.current = null
+      setPanning(false)
+    }
   }
 
   useEffect(() => {
@@ -286,6 +333,16 @@ export function Gallery({
         return
       }
       if (cropping || resize) return
+      const target = e.target as HTMLElement | null
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'c' || e.key === 'C') &&
+        !(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'))
+      ) {
+        e.preventDefault()
+        copyRef.current()
+        return
+      }
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
@@ -338,6 +395,18 @@ export function Gallery({
     return () => window.removeEventListener('keydown', onKey)
   }, [total, cropping, resize, onClose, onFullscreen])
 
+  /** Copy the picture itself (not its path) so it can be pasted into a chat or document. */
+  const copyImage = async () => {
+    if (!cur) return
+    try {
+      await copyImageContent(cur.path, edit?.url)
+      onSaved(t('تصویر در کلیپ‌بورد کپی شد'))
+    } catch (e) {
+      onSaved(t('کپی تصویر نشد — {error}', { error: e instanceof Error ? e.message : String(e) }))
+    }
+  }
+  copyRef.current = () => void copyImage()
+
   const src = edit?.url ?? (cur ? mediaUrl(cur.path) : '')
 
   return (
@@ -351,10 +420,13 @@ export function Gallery({
         </span>
         {edit && (
           <span className="pill edit">
-            ویرایش‌شده {fa(edit.w)}×{fa(edit.h)}
+            {t('ویرایش‌شده')} {fa(edit.w)}×{fa(edit.h)}
           </span>
         )}
         <span className="spacer" />
+        <button className="tb" title={t('کپی تصویر در کلیپ‌بورد (Ctrl+C)')} onClick={() => void copyImage()}>
+          <CopyIcon />
+        </button>
         <button className="tb" title={t(t('چرخش به راست (R)'))} onClick={() => void rotate(1)}>
           <RotateIcon />
         </button>
@@ -425,14 +497,14 @@ export function Gallery({
 
       {cropping && (
         <div className="gallery-bar">
-          روی تصویر بکش تا محدودهٔ برش انتخاب شود
+          {t('روی تصویر بکش تا محدودهٔ برش انتخاب شود')}
           <span className="spacer" />
           <button
             className="btn"
             disabled={!crop || crop.w < 0.01 || crop.h < 0.01}
             onClick={() => void applyCrop()}
           >
-            برش بده
+            {t('برش بده')}
           </button>
           <button
             className="btn ghost"
@@ -441,37 +513,42 @@ export function Gallery({
               setCrop(null)
             }}
           >
-            انصراف
+            {t('انصراف')}
           </button>
         </div>
       )}
 
       {edit && !cropping && !resize && (
         <div className="gallery-bar">
-          ویرایش‌ها فقط در حافظه‌اند
+          {t('ویرایش‌ها فقط در حافظه‌اند')}
           <span className="spacer" />
           <button className="btn" disabled={busy} onClick={() => void save('copy')}>
-            ذخیره به‌عنوان کپی
+            {t('ذخیره به‌عنوان کپی')}
           </button>
           <button className="btn ghost" disabled={busy} onClick={() => void save('overwrite')}>
-            جایگزینی فایل اصلی
+            {t('جایگزینی فایل اصلی')}
           </button>
           <button className="btn ghost" onClick={() => setEdit(null)}>
-            دور انداختن
+            {t('دور انداختن')}
           </button>
         </div>
       )}
 
       <div
-        className={'gallery-stage' + (cropping ? ' cropping' : '')}
-        onMouseDown={onStageDown}
-        onMouseMove={onStageMove}
-        onMouseUp={() => setDrag(null)}
+        className={
+          'gallery-stage' +
+          (cropping ? ' cropping' : '') +
+          (panning ? ' panning' : !cropping && (!fit || zoom > 1 || pan.x !== 0 || pan.y !== 0) ? ' can-pan' : '')
+        }
+        onPointerDown={onStageDown}
+        onPointerMove={onStageMove}
+        onPointerUp={onStageUp}
+        onPointerCancel={onStageUp}
         onWheel={(e) => {
           if (cropping) return
           e.preventDefault()
           setFit(false)
-          setZoom((z) => Math.min(8, Math.max(0.1, z * (e.deltaY < 0 ? 1.1 : 0.9))))
+          setZoom((z) => Math.min(8, Math.max(0.1, z * (e.deltaY < 0 ? 1.15 : 0.85))))
         }}
       >
         <button className="gallery-nav prev" title={t(t('قبلی (←)'))} onClick={() => go(-1)}>
@@ -487,14 +564,26 @@ export function Gallery({
               draggable={false}
               style={
                 fit
-                  ? { maxWidth: '100%', maxHeight: '100%' }
+                  ? {
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rot}deg)`
+                    }
                   : {
                       maxWidth: 'none',
                       maxHeight: 'none',
-                      transform: `scale(${zoom}) rotate(${rot}deg)`
+                      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rot}deg)`
                     }
               }
-              onDoubleClick={() => !cropping && (setFit((f) => !f), setZoom(1))}
+              onDoubleClick={() => {
+                if (cropping) return
+                if (!fit || zoom !== 1 || pan.x !== 0 || pan.y !== 0) {
+                  resetView()
+                } else {
+                  setFit(false)
+                  setZoom(2)
+                }
+              }}
             />
             {cropping && crop && (
               <div
@@ -517,7 +606,7 @@ export function Gallery({
       {resize && (
         <div className="gallery-bar">
           <label className="inline-field">
-            عرض
+            {t('عرض')}
             <input
               dir="ltr"
               type="number"
@@ -531,7 +620,7 @@ export function Gallery({
             />
           </label>
           <label className="inline-field">
-            ارتفاع
+            {t('ارتفاع')}
             <input
               dir="ltr"
               type="number"
@@ -547,10 +636,10 @@ export function Gallery({
           <span className="hint">{t(t('نسبت حفظ می‌شود'))}</span>
           <span className="spacer" />
           <button className="btn" onClick={() => void applyResize()}>
-            اعمال
+            {t('اعمال')}
           </button>
           <button className="btn ghost" onClick={() => setResize(null)}>
-            انصراف
+            {t('انصراف')}
           </button>
         </div>
       )}
@@ -576,9 +665,9 @@ export function Gallery({
           ))}
           {total > strip.length && (
             <span className="hint">
-              {stripFrom > 0 ? `${fa(stripFrom)} تصویر قبل… · ` : ''}
+              {stripFrom > 0 ? t('{n} تصویر قبل… ·', { n: fa(stripFrom) }) : ''}
               {total - stripFrom - strip.length > 0
-                ? `و ${fa(total - stripFrom - strip.length)} تصویر دیگر…`
+                ? t('و {n} تصویر دیگر…', { n: fa(total - stripFrom - strip.length) })
                 : ''}
             </span>
           )}

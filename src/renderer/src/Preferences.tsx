@@ -1,11 +1,30 @@
 import { t } from './i18n.ts'
 import { useEffect, useState } from 'react'
-import { COLUMNS, DEFAULT_TOOLBAR, type ColId, type Prefs } from './prefs'
+import { api, type SearchProgress } from './api'
+import { COLUMNS, DEFAULT_TOOLBAR, cleanFontFamily, fontStack, mergePrefs, type ColId, type CustomCommand, type Prefs } from './prefs'
 import { fa } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
+import { COLOR_THEMES } from './themes'
+
+const FONT_SUGGESTIONS = [
+  'Vazirmatn',
+  'Noto Sans',
+  'Noto Sans Arabic',
+  'DejaVu Sans',
+  'Ubuntu',
+  'Cantarell',
+  'Inter',
+  'Tahoma',
+  'Segoe UI',
+  'SF Pro Text',
+  'Arial',
+  'system-ui',
+  'serif',
+  'monospace'
+]
 
 type Page =
   | 'appearance'
@@ -17,27 +36,30 @@ type Page =
   | 'agents'
   | 'search'
   | 'filetypes'
+  | 'defaultApps'
   | 'archive'
   | 'transfer'
   | 'operations'
   | 'launch'
   | 'advanced'
 
+/** Persian stays the key here; the nav translates at render so a language switch applies at once. */
 const PAGES: { id: Page; label: string }[] = [
-  { id: 'appearance', label: t('ظاهر و رنگ') },
-  { id: 'display', label: t('نمایش فایل‌ها') },
-  { id: 'columns', label: t('ستون‌ها') },
-  { id: 'toolbar', label: t('نوار ابزار') },
-  { id: 'keys', label: t('کلید میان‌بر') },
-  { id: 'layout', label: t('پنجره و چیدمان') },
-  { id: 'agents', label: t('ایجنت‌ها (MCP)') },
-  { id: 'search', label: t('جست‌وجو') },
-  { id: 'filetypes', label: t('انواع فایل') },
-  { id: 'archive', label: t('بایگانی و گالری') },
-  { id: 'transfer', label: t('انتقال') },
-  { id: 'operations', label: t('عملیات فایل') },
-  { id: 'launch', label: t('راه‌اندازی') },
-  { id: 'advanced', label: t('پیشرفته') }
+  { id: 'appearance', label: 'ظاهر و رنگ' },
+  { id: 'display', label: 'نمایش فایل‌ها' },
+  { id: 'columns', label: 'ستون‌ها' },
+  { id: 'toolbar', label: 'نوار ابزار' },
+  { id: 'keys', label: 'کلید میان‌بر' },
+  { id: 'layout', label: 'پنجره و چیدمان' },
+  { id: 'agents', label: 'ایجنت‌ها (MCP)' },
+  { id: 'search', label: 'جست‌وجو' },
+  { id: 'filetypes', label: 'انواع فایل' },
+  { id: 'defaultApps', label: 'برنامه‌های پیش‌فرض' },
+  { id: 'archive', label: 'بایگانی و گالری' },
+  { id: 'transfer', label: 'انتقال' },
+  { id: 'operations', label: 'عملیات فایل' },
+  { id: 'launch', label: 'راه‌اندازی' },
+  { id: 'advanced', label: 'پیشرفته' }
 ]
 
 type Props = {
@@ -45,15 +67,163 @@ type Props = {
   palette: { id: string; name: string; color: string }[]
   /** jump straight to a page (the column menu opens «columns») */
   openPage?: Page
+  searchRoots: string[]
   onChange(patch: Partial<Prefs>): void
   onClose(): void
 }
 
-export function Preferences({ prefs, palette, openPage, onChange, onClose }: Props) {
+export function Preferences({ prefs, palette, openPage, searchRoots, onChange, onClose }: Props) {
   const [extInput, setExtInput] = useState('')
+  const [appExt, setAppExt] = useState('')
+  const [appIdDraft, setAppIdDraft] = useState('')
+  const [appChoices, setAppChoices] = useState<{ id: string; name: string }[]>([])
+  const [osDefault, setOsDefault] = useState('')
   const [newRoot, setNewRoot] = useState('')
   const [page, setPage] = useState<Page>(openPage ?? 'appearance')
   const [capturing, setCapturing] = useState<string | null>(null)
+  const [isDefault, setIsDefault] = useState<boolean | null>(null)
+  const [settingDefault, setSettingDefault] = useState(false)
+  const [indexSt, setIndexSt] = useState<SearchProgress | null>(null)
+  const [ioBusy, setIoBusy] = useState(false)
+  const [settingsMsg, setSettingsMsg] = useState('')
+  const [cmdIdDraft, setCmdIdDraft] = useState<string | null>(null)
+  const [cmdLabel, setCmdLabel] = useState('')
+  const [cmdPattern, setCmdPattern] = useState('')
+  const [cmdType, setCmdType] = useState<'ext' | 'folder'>('ext')
+  const [cmdLine, setCmdLine] = useState('')
+
+  const handleSaveCmd = () => {
+    const label = cmdLabel.trim()
+    const pattern = (cmdType === 'folder' ? 'folder' : cmdPattern.trim()).toLowerCase().replace(/^\./, '')
+    const command = cmdLine.trim()
+    if (!label || !pattern || !command) return
+
+    const list = [...(prefs.customCommands ?? [])]
+    if (cmdIdDraft) {
+      const idx = list.findIndex((c) => c.id === cmdIdDraft)
+      if (idx >= 0) {
+        list[idx] = { id: cmdIdDraft, label, pattern, command }
+      } else {
+        list.push({ id: cmdIdDraft, label, pattern, command })
+      }
+    } else {
+      list.push({
+        id: `cmd_${Date.now()}`,
+        label,
+        pattern,
+        command
+      })
+    }
+    onChange({ customCommands: list })
+    setCmdIdDraft(null)
+    setCmdLabel('')
+    setCmdPattern('')
+    setCmdLine('')
+  }
+
+  const handleEditCmd = (c: CustomCommand) => {
+    setCmdIdDraft(c.id)
+    setCmdLabel(c.label)
+    setCmdLine(c.command)
+    if (c.pattern === 'folder' || c.pattern === 'dir' || c.pattern === 'directory' || c.pattern === 'پوشه') {
+      setCmdType('folder')
+      setCmdPattern('folder')
+    } else {
+      setCmdType('ext')
+      setCmdPattern(c.pattern)
+    }
+  }
+
+  const handleDeleteCmd = (id: string) => {
+    const list = (prefs.customCommands ?? []).filter((c) => c.id !== id)
+    onChange({ customCommands: list })
+    if (cmdIdDraft === id) {
+      setCmdIdDraft(null)
+      setCmdLabel('')
+      setCmdPattern('')
+      setCmdLine('')
+    }
+  }
+
+  // the index page shows the live run, so «is it indexing?» is answerable without guessing
+  useEffect(() => {
+    if (page !== 'search') return
+    let live = true
+    void api.search
+      .status()
+      .then((s) => {
+        if (live) setIndexSt(s)
+      })
+      .catch(() => undefined)
+    const off = api.search.onProgress((p) => {
+      if (live) setIndexSt((cur) => ({ ...cur, ...p }) as SearchProgress)
+    })
+    return () => {
+      live = false
+      off()
+    }
+  }, [page])
+
+  const indexAge = (ts: number): string => {
+    if (!ts) return t('هنوز ایندکس نشده')
+    const mins = Math.round((Date.now() - ts) / 60000)
+    return mins < 1 ? t('همین حالا') : `${fa(mins)} ${t('دقیقه پیش')}`
+  }
+
+  const exportSettings = async () => {
+    setIoBusy(true)
+    setSettingsMsg('')
+    const r = await api.settings.export(prefs)
+    setIoBusy(false)
+    if ('canceled' in r) return
+    setSettingsMsg('error' in r ? r.error : t('تنظیمات در {path} ذخیره شد', { path: r.path }))
+  }
+
+  const importSettings = async () => {
+    setIoBusy(true)
+    setSettingsMsg('')
+    const r = await api.settings.import()
+    setIoBusy(false)
+    if ('canceled' in r) return
+    if ('error' in r) {
+      setSettingsMsg(r.error)
+      return
+    }
+    onChange(mergePrefs(r.prefs as Partial<Prefs>))
+    setSettingsMsg(t('تنظیمات وارد شد'))
+  }
+
+  useEffect(() => {
+    if (page === 'launch') {
+      void api.isDefaultFileManager().then(setIsDefault).catch(() => setIsDefault(false))
+    }
+  }, [page])
+
+  useEffect(() => {
+    const ext = appExt.trim().toLowerCase().replace(/^\./, '')
+    if (!ext) {
+      setAppChoices([])
+      setOsDefault('')
+      return
+    }
+    let live = true
+    const probe = `/mfm-probe.${ext}`
+    void api.apps
+      .list(probe)
+      .then((list) => {
+        if (live) setAppChoices(list.map((a) => ({ id: a.id, name: a.name })))
+      })
+      .catch(() => undefined)
+    void api.apps
+      .default(probe)
+      .then((d) => {
+        if (live) setOsDefault(d?.name ?? '')
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [appExt])
 
   // while capturing, the next keydown becomes the accelerator for that command
   useEffect(() => {
@@ -86,12 +256,18 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
     </div>
   )
 
-  const seg = <T extends string>(value: T, options: { v: T; label: string }[], key: keyof Prefs) => (
+  const seg = <T extends string | number>(
+    value: T,
+    options: { v: T; label: string }[],
+    key: keyof Prefs,
+    disabled = false
+  ) => (
     <div className="seg">
       {options.map((o) => (
         <button
-          key={o.v}
+          key={String(o.v)}
           className={value === o.v ? 'on' : ''}
+          disabled={disabled}
           onClick={() => onChange({ [key]: o.v } as Partial<Prefs>)}
         >
           {o.label}
@@ -121,7 +297,7 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
               className={'prefs-tab' + (page === p.id ? ' on' : '')}
               onClick={() => setPage(p.id)}
             >
-              {p.label}
+              {t(p.label)}
             </button>
           ))}
           <span className="spacer" />
@@ -131,6 +307,18 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
         <section className="prefs-body">
           {page === 'appearance' && (
             <>
+              {row(
+                t('زبان'),
+                t('فوراً اعمال می‌شود؛ کل رابط و جهت چیدمان هم عوض می‌شود'),
+                seg(
+                  prefs.lang,
+                  [
+                    { v: 'en', label: t('انگلیسی') },
+                    { v: 'fa', label: t('فارسی') }
+                  ],
+                  'lang'
+                )
+              )}
               {row(
                 t('تم'),
                 t('«سیستم» روشن/تیرهٔ سیستم‌عامل را زنده دنبال می‌کند'),
@@ -144,6 +332,53 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                   'theme'
                 )
               )}
+              {row(
+                t('تم رنگی'),
+                t('رنگ سطوح و لهجهٔ برنامه؛ روی حالت روشن و تیره هر دو اعمال می‌شود'),
+                <div className="theme-grid">
+                  {COLOR_THEMES.map((ct) => (
+                    <button
+                      key={ct.id}
+                      className={'theme-chip' + (prefs.colorTheme === ct.id ? ' on' : '')}
+                      title={t(ct.label)}
+                      onClick={() => onChange({ colorTheme: ct.id })}
+                    >
+                      <span
+                        className="theme-dot"
+                        style={{
+                          background: `linear-gradient(135deg, ${ct.accent} 0 52%, ${ct.surface} 52% 100%)`
+                        }}
+                      />
+                      {t(ct.label)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {row(
+                t('فونت رابط کاربری'),
+                t('نام فونت نصب‌شده؛ خالی = وزیرمتن'),
+                <div className="font-row">
+                  <input
+                    className="pref-input"
+                    dir="ltr"
+                    list="ui-font-suggestions"
+                    placeholder="Vazirmatn"
+                    value={prefs.fontFamily}
+                    onChange={(e) => onChange({ fontFamily: cleanFontFamily(e.target.value) })}
+                  />
+                  <button className="btn ghost mini" onClick={() => onChange({ fontFamily: '' })}>
+                    {t('پیش‌فرض')}
+                  </button>
+                  <datalist id="ui-font-suggestions">
+                    {FONT_SUGGESTIONS.map((f) => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+              <div className="font-preview" dir="auto" style={{ fontFamily: fontStack(prefs.fontFamily) }}>
+                {t('نمونهٔ متن')} · Aa 0123
+              </div>
               {row(
                 t('تایتل‌بار'),
                 t('سیستم = قاب سیستم‌عامل، برنامه = نوار خود اپ'),
@@ -160,6 +395,34 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                     onChange={(e) => onChange({ rounded: e.target.checked })}
                   />
                 </label>
+              )}
+              {row(
+                t('دکمه‌های پنجره'),
+                prefs.titlebar === 'system' ? t('فقط با تایتل‌بار برنامه ممکن است') : null,
+                seg(
+                  prefs.titlebarButtons,
+                  [
+                    { v: 'default', label: t('پیش‌فرض') },
+                    { v: 'mcmojave', label: t('مک (McMojave)') },
+                    { v: 'windows', label: t('ویندوز') },
+                    { v: 'minimal', label: t('مینیمال') }
+                  ],
+                  'titlebarButtons',
+                  prefs.titlebar === 'system'
+                )
+              )}
+              {row(
+                t('سمت دکمه‌های پنجره'),
+                prefs.titlebar === 'system' ? t('فقط با تایتل‌بار برنامه ممکن است') : null,
+                seg(
+                  prefs.titlebarSide,
+                  [
+                    { v: 'left', label: t('چپ') },
+                    { v: 'right', label: t('راست') }
+                  ],
+                  'titlebarSide',
+                  prefs.titlebar === 'system'
+                )
               )}
             </>
           )}
@@ -205,19 +468,26 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
               {row(t('پوشه‌ها اول فهرست'), t('مانند Directory Opus و FreeCommander'), check(prefs.foldersFirst, 'foldersFirst'))}
               {row(
                 t('آیکون فایل‌ها و پوشه‌ها'),
-                t('آیکونست سیستم (Pure) یا گلیف‌های خطی خود برنامه'),
+                t('Pure همراه برنامه پیش‌فرض است؛ برای آیکون‌های خود سیستم‌عامل «آیکون‌ست سیستم» را بزن'),
                 seg(
                   prefs.fileIcons,
                   [
-                    { v: 'theme', label: t('آیکونست سیستم') },
+                    { v: 'pure', label: t('Pure همراه برنامه') },
+                    { v: 'system', label: t('آیکون‌ست سیستم') },
                     { v: 'line', label: t('خطی') }
                   ],
                   'fileIcons'
                 )
-              )}              {row(
+              )}
+              {row(
                 t('نمایش فایل‌های مخفی'),
                 t('پوشه‌هایی که از فهرست پنهان شده‌اند هم با این گزینه دیده می‌شوند'),
                 check(prefs.showHidden, 'showHidden')
+              )}
+              {row(
+                t('نمایش نشان پیوند نمادین'),
+                t('نمایش آیکون پیوند در انتهای نام فایل‌ها و پوشه‌های دارای Symbolic Link'),
+                check(prefs.showSymlink, 'showSymlink')
               )}
               {row(
                 t('قالب اندازه'),
@@ -472,11 +742,31 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                 null,
                 seg(prefs.sidebar, [{ v: 'docked', label: t('چسبیده') }, { v: 'float', label: t('شناور') }], 'sidebar')
               )}
-              {row(t('نمایش سایدبار'), null, check(prefs.sidebarOpen, 'sidebarOpen'))}
+              {row(
+                t('سطح رنگ تم سایدبار'),
+                t('تنظیم میزان غلظت رنگ تم روی سایدبار در ۶ سطح (۱ = کمترین رنگ، ۶ = پررنگ‌ترین)'),
+                seg(
+                  prefs.sidebarTone,
+                  [
+                    { v: 1, label: fa(1) },
+                    { v: 2, label: fa(2) },
+                    { v: 3, label: fa(3) },
+                    { v: 4, label: fa(4) },
+                    { v: 5, label: fa(5) },
+                    { v: 6, label: fa(6) }
+                  ],
+                  'sidebarTone'
+                )
+              )}
               {row(
                 t('پنهان‌کردن نوار تب با یک تب'),
-                t('وقتی پنجره فقط یک تب دارد، نوار بالای فهرست حذف می‌شود'),
+                t('وقتی پنل فقط یک تب دارد، نوار بالای فهرست حذف می‌شود؛ در دوپنجره اگر یک طرف چند تب داشته باشد، نوار هر دو طرف می‌ماند'),
                 check(prefs.hideSingleTab, 'hideSingleTab')
+              )}
+              {row(
+                t('آیکون در تب‌ها'),
+                t('آیکون خود پوشهٔ هر تب کنار نامش نمایش داده شود'),
+                check(prefs.tabIcons, 'tabIcons')
               )}
             </>
           )}
@@ -487,9 +777,43 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
 
           {page === 'search' && (
             <>
-              <div className="hint">
-                {t('ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents, Downloads, Desktop, Pictures, Music, Videos). جست‌وجو با Ctrl+Shift+K.')}
+              <div className="pref-row">
+                <div className="pref-label">{t('وضعیت ایندکس')}</div>
+                <div className="pref-value dim" dir="auto">
+                  {indexSt?.running
+                    ? t('در حال ایندکس: {scanned} بررسی‌شده · پوشهٔ {done}/{total}', {
+                        scanned: fa(indexSt.scanned),
+                        done: fa(indexSt.done),
+                        total: fa(indexSt.total)
+                      })
+                    : indexSt?.error
+                      ? t('ایندکس متوقف شد: {error}', { error: indexSt.error })
+                      : indexSt?.files
+                        ? t('{files} فایل · {dirs} پوشه · آخرین ایندکس {age}', {
+                            files: fa(indexSt.files),
+                            dirs: fa(indexSt.dirs),
+                            age: indexAge(indexSt.lastIndex)
+                          })
+                        : t('هنوز ایندکس نشده')}
+                </div>
+                <button
+                  className="btn ghost"
+                  disabled={!!indexSt?.running}
+                  onClick={() => void api.search.index({ roots: searchRoots, exclude: prefs.searchExclude })}
+                >
+                  {t('به‌روزرسانی ایندکس')}
+                </button>
               </div>
+              <div className="hint">
+                {t('ایندکس روی این پوشه‌ها ساخته می‌شود (خالی = پوشه‌های پیش‌فرض سیستم: Documents, Downloads, Desktop, Pictures, Music, Videos). جست‌وجو با {key} یا دو بار Shift.', {
+                  key: prefs.shortcuts.searchIndex || 'Ctrl+K'
+                })}
+              </div>
+              {row(
+                t('باز کردن جست‌وجوی گلوبال با دو بار Shift'),
+                t('برای عوض کردن کلید، تنظیمات → کلید میان‌بر → جست‌وجوی گلوبال'),
+                check(prefs.doubleShiftSearch, 'doubleShiftSearch')
+              )}
               <div className="preset-list">
                 {prefs.searchRoots.length === 0 && (
                   <div className="dim">{t(t('پوشهٔ پیش‌فرض سیستم استفاده می‌شود'))}</div>
@@ -597,6 +921,201 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                     </button>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {page === 'defaultApps' && (
+            <>
+              <div className="hint">
+                {t(
+                  'برای هر پسوند مشخص کن کدام برنامه باز شود؛ بدون تنظیم، برنامهٔ پیش‌فرض سیستم استفاده می‌شود.'
+                )}
+              </div>
+              {Object.entries(prefs.defaultApps)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([ext, app]) => (
+                  <div className="pref-row" key={ext}>
+                    <div className="pref-label">
+                      <span dir="ltr">.{ext}</span>
+                      <span className="hint">{app.name}</span>
+                    </div>
+                    <div className="pref-control">
+                      <button
+                        className="btn ghost mini"
+                        onClick={() => {
+                          setAppExt(ext)
+                          setAppIdDraft(app.id)
+                        }}
+                      >
+                        {t('تغییر')}
+                      </button>
+                      <button
+                        className="btn ghost mini"
+                        onClick={() => {
+                          const next = { ...prefs.defaultApps }
+                          delete next[ext]
+                          onChange({ defaultApps: next })
+                        }}
+                      >
+                        {t('حذف')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              <div className="preset-save">
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  placeholder={t('پسوند')}
+                  value={appExt}
+                  onChange={(e) => {
+                    setAppExt(e.target.value)
+                    setAppIdDraft('')
+                  }}
+                />
+                <select
+                  className="pref-input"
+                  value={appIdDraft}
+                  onChange={(e) => setAppIdDraft(e.target.value)}
+                >
+                  <option value="">{t('انتخاب برنامه…')}</option>
+                  {(appIdDraft && !appChoices.some((a) => a.id === appIdDraft)
+                    ? [{ id: appIdDraft, name: prefs.defaultApps[appExt]?.name ?? appIdDraft }, ...appChoices]
+                    : appChoices
+                  ).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn"
+                  disabled={!appExt.trim() || !appIdDraft}
+                  onClick={() => {
+                    const ext = appExt.trim().toLowerCase().replace(/^\./, '')
+                    if (!/^[a-z0-9._+-]{1,24}$/.test(ext) || !appIdDraft) return
+                    const app = appChoices.find((a) => a.id === appIdDraft)
+                    onChange({
+                      defaultApps: {
+                        ...prefs.defaultApps,
+                        [ext]: { id: appIdDraft, name: app?.name ?? appIdDraft }
+                      }
+                    })
+                    setAppExt('')
+                    setAppIdDraft('')
+                  }}
+                >
+                  {t('ذخیره')}
+                </button>
+              </div>
+              <div className="hint">
+                {osDefault
+                  ? t('پیش‌فرض سیستم: {name}', { name: osDefault })
+                  : appExt.trim()
+                    ? t('برنامه‌ای برای این پسوند پیدا نشد')
+                    : t('بدون نقطه؛ مثلاً png')}
+              </div>
+
+              <div className="pref-section-title" style={{ marginTop: 24 }}>
+                {t('دستورهای سفارشی (Open with)')}
+              </div>
+              <div className="hint">
+                {t(
+                  'برای پسوندها یا پوشه‌ها دستور سفارشی تعریف کن که در پس‌زمینه اجرا شود. %f با مسیر فایل یا پوشه جایگزین می‌شود.'
+                )}
+              </div>
+              {(prefs.customCommands ?? []).map((cmd) => (
+                <div className="pref-row" key={cmd.id}>
+                  <div className="pref-label">
+                    <span className="badge" dir="ltr" style={{ fontWeight: 600 }}>
+                      {cmd.pattern === 'folder' ? t('پوشه') : cmd.pattern === '*' ? t('همه') : `.${cmd.pattern}`}
+                    </span>
+                    <span>{cmd.label}</span>
+                    <span className="hint" dir="ltr" style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                      {cmd.command}
+                    </span>
+                  </div>
+                  <div className="pref-control">
+                    <button className="btn ghost mini" onClick={() => handleEditCmd(cmd)}>
+                      {t('ویرایش')}
+                    </button>
+                    <button className="btn ghost mini" onClick={() => handleDeleteCmd(cmd.id)}>
+                      {t('حذف')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="preset-save" style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <button
+                    type="button"
+                    className={'btn mini' + (cmdType === 'ext' ? ' primary' : ' ghost')}
+                    onClick={() => setCmdType('ext')}
+                  >
+                    {t('پسوند فایل')}
+                  </button>
+                  <button
+                    type="button"
+                    className={'btn mini' + (cmdType === 'folder' ? ' primary' : ' ghost')}
+                    onClick={() => {
+                      setCmdType('folder')
+                      setCmdPattern('folder')
+                    }}
+                  >
+                    {t('پوشه')}
+                  </button>
+                </div>
+                <input
+                  className="pref-input"
+                  style={{ minWidth: 160 }}
+                  placeholder={t('عنوان در منو (مثلاً باز کردن در کد)')}
+                  value={cmdLabel}
+                  onChange={(e) => setCmdLabel(e.target.value)}
+                />
+                {cmdType === 'ext' && (
+                  <input
+                    className="pref-input"
+                    dir="ltr"
+                    style={{ width: 110 }}
+                    placeholder={t('پسوند (مثلاً pdf)')}
+                    value={cmdPattern}
+                    onChange={(e) => setCmdPattern(e.target.value)}
+                  />
+                )}
+                <input
+                  className="pref-input"
+                  dir="ltr"
+                  style={{ flex: 1, minWidth: 180 }}
+                  placeholder={t('دستور با %f (مثلاً code %f)')}
+                  value={cmdLine}
+                  onChange={(e) => setCmdLine(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!cmdLabel.trim() || !cmdLine.trim() || (cmdType === 'ext' && !cmdPattern.trim())}
+                  onClick={handleSaveCmd}
+                >
+                  {cmdIdDraft ? t('به‌روزرسانی') : t('افزودن')}
+                </button>
+                {cmdIdDraft && (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      setCmdIdDraft(null)
+                      setCmdLabel('')
+                      setCmdPattern('')
+                      setCmdLine('')
+                    }}
+                  >
+                    {t('انصراف')}
+                  </button>
+                )}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {t('راهنما: %f با مسیر فایل یا پوشه جایگزین می‌شود. مثال: code %f یا subl %f یا python %f')}
               </div>
             </>
           )}
@@ -767,25 +1286,102 @@ export function Preferences({ prefs, palette, openPage, onChange, onClose }: Pro
                 check(prefs.singleInstance, 'singleInstance')
               )}
               {row(
+                t('شروع برنامه'),
+                t('نشست قبلی را برگردان یا همیشه یک پوشه را باز کن'),
+                seg(
+                  prefs.startup,
+                  [
+                    { v: 'session', label: t('نشست قبلی') },
+                    { v: 'folder', label: t('پوشهٔ مشخص') }
+                  ],
+                  'startup'
+                )
+              )}
+              {row(
                 t('پوشهٔ شروع'),
-                t('خالی = همان نشست قبلی'),
+                prefs.startup === 'session'
+                  ? t('در حالت «نشست قبلی» استفاده نمی‌شود')
+                  : t('خالی = پوشهٔ خانه'),
                 <input
                   className="pref-input"
                   dir="ltr"
                   value={prefs.startFolder}
                   placeholder="/home/…"
+                  disabled={prefs.startup === 'session'}
                   onChange={(e) => onChange({ startFolder: e.target.value })}
                 />
+              )}
+              {row(
+                t('کوچک‌کردن به سینی'),
+                prefs.singleInstance
+                  ? t('پنجره پنهان می‌شود و آیکون در سینی می‌ماند')
+                  : t('فقط با تک‌نمونه در دسترس است'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.minimizeToTray}
+                    disabled={!prefs.singleInstance}
+                    onChange={(e) => onChange({ minimizeToTray: e.target.checked })}
+                  />
+                </label>
+              )}
+              {row(
+                t('بستن به سینی'),
+                prefs.singleInstance
+                  ? t('بستن پنجره برنامه را نمی‌بندد؛ از منوی سینی خارج شو')
+                  : t('فقط با تک‌نمونه در دسترس است'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.closeToTray}
+                    disabled={!prefs.singleInstance}
+                    onChange={(e) => onChange({ closeToTray: e.target.checked })}
+                  />
+                </label>
+              )}
+              {row(
+                t('مدیر فایل پیش‌فرض سیستم'),
+                isDefault
+                  ? t('این برنامه مدیر فایل پیش‌فرض سیستم برای باز کردن پوشه‌ها است')
+                  : t('باز کردن پوشه‌ها از برنامه‌های دیگر در این برنامه انجام شود'),
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={isDefault === true || settingDefault}
+                  onClick={async () => {
+                    setSettingDefault(true)
+                    try {
+                      const res = await api.setDefaultFileManager()
+                      if (res.ok) setIsDefault(true)
+                    } finally {
+                      setSettingDefault(false)
+                    }
+                  }}
+                >
+                  {isDefault ? t('پیش‌فرض است') : settingDefault ? t('در حال تنظیم…') : t('تنظیم به عنوان پیش‌فرض')}
+                </button>
               )}
             </>
           )}
 
           {page === 'advanced' && (
             <>
+              <div className="pref-row">
+                <div className="pref-label">{t('تنظیمات')}</div>
+                <div className="pref-value">
+                  <button className="btn" disabled={ioBusy} onClick={() => void exportSettings()}>
+                    {t('خروجی تنظیمات…')}
+                  </button>
+                  <button className="btn ghost" disabled={ioBusy} onClick={() => void importSettings()}>
+                    {t('ورود تنظیمات…')}
+                  </button>
+                </div>
+              </div>
+              {settingsMsg && <div className="hint" dir="auto">{settingsMsg}</div>}
               <div className="hint">
                 {t('پک‌های آیکون افزوده‌شده:')} {prefs.iconDirs.length ? prefs.iconDirs.join(' · ') : t('هیچ')}
               </div>
-              <div className="hint">{t('تنظیمات در')} <code>state.json</code> {t('کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در فایل')} <code>.mfm.json</code> {t('داخل خود پوشه.')}</div>
+              <div className="hint">{t('تنظیمات در')} <code>search.db</code> {t('کنار پروفایل برنامه ذخیره می‌شود؛ رنگ و آیکون هر پوشه در فایل')} <code>.mfm.json</code> {t('داخل خود پوشه.')}</div>
               <div className="hint">
                 {t('دسته‌های بعدی طبق نقشهٔ راه (docs/PREFERENCES.md): ستون‌های سفارشی، نوار ابزار و کلیدها، فیلتر و مرتب‌سازی، تب‌ها، درخت پوشه، بایگانی، شبکه.')}
               </div>

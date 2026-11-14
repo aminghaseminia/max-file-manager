@@ -1,7 +1,16 @@
 import { getLang, t } from './i18n.ts'
 import type { Entry } from './api.ts'
 
-export type SortKey = 'name' | 'size' | 'mtime' | 'ext'
+export type SortKey =
+  | 'name'
+  | 'size'
+  | 'mtime'
+  | 'ext'
+  | 'mode'
+  | 'owner'
+  | 'links'
+  | 'dims'
+  | 'rating'
 
 const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹'
 
@@ -128,13 +137,29 @@ export function crumbs(p: string): Crumb[] {
 const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Folders always first (Directory Opus default), then the chosen column. */
-export function sortEntries(entries: Entry[], key: SortKey, asc: boolean, foldersFirst = true): Entry[] {
+export function sortEntries(
+  entries: Entry[],
+  key: SortKey,
+  asc: boolean,
+  foldersFirst = true,
+  ratings?: Record<string, number>
+): Entry[] {
   const dir = asc ? 1 : -1
+  const num = (x: number | undefined) => x ?? 0
   return [...entries].sort((a, b) => {
     if (foldersFirst && a.dir !== b.dir) return a.dir ? -1 : 1
     if (key === 'size' && a.size !== b.size) return (a.size - b.size) * dir
     if (key === 'mtime' && a.mtime !== b.mtime) return (a.mtime - b.mtime) * dir
     if (key === 'ext' && a.ext !== b.ext) return COLLATOR.compare(a.ext, b.ext) * dir
+    if (key === 'mode' && num(a.mode) !== num(b.mode)) return (num(a.mode) - num(b.mode)) * dir
+    if (key === 'owner' && num(a.uid) !== num(b.uid)) return (num(a.uid) - num(b.uid)) * dir
+    if (key === 'links' && num(a.nlink) !== num(b.nlink)) return (num(a.nlink) - num(b.nlink)) * dir
+    if (key === 'dims' && num(a.w) * num(a.h) !== num(b.w) * num(b.h)) {
+      return (num(a.w) * num(a.h) - num(b.w) * num(b.h)) * dir
+    }
+    if (key === 'rating' && num(ratings?.[a.name]) !== num(ratings?.[b.name])) {
+      return (num(ratings?.[a.name]) - num(ratings?.[b.name])) * dir
+    }
     return COLLATOR.compare(a.name, b.name) * (key === 'name' ? dir : 1)
   })
 }
@@ -162,7 +187,9 @@ export function orderEntries(
         return e.name.toLowerCase().includes(q)
       })
     : entries
-  const sorted = sortEntries(kept, key, asc, foldersFirst)
+  // folders first is meaningful for name and size; date/owner/… interleave everything
+  const groupFolders = key === 'name' || key === 'size'
+  const sorted = sortEntries(kept, key, asc, groupFolders ? foldersFirst : false, ratings)
   if (!pins || !pins.size) return sorted
   // pinned names float to the very top, keeping the sort order among themselves
   const pinned = sorted.filter((e) => pins.has(e.name))
@@ -186,6 +213,30 @@ export function mediaUrl(p: string): string {
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
   const tail = segs.join('/')
   return `mfm://local${tail.startsWith('/') ? '' : '/'}${tail}`
+}
+
+/** Which entries a context-menu action applies to: the whole selection or the row clicked. */
+export function menuTargets(selection: string[], path: string | null): string[] {
+  if (!path) return selection
+  return selection.includes(path) ? selection : [path]
+}
+
+/** Local path → the `file://` URI external apps expect on a drag (`text/uri-list`). */
+export function fileUri(p: string): string {
+  const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
+  const tail = segs.join('/')
+  return `file://${tail.startsWith('/') ? '' : '/'}${tail}`
+}
+
+/**
+ * Chrome's non-standard `DownloadURL` drag type. Native apps (Telegram, Dolphin) read the
+ * `text/uri-list`, but a browser drop zone only fills `dataTransfer.files` when the drag also
+ * offers this — a `text/uri-list` from another Chromium window stays plain text for security.
+ * VSCode uses the same type to keep in-app HTML5 drops working.
+ */
+export function downloadUrl(p: string): string {
+  const name = (p.split(/[\\/]/).pop() || 'file').replace(/:/g, '_')
+  return `application/octet-stream:${name}:${fileUri(p)}`
 }
 
 export type Kind = 'dir' | 'image' | 'video' | 'audio' | 'archive' | 'text' | 'doc' | 'pdf' | 'sheet' | 'slides' | 'code' | 'file'
@@ -331,3 +382,35 @@ export function defaultSearchRoots(home: string): string[] {
   if (!home) return []
   return ['Documents', 'Downloads', 'Desktop', 'Pictures', 'Music', 'Videos'].map((d) => joinPath(home, d))
 }
+
+/** Reorders an item in an array by placing it before or after a target index. */
+export function reorderItem<T>(list: T[], from: number, to: number, place: 'before' | 'after'): T[] {
+  if (from < 0 || from >= list.length || to < 0 || to >= list.length) return list
+  if (from === to) return list
+  const next = [...list]
+  const [item] = next.splice(from, 1)
+  let targetIndex = to
+  if (from < to) {
+    targetIndex = place === 'before' ? to - 1 : to
+  } else {
+    targetIndex = place === 'before' ? to : to + 1
+  }
+  targetIndex = Math.max(0, Math.min(next.length, targetIndex))
+  next.splice(targetIndex, 0, item)
+  return next
+}
+
+/** Matches a file or directory path against a custom command pattern (extension, folder, or wildcard). */
+export function matchCustomCommand(cmd: { pattern: string }, targetPath: string, isDir: boolean): boolean {
+  if (!cmd?.pattern) return false
+  const rawPatterns = cmd.pattern
+    .split(/[,;\s]+/)
+    .map((p) => p.trim().toLowerCase().replace(/^\./, ''))
+    .filter(Boolean)
+  if (isDir) {
+    return rawPatterns.some((p) => p === 'folder' || p === 'dir' || p === 'directory' || p === '*' || p === 'پوشه')
+  }
+  const ext = targetPath.split('.').pop()?.toLowerCase() ?? ''
+  return rawPatterns.some((p) => p === ext || p === '*' || p === 'all' || p === 'file')
+}
+

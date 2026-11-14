@@ -17,7 +17,16 @@ export function AgentsPage() {
     setBusy(t('در حال اعمال…'))
     const r = await api.mcp.configure(patch)
     setToken(r.token)
-    setBusy(r.running ? `سرور روی 127.0.0.1:${r.port} فعال است (${r.mode})` : t('سرور خاموش است'))
+    setBusy(
+      r.error
+        ? t('سرور بالا نیامد: {error} — احتمالاً پورت {port} توسط برنامهٔ دیگری گرفته شده است', {
+            error: r.error,
+            port: String(r.port)
+          })
+        : r.running
+          ? `سرور روی 127.0.0.1:${r.port} فعال است (${r.mode})`
+          : t('سرور خاموش است')
+    )
     load()
   }
 
