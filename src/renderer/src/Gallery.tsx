@@ -19,7 +19,6 @@ import {
   PlusIcon,
   RestoreIcon,
   StarIcon,
-  XIcon
 } from './Icons'
 
 type Props = {
@@ -535,13 +534,12 @@ export function Gallery({
         <button className="tb" title={t(t('تمام‌صفحه (F)'))} onClick={onFullscreen}>
           {fullscreen ? <RestoreIcon /> : <MaximizeIcon />}
         </button>
-        <button className="tb" title={t(t('بستن (Esc)'))} onClick={onClose}>
-          <XIcon size={13} />
-        </button>
         {chrome.customTitlebar && (
           <WindowButtons
             theme={titlebarButtons}
             side={titlebarSide}
+            /* the title-bar close ends the preview, not the file manager behind it */
+            onClose={onClose}
             style={{
               order:
                 (titlebarSide === 'left') !== (document.documentElement.dir === 'rtl') ? -1 : 99
