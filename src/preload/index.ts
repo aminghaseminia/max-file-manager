@@ -141,6 +141,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   apps: {
     list: (p: string) => ipcRenderer.invoke('apps:list', p),
+    openWith: (p: string, all = false) => ipcRenderer.invoke('apps:openWith', { path: p, all }),
+    setDefault: (p: string, id: string) => ipcRenderer.invoke('apps:setDefault', { path: p, id }),
     default: (p: string) => ipcRenderer.invoke('apps:default', p),
     launch: (id: string, p: string) => ipcRenderer.invoke('apps:launch', id, p)
   },

@@ -3937,6 +3937,11 @@ export default function App() {
           isDir={entryOf(active, openWith)?.dir}
           onClose={() => setOpenWith(null)}
           onNote={setNote}
+          onRemember={(app) => {
+            const ext = openWith.includes('.') ? (openWith.split('.').pop() ?? '').toLowerCase() : ''
+            if (!ext) return
+            updatePrefs({ defaultApps: { ...prefs.defaultApps, [ext]: app } })
+          }}
         />
       )}
 
