@@ -15,6 +15,17 @@ export type PortalRequestData = {
 }
 export type PortalStatus = { supported: boolean; installed: boolean; running: boolean }
 
+export type DesktopApp = {
+  id: string
+  name: string
+  icon: string
+  /** absolute icon file, '' when the theme has none */
+  iconPath: string
+  /** the desktop's current handler for this file type */
+  isDefault: boolean
+}
+export type OpenWithInfo = { mime: string; canSetDefault: boolean; apps: DesktopApp[] }
+
 export type BreakdownMode = 'level1' | 'all'
 export type BreakdownSlice = { key: string; count: number; bytes: number }
 export type BreakdownFile = { path: string; rel: string; name: string; ext: string; size: number }
@@ -386,7 +397,9 @@ export type Api = {
     saveImage(dir: string, name: string, data: Uint8Array): Promise<{ path: string } | { error: string }>
   }
   apps: {
-    list(p: string): Promise<{ id: string; name: string; icon: string }[]>
+    list(p: string): Promise<DesktopApp[]>
+    openWith(p: string, all?: boolean): Promise<OpenWithInfo>
+    setDefault(p: string, id: string): Promise<{ ok: true } | { error: string }>
     default(p: string): Promise<{ id: string; name: string } | null>
     launch(id: string, p: string): Promise<{ ok: true } | { error: string }>
   }

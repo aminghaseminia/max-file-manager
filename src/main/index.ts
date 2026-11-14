@@ -46,6 +46,8 @@ import {
   listApps,
   mimeForPath,
   openWithDefault,
+  openWithInfo,
+  setDefaultApp,
   setDefaultFileManager
 } from './apps.ts'
 import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
@@ -1018,7 +1020,7 @@ app.whenReady().then(async () => {
         return { mode: cfg.mode, port: cfg.port, log: await mcpLogTail(50) }
       }
       case 'apps':
-        return listApps(needAbs(args.path))
+        return listApps(needAbs(args.path), !!args.all)
       case 'app_default': {
         const d = await defaultApp(needAbs(args.path))
         return d ?? {}
@@ -1181,6 +1183,16 @@ app.whenReady().then(async () => {
         return openTerminal(needAbs(args.dir))
       case 'apps_launch':
         return launchApp(needAbs(args.id), needAbs(args.path))
+      case 'app_set_default': {
+        const file = needAbs(args.path)
+        const wanted = String(args.app ?? '')
+        const known = await listApps(file, true)
+        const hit =
+          known.find((a) => a.id === wanted) ??
+          known.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
+        if (!hit) throw new Error('unknown_app')
+        return setDefaultApp(file, hit.id)
+      }
       case 'set_default_manager':
         return setDefaultFileManager()
       case 'update_open':
@@ -1468,6 +1480,14 @@ app.whenReady().then(async () => {
   )
 
   ipcMain.handle('apps:list', (_e, p: string) => (path.isAbsolute(p) ? listApps(p) : []))
+  ipcMain.handle('apps:openWith', (_e, a: { path?: string; all?: boolean }) =>
+    path.isAbsolute(a?.path ?? '') ? openWithInfo(a.path!, !!a.all) : { mime: '', canSetDefault: false, apps: [] }
+  )
+  ipcMain.handle('apps:setDefault', (_e, a: { path?: string; id?: string }) =>
+    path.isAbsolute(a?.path ?? '') && typeof a?.id === 'string'
+      ? setDefaultApp(a.path!, a.id)
+      : { error: 'bad_path' }
+  )
   ipcMain.handle('apps:default', (_e, p: string) => (path.isAbsolute(p) ? defaultApp(p) : null))
   ipcMain.handle('apps:launch', (_e, id: string, p: string) => {
     if (!path.isAbsolute(id) || !path.isAbsolute(p)) return { error: 'bad_path' }

@@ -12,7 +12,17 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFile, spawn } from 'node:child_process'
 
-export type DesktopApp = { id: string; name: string; exec: string; icon: string; desktop: string }
+export type DesktopApp = {
+  id: string
+  name: string
+  exec: string
+  icon: string
+  desktop: string
+  /** absolute icon file the renderer can show, '' when the theme has none */
+  iconPath: string
+  /** the desktop's current handler for this MIME type */
+  isDefault: boolean
+}
 
 const EXT_MIME: Record<string, string> = {
   pdf: 'application/pdf',
@@ -245,9 +255,57 @@ const appDirs = (): string[] => {
   return [...new Set(dirs)]
 }
 
-/** Every application that advertises the file's MIME type, alphabetically by name. */
-export async function listApps(p: string): Promise<DesktopApp[]> {
+const iconExists = (p: string): Promise<boolean> => fs.access(p).then(() => true, () => false)
+
+/** Themes that between them cover KDE, GNOME, Xfce and most icon packs; the full tree is too slow. */
+const ICON_THEMES = ['hicolor', 'breeze', 'breeze-dark', 'Adwaita', 'Yaru', 'Papirus', 'oxygen', 'Tango']
+const ICON_SIZES = ['256x256', '128x128', '64x64', '48x48', '32x32', 'scalable', 'symbolic']
+
+const iconCache = new Map<string, string>()
+
+/**
+ * Resolve a `.desktop` `Icon=` name to a real file. Absolute paths are used as given; a name is
+ * looked up in pixmaps and in the common themes' `apps` folders (cached — a listing asks once
+ * per application).
+ */
+export async function appIconPath(icon: string): Promise<string> {
+  if (!icon) return ''
+  if (path.isAbsolute(icon)) return (await iconExists(icon)) ? icon : ''
+  const cached = iconCache.get(icon)
+  if (cached !== undefined) return cached
+  const names = [`${icon}.svg`, `${icon}.png`, `${icon}.xpm`]
+  const roots = [path.join(os.homedir(), '.local/share/icons'), '/usr/share/icons', '/usr/share/pixmaps']
+  for (const base of (process.env['XDG_DATA_DIRS'] ?? '').split(':')) {
+    if (base) roots.push(path.join(base, 'icons'))
+  }
+  for (const name of names) {
+    const direct = path.join('/usr/share/pixmaps', name)
+    if (await iconExists(direct)) {
+      iconCache.set(icon, direct)
+      return direct
+    }
+  }
+  for (const root of roots) {
+    for (const theme of ICON_THEMES) {
+      for (const size of ICON_SIZES) {
+        for (const name of names) {
+          const full = path.join(root, theme, size, 'apps', name)
+          if (await iconExists(full)) {
+            iconCache.set(icon, full)
+            return full
+          }
+        }
+      }
+    }
+  }
+  iconCache.set(icon, '')
+  return ''
+}
+
+/** Every application that advertises the file's MIME type, the default one first. */
+export async function listApps(p: string, all = false): Promise<DesktopApp[]> {
   const mime = mimeForPath(p)
+  const defaultName = await defaultDesktopName(mime)
   const seen = new Set<string>()
   const apps: DesktopApp[] = []
   for (const dir of appDirs()) {
@@ -256,7 +314,14 @@ export async function listApps(p: string): Promise<DesktopApp[]> {
       if (!file.endsWith('.desktop')) continue
       const full = path.join(dir, file)
       const entry = parseDesktopEntry(await fs.readFile(full, 'utf8').catch(() => ''))
-      if (!appHandles(entry, mime)) continue
+      // «all» is Dolphin's «all applications» page: anything launchable, not just this MIME
+      const usable = all
+        ? entry['Type'] === 'Application' &&
+          !!entry['Exec'] &&
+          entry['NoDisplay'] !== 'true' &&
+          entry['Hidden'] !== 'true'
+        : appHandles(entry, mime)
+      if (!usable) continue
       const name = entry['Name'] ?? file.replace(/\.desktop$/, '')
       if (seen.has(name) || !entry['Exec']) continue
       seen.add(name)
@@ -265,11 +330,57 @@ export async function listApps(p: string): Promise<DesktopApp[]> {
         name,
         exec: entry['Exec'],
         icon: entry['Icon'] ?? '',
-        desktop: full
+        desktop: full,
+        iconPath: '',
+        isDefault: !!defaultName && path.basename(full) === defaultName
       })
     }
   }
-  return apps.sort((a, b) => a.name.localeCompare(b.name))
+  // resolving icons is filesystem work: do it in small parallel batches, not one stat chain per app
+  for (let i = 0; i < apps.length; i += 16) {
+    await Promise.all(
+      apps.slice(i, i + 16).map(async (app) => {
+        app.iconPath = await appIconPath(app.icon)
+      })
+    )
+  }
+  return apps.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+}
+
+/** What the «Open with» sheet needs: the type, the current handler and the apps. */
+export async function openWithInfo(
+  file: string,
+  all = false
+): Promise<{ mime: string; canSetDefault: boolean; apps: DesktopApp[] }> {
+  return {
+    mime: mimeForPath(file),
+    canSetDefault: process.platform === 'linux',
+    apps: await listApps(file, all)
+  }
+}
+
+/** Make a desktop entry the system handler for this file's type (`xdg-mime`, user scope). */
+export async function setDefaultApp(
+  file: string,
+  desktopPath: string
+): Promise<{ ok: true } | { error: string }> {
+  if (process.platform !== 'linux') return { error: 'unsupported' }
+  if (!path.isAbsolute(desktopPath)) return { error: 'bad_path' }
+  // only an application MFM can actually list may be written to the association file
+  const known = await listApps(file, true)
+  if (!known.some((a) => a.id === desktopPath)) return { error: 'unknown_app' }
+  const mime = mimeForPath(file)
+  return new Promise((resolve) => {
+    execFile(
+      'xdg-mime',
+      ['default', path.basename(desktopPath), mime],
+      { timeout: 4000 },
+      (err, _out, stderr) => {
+        if (err) resolve({ error: String(stderr || err.message || 'failed').trim() })
+        else resolve({ ok: true })
+      }
+    )
+  })
 }
 
 /** Start an app and resolve as soon as the process exists; it is not waited on. */

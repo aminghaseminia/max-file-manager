@@ -74,7 +74,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `undo_depth` | – | how many transfers can still be undone |
 | `state` | – | panes, tabs, marks and preferences |
 | `mcp_status` | – | mode, port and the last 50 audit lines |
-| `apps` | `path` | applications that can open the file |
+| `apps` | `path`, `all?` | applications that can open the file (`all`: every launchable app, like Dolphin's list) |
 | `app_default` | `path` | the default application for the type |
 | `desktop_default_manager` | – | is this app the system default file manager |
 | `breakdown` | `path`, `mode?` | bytes/counts per extension, largest files and direct-child totals (`mode`: `all` or `level1`) |
@@ -126,6 +126,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `reveal` | `path` | system file manager |
 | `terminal` | `dir` | desktop terminal |
 | `apps_launch` | `id`, `path` | chosen `.desktop` |
+| `app_set_default` | `path`, `app` | make that app the system handler for the file type (`xdg-mime`); `.desktop` path or exact name |
 | `set_default_manager` | – | register this app as the default |
 | `update_open` | `url` | release page |
 | `hotkey` | `accel` | global shortcut; a Wayland failure is reported |

@@ -124,6 +124,7 @@ const TOOLS: McpTool[] = [
   { name: 'reveal', description: 'show a file in the system file manager', read: false, input: { path: 'string' } },
   { name: 'terminal', description: 'open a terminal in a folder', read: false, input: { dir: 'string' } },
   { name: 'apps_launch', description: 'open a file with a chosen application', read: false, input: { id: 'string', path: 'string' } },
+  { name: 'app_set_default', description: 'make an application the system handler for a file type', read: false, input: { path: 'string', app: 'string' } },
   { name: 'set_default_manager', description: 'register this app as the system default file manager', read: false, input: {} },
   { name: 'update_open', description: 'open the release page of a newer version', read: false, input: { url: 'string' } },
   { name: 'hotkey', description: 'register the global shortcut', read: false, input: { accel: 'string' } },

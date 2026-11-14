@@ -1372,8 +1372,72 @@ input {
   font-size: 12px;
 }
 .open-with {
-  width: 420px;
-  max-width: 92vw;
+  width: 560px;
+  max-width: 94vw;
+}
+.open-with-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.open-with-search {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+}
+.open-with-search:focus {
+  border-color: var(--accent);
+}
+.open-with-scope {
+  flex: none;
+}
+.open-with-mime {
+  color: var(--dim);
+  font-size: 10.5px;
+  direction: ltr;
+  text-align: start;
+  margin-top: -2px;
+}
+.open-with-section {
+  padding: 2px 4px;
+  color: var(--dim);
+  font-size: 10.5px;
+}
+.open-with-hint {
+  max-width: 46%;
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: ltr;
+}
+.open-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: auto;
+  color: var(--accent);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.open-with-remember {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+.open-with-row img {
+  border-radius: 3px;
+  object-fit: contain;
 }
 .open-with-list {
   display: flex;
@@ -1395,6 +1459,10 @@ input {
 .open-with-row:hover {
   border-color: var(--line);
   background: var(--panel-2);
+}
+.open-with-row.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .open-with-icon {
   display: inline-flex;
