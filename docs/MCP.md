@@ -150,6 +150,9 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `note` | `text` | message in the status bar |
 | `window` | `action` (`minimize`,`maximize`,`close`,`show`,`fullscreen`,`chrome`), `on?` | window control |
 
+The gallery's information sheet and edit tools add no new file operation: it reads `properties`
+and `tags` and writes through `image_save` / `image_save_as`, which agents already have.
+
 The folder-tree pane needs no tool of its own: `prefs_set` with `treePane` (`off|left|right`),
 `treeWidth` and `treeAutoFocus` controls it, and `goto` makes auto-focus reveal the folder.
 

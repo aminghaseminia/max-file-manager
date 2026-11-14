@@ -4050,6 +4050,9 @@ export default function App() {
           loop={prefs.galleryLoop}
           imageFormat={prefs.imageFormat}
           imageQuality={prefs.imageQuality}
+          chrome={chrome}
+          titlebarButtons={prefs.titlebarButtons}
+          titlebarSide={prefs.titlebarSide}
           onFullscreen={() => void toggleFullscreen()}
           onClose={() => {
             setGallery(null)
