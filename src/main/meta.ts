@@ -36,7 +36,7 @@ export type FolderMeta = {
 }
 
 export type FolderFormat = {
-  view?: 'list' | 'grid'
+  view?: 'list' | 'grid' | 'compact'
   columns?: string[]
   sortKey?: string
   sortAsc?: boolean
@@ -276,7 +276,7 @@ const cleanFormat = (raw: unknown): FolderFormat | null => {
   if (!raw || typeof raw !== 'object') return null
   const f = raw as FolderFormat
   const out: FolderFormat = {}
-  if (f.view === 'list' || f.view === 'grid') out.view = f.view
+  if (f.view === 'list' || f.view === 'grid' || f.view === 'compact') out.view = f.view
   if (Array.isArray(f.columns)) out.columns = f.columns.filter((c) => FMT_COLS.has(c))
   if (typeof f.sortKey === 'string' && f.sortKey.length < 20) out.sortKey = f.sortKey
   if (typeof f.sortAsc === 'boolean') out.sortAsc = f.sortAsc

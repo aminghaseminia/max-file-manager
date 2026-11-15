@@ -102,7 +102,7 @@ test('migrateLegacy folds the old top-level keys into prefs', () => {
 test('named layouts, filters and file-type colours survive only in valid form', () => {
   const p = mergePrefs({
     layouts: {
-      good: { layout: 'single', view: 'grid', columns: ['size', 'bogus'], sidebar: 'float' },
+      good: { layout: 'single', view: 'compact', columns: ['size', 'bogus'], sidebar: 'float' },
       bad: 'nope'
     } as never,
     filters: { تصاویر: '*.jpg', empty: '   ' } as never,
@@ -111,6 +111,7 @@ test('named layouts, filters and file-type colours survive only in valid form', 
   assert.deepEqual(Object.keys(p.layouts), ['good'])
   assert.deepEqual(p.layouts.good.columns, ['size'], 'unknown columns are dropped')
   assert.equal(p.layouts.good.layout, 'single')
+  assert.equal(p.layouts.good.view, 'compact')
   assert.deepEqual(Object.keys(p.filters), ['تصاویر'])
   assert.deepEqual(p.fileTypes, { pdf: '#4f8ff0', txt: '#4fb56a' })
 })
@@ -228,6 +229,7 @@ test('folder view memory: on by default and only stored views are gated', () => 
   assert.equal(mergePrefs({}).rememberFolderView, true)
   assert.equal(mergePrefs({ rememberFolderView: false }).rememberFolderView, false)
   assert.equal(mergePrefs({ rememberFolderView: 'no' as never }).rememberFolderView, true)
+  assert.equal(mergePrefs({ view: 'compact' }).view, 'compact')
 
   const fmt = { view: 'grid' as const, sortKey: 'size', sortAsc: true, group: 'type' as const }
   assert.deepEqual(folderFormatFor(fmt, true), fmt)

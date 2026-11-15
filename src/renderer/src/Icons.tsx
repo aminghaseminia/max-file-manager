@@ -234,6 +234,14 @@ export const GridIcon = () => (
     <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
   </S>
 )
+export const CompactIcon = () => (
+  <S>
+    <rect x="3.5" y="5" width="5" height="5" rx="1.2" />
+    <path d="M12 7.5h8.5" />
+    <rect x="3.5" y="14" width="5" height="5" rx="1.2" />
+    <path d="M12 16.5h8.5" />
+  </S>
+)
 export const StarIcon = ({ filled = false, size = 15 }: { filled?: boolean; size?: number }) => (
   <svg
     width={size}

@@ -83,7 +83,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'filter', label: 'فیلتر نام', key: 'Ctrl+F', group: 'view' },
   { id: 'hidden', label: 'فایل‌های مخفی', key: 'Ctrl+H', group: 'view' },
   { id: 'bookmark', label: 'نشان‌کردن', key: 'Ctrl+D', group: 'view' },
-  { id: 'toggleView', label: 'لیست/شبکه', key: 'Ctrl+Shift+V', group: 'view' },
+  { id: 'toggleView', label: 'تعویض نما', key: 'Ctrl+Shift+V', group: 'view' },
   { id: 'toggleLayout', label: 'یک/دو پنجره', key: 'Ctrl+Shift+L', group: 'window' },
   { id: 'newTab', label: 'تب نو', key: 'Ctrl+T', group: 'tab' },
   { id: 'closeTab', label: 'بستن تب', key: 'Ctrl+W', group: 'tab' },

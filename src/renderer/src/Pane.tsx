@@ -47,7 +47,7 @@ import {
   XIcon
 } from './Icons'
 
-export type View = 'list' | 'grid'
+export type View = 'list' | 'grid' | 'compact'
 
 export type Virtual = { kind: 'flat' | 'search' | 'dupes' | 'archive'; label: string }
 
@@ -182,6 +182,9 @@ type Props = {
 }
 
 const ROW = 28
+/** Compact view: one small icon+name per cell, packed into several columns. */
+const COMPACT_ROW = 26
+const COMPACT_MIN_W = 170
 /** a tile grows with its width: bigger thumbnail, same number of name lines underneath */
 const tileGeo = (width: number, nameLines: number, metaLines = 0) => {
   const w = Math.max(80, Math.min(240, Math.round(width) || 108))
@@ -292,7 +295,7 @@ export function Pane(props: Props) {
   const startMarquee = (ev: React.PointerEvent) => {
     if (ev.button !== 0) return
     const target = ev.target as HTMLElement
-    if (target.closest('.row,.tile')) return
+    if (target.closest('.row,.tile,.compact-row')) return
     const el = listRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -316,7 +319,7 @@ export function Pane(props: Props) {
       })
       if (width < 4 && height < 4) return
       const hits: string[] = []
-      for (const node of el.querySelectorAll<HTMLElement>('.row,.tile')) {
+      for (const node of el.querySelectorAll<HTMLElement>('.row,.tile,.compact-row')) {
         const r = node.getBoundingClientRect()
         if (r.left < left + width && left < r.right && r.top < top + height && top < r.bottom) {
           const p = node.dataset['path']
@@ -377,8 +380,13 @@ export function Pane(props: Props) {
   const TILE = tileGeo(props.tileSize, props.nameLines, props.gridMeta.length)
   const TILE_W = TILE.w
   const TILE_H = TILE.h
-  const cols = Math.max(1, Math.floor(box.w / TILE_W))
-  const rows = view === 'list' ? Math.max(1, Math.floor(box.h / ROW)) : Math.max(1, Math.floor(box.h / TILE_H))
+  // compact items keep a readable name column and stretch to share the pane evenly
+  const COMPACT_COLS = Math.max(1, Math.floor((Math.max(1, box.w) - 8) / COMPACT_MIN_W))
+  const COMPACT_W = Math.max(120, Math.floor((Math.max(1, box.w) - 8) / COMPACT_COLS))
+  const itemH = view === 'list' ? ROW : view === 'compact' ? COMPACT_ROW : TILE_H
+  const cols =
+    view === 'list' ? 1 : view === 'compact' ? COMPACT_COLS : Math.max(1, Math.floor(box.w / TILE_W))
+  const rows = Math.max(1, Math.floor(box.h / itemH))
 
   // the app needs these to step by a page or by one grid row
   useEffect(() => {
@@ -394,17 +402,18 @@ export function Pane(props: Props) {
     const header = groupBy === 'none' ? 0 : HEADER_H
     return groups.map((g) => {
       const rows = view === 'list' ? g.entries.length : Math.ceil(g.entries.length / cols)
-      const h = header + rows * (view === 'list' ? ROW : TILE_H)
+      const h = header + rows * itemH
       const block = { ...g, startIdx, top, headerH: header, h }
       startIdx += g.entries.length
       top += h
       return block
     })
-  }, [groups, groupBy, view, cols, TILE_H])
+  }, [groups, groupBy, view, cols, itemH])
   const totalHeight = blocks.length ? blocks[blocks.length - 1].top + blocks[blocks.length - 1].h : 0
   /** blocks below and above the viewport (with a little overscan) are not touched */
+  const overscan = Math.max(ROW, itemH) * 2
   const visibleBlocks = blocks.filter(
-    (b) => b.top + b.h > scrollTop - ROW * 2 && b.top < scrollTop + box.h + ROW * 2
+    (b) => b.top + b.h > scrollTop - overscan && b.top < scrollTop + box.h + overscan
   )
 
   // keyboard navigation asks for the focused row to be visible; the windowing above only mounts
@@ -418,9 +427,9 @@ export function Pane(props: Props) {
     const block = blocks.find((b) => idx >= b.startIdx && idx < b.startIdx + b.entries.length)
     if (!block) return
     const local = idx - block.startIdx
-    const top =
-      block.top + block.headerH + (view === 'list' ? local * ROW : Math.floor(local / cols) * TILE_H)
-    const h = view === 'list' ? ROW : TILE_H
+    const rowIndex = view === 'list' ? local : Math.floor(local / cols)
+    const top = block.top + block.headerH + rowIndex * itemH
+    const h = view === 'list' ? ROW : itemH
     if (top < el.scrollTop) el.scrollTop = top
     else if (top + h > el.scrollTop + el.clientHeight) el.scrollTop = top + h - el.clientHeight
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1079,6 +1088,98 @@ export function Pane(props: Props) {
                               {cell(c, e)}
                             </span>
                           ))}
+                        </div>
+                      )
+                    })}
+                </Fragment>
+              )
+            })}
+          </div>
+        ) : view === 'compact' ? (
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            {visibleBlocks.map((b) => {
+              const headerVisible = b.headerH > 0 && b.top + b.headerH > scrollTop && b.top < scrollTop + box.h
+              const rowFrom = Math.max(0, Math.floor((scrollTop - (b.top + b.headerH)) / COMPACT_ROW))
+              const rowTo = Math.min(
+                Math.ceil(b.entries.length / cols),
+                Math.ceil((scrollTop + box.h - (b.top + b.headerH)) / COMPACT_ROW)
+              )
+              return (
+                <Fragment key={b.key || 'all'}>
+                  {headerVisible && (
+                    <div className="grp-head" style={{ top: b.top, height: b.headerH }}>
+                      <span dir="auto">{b.label}</span>
+                      <span className="grp-count">{fa(b.entries.length)}</span>
+                    </div>
+                  )}
+                  {rowTo > rowFrom &&
+                    b.entries.slice(rowFrom * cols, rowTo * cols).map((e, k) => {
+                      const local = rowFrom * cols + k
+                      const idx = b.startIdx + local
+                      const r = Math.floor(local / cols)
+                      const c = local % cols
+                      return (
+                        <div
+                          key={e.path}
+                          data-path={e.path}
+                          className={
+                            'compact-row' +
+                            (pane.sel.includes(e.path) ? ' on' : '') +
+                            (pinSet.has(e.name) ? ' pinned' : '') +
+                            (e.hidden ? ' meta-hidden' : '')
+                          }
+                          style={{
+                            top: b.top + b.headerH + r * COMPACT_ROW,
+                            insetInlineStart: c * COMPACT_W,
+                            width: COMPACT_W - 4,
+                            height: COMPACT_ROW - 2
+                          }}
+                          title={e.path}
+                          draggable
+                          onDragStart={(ev) => startDrag(ev, e.path, e.dir)}
+                          onDragOver={allowDrop}
+                          onDrop={(ev) => dropOn(ev, e.dir ? e.path : cur)}
+                          onContextMenu={(ev) => menu(ev, e.path)}
+                          onClick={(ev) => click(idx, ev)}
+                          onDoubleClick={() => props.onOpen(e.path)}
+                        >
+                          <span className="name">
+                            {!e.dir && props.typeColors[(e.ext || '').toLowerCase()] && (
+                              <span
+                                className="ftdot"
+                                style={{ background: props.typeColors[(e.ext || '').toLowerCase()] }}
+                                title={`${t('نوع')} ${e.ext}`}
+                              />
+                            )}
+                            {labelColor(e.name) && (
+                              <span className="lbl" style={{ background: labelColor(e.name) }} title={t(t('برچسب'))} />
+                            )}
+                            {!e.dir && e.color && (
+                              <span className="file-color" style={{ background: e.color }} title={t('رنگ')} />
+                            )}
+                            {pinSet.has(e.name) && (
+                              <span className="pinmark" title={t(t('سنجاق‌شده'))}>
+                                <PinIcon filled />
+                              </span>
+                            )}
+                            {e.hidden && (
+                              <span className="hidmark" title={t('پنهان از فهرست')}>
+                                <EyeOffIcon />
+                              </span>
+                            )}
+                            {e.forceShow && (
+                              <span className="hidmark" title={t('همیشه در فهرست')}>
+                                <EyeIcon />
+                              </span>
+                            )}
+                            <EntryIcon entry={e} iconSet={props.iconSet} />
+                            <span dir="auto" className="trunc">{e.name}</span>
+                            {props.showSymlink && e.link && (
+                              <span className="symmark" title={t('پیوند نمادین')}>
+                                <LinkIcon />
+                              </span>
+                            )}
+                          </span>
                         </div>
                       )
                     })}
