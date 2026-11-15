@@ -632,6 +632,11 @@ function createWindow(): BrowserWindow {
     transparent,
     backgroundColor: transparent ? '#00000000' : '#16181d',
     hasShadow: false,
+    // macOS: a click in a background window should reach the list, not be swallowed by
+    // activation. Without this the first press only raises the window and the drag never starts;
+    // with it one gesture can select and drag out — the platform's drag-through then keeps the
+    // window from covering the drop target.
+    acceptFirstMouse: true,
     icon: windowIcon(),
     autoHideMenuBar: true,
     show: false,
