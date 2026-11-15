@@ -85,6 +85,9 @@ type Props = {
   drives?: Drive[]
   onMountDrive?(device: string): void
   onUnmountDrive?(deviceOrMount: string): void
+  /** the dedicated drives/memory page is currently open */
+  drivesPageActive?: boolean
+  onOpenDrives?(): void
   style?: React.CSSProperties
   onPointerDownHead?(ev: React.PointerEvent): void
   onDoubleClickHead?(): void
@@ -116,6 +119,8 @@ export function Sidebar({
   drives,
   onMountDrive,
   onUnmountDrive,
+  drivesPageActive,
+  onOpenDrives,
   style,
   onPointerDownHead,
   onDoubleClickHead,
@@ -404,6 +409,20 @@ export function Sidebar({
         <div className="side-drop-hint">
           <StarIcon size={12} />
           <span>{t('پوشه را رها کن تا نشان شود')}</span>
+        </div>
+      )}
+      {!isCollapsed('places') && onOpenDrives && (
+        <div className={'tree-row' + (drivesPageActive ? ' on' : '')}>
+          <span className="twisty" />
+          <button
+            type="button"
+            className="tree-name"
+            title={t('درایوها و دیسک‌ها')}
+            onClick={onOpenDrives}
+          >
+            <DriveIcon />
+            <span>{t('این کامپیوتر')}</span>
+          </button>
         </div>
       )}
       {!isCollapsed('places') &&

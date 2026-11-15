@@ -1410,27 +1410,28 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
               )}
               {row(
                 t('شروع برنامه'),
-                t('نشست قبلی را برگردان یا همیشه یک پوشه را باز کن'),
+                t('نشست قبلی را برگردان، یک پوشهٔ مشخص یا این کامپیوتر را باز کن'),
                 seg(
                   prefs.startup,
                   [
                     { v: 'session', label: t('نشست قبلی') },
-                    { v: 'folder', label: t('پوشهٔ مشخص') }
+                    { v: 'folder', label: t('پوشهٔ مشخص') },
+                    { v: 'thisPc', label: t('این کامپیوتر') }
                   ],
                   'startup'
                 )
               )}
               {row(
                 t('پوشهٔ شروع'),
-                prefs.startup === 'session'
-                  ? t('در حالت «نشست قبلی» استفاده نمی‌شود')
-                  : t('خالی = پوشهٔ خانه'),
+                prefs.startup === 'folder'
+                  ? t('خالی = پوشهٔ خانه')
+                  : t('فقط در حالت «پوشهٔ مشخص» استفاده می‌شود'),
                 <input
                   className="pref-input"
                   dir="ltr"
                   value={prefs.startFolder}
                   placeholder="/home/…"
-                  disabled={prefs.startup === 'session'}
+                  disabled={prefs.startup !== 'folder'}
                   onChange={(e) => onChange({ startFolder: e.target.value })}
                 />
               )}

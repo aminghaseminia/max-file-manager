@@ -173,8 +173,8 @@ export type Prefs = {
   /** hide the window in the tray when minimized / closed (needs single instance) */
   minimizeToTray: boolean
   closeToTray: boolean
-  /** restore the last tabs or always open one folder */
-  startup: 'session' | 'folder'
+  /** restore the last tabs, open one folder, or start on the This PC page */
+  startup: 'session' | 'folder' | 'thisPc'
   hotkey: string
   hotkeyEnabled: boolean
   /** Windows: Win+E opens this window instead of Explorer (needs the keyboard-hook helper) */
@@ -648,7 +648,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     singleInstance: p.singleInstance !== false,
     minimizeToTray: p.minimizeToTray === true,
     closeToTray: p.closeToTray === true,
-    startup: p.startup === 'folder' ? 'folder' : 'session',
+    startup: p.startup === 'folder' || p.startup === 'thisPc' ? p.startup : 'session',
     hotkey: typeof p.hotkey === 'string' && p.hotkey.trim() ? p.hotkey.trim() : 'Super+E',
     hotkeyEnabled: p.hotkeyEnabled === true,
     winE: p.winE !== false,

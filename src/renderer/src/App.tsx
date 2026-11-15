@@ -2,6 +2,7 @@ import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
+import { DrivesPage } from './DrivesPage'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
 import { FolderDialog } from './FolderDialog'
 import { DiffDialog } from './DiffDialog'
@@ -129,7 +130,6 @@ import {
   TrashIcon,
   TrashXIcon,
   XIcon,
-  UndoIcon,
   ConfirmIcon
 } from './Icons'
 
@@ -267,6 +267,7 @@ export default function App() {
   const [panes, setPanes] = useState<PaneState[] | null>(null)
   const [roots, setRoots] = useState<DirRef[]>([])
   const [drives, setDrives] = useState<Drive[]>([])
+  const [drivesPageOpen, setDrivesPageOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'name', asc: true })
@@ -649,6 +650,9 @@ export default function App() {
           ? [mk({ tabs: [start] }), mk({ tabs: [start] })]
           : [mk(s.panes?.[0]), mk(s.panes?.[1])]
       )
+      // The drives page is a content page, not a folder: keep the restored/home panes behind it,
+      // so Escape or leaving This PC reveals a usable file manager instead of an empty window.
+      if (p.startup === 'thisPc') setDrivesPageOpen(true)
       // the launcher's path must win over the restored session; apply it only after boot settles
       void api.app.launchPath().then((p) => {
         if (p) setOpenTarget(p)
@@ -779,7 +783,7 @@ export default function App() {
 
   /** A folder format overrides the app default only while that folder is loaded. */
   const viewOf = (i: number): View => (panes?.[i]?.fmt?.view ?? view) as View
-  const nextPaneView = cycleView(viewOf(active))
+  const activeView = viewOf(active)
   const sortOf = (i: number) => {
     const f = panes?.[i]?.fmt
     return { key: (f?.sortKey ?? sort.key) as SortKey, asc: f?.sortAsc ?? sort.asc }
@@ -1166,6 +1170,7 @@ export default function App() {
   refreshRef.current = reloadAll
 
   const go = (i: number, dir: string) => {
+    setDrivesPageOpen(false)
     // type-ahead belongs to the folder it was typed in: leaving must not carry filter or buffer along
     typedBuf.current = ''
     setPanes((p) => {
@@ -3318,6 +3323,15 @@ export default function App() {
       }
       // a modal owns the keyboard: deleting behind the properties sheet would be invisible
       if (editor || gallery || menu || columnMenu || marksMenu || markRowMenu || sortMenu || settingsOpen || openWith || propsFor || breakdownFor || confirmAsk) return
+      // the drives page owns its own controls; file-manager shortcuts must not operate on a pane
+      // that is currently hidden behind it.
+      if (drivesPageOpen) {
+        if (ev.key === 'Escape') {
+          ev.preventDefault()
+          setDrivesPageOpen(false)
+        }
+        return
+      }
       const me = panes[active]
 
       // Alt+←/→ is back/forward, but not in a text field (⌥←/→ is word-wise cursor movement
@@ -3568,13 +3582,6 @@ export default function App() {
         >
           <MenuIcon />
         </button>
-        <button
-          className={'tb' + (settingsOpen ? ' on' : '')}
-          title={t(t('تنظیمات'))}
-          onClick={() => setSettingsOpen((o) => !o)}
-        >
-          <SettingsIcon />
-        </button>
         <span className="spacer" />
         <button
           className={'tb' + (prefs.layout === 'dual' ? ' on' : '')}
@@ -3584,37 +3591,59 @@ export default function App() {
           <SplitIcon />
         </button>
         <button
+          className={'tb' + (drivesPageOpen ? ' on' : '')}
+          title={t('درایوها و دیسک‌ها')}
+          aria-pressed={drivesPageOpen}
+          onClick={() => setDrivesPageOpen((open) => !open)}
+        >
+          <DriveIcon />
+        </button>
+        <button
           className={'tb' + (previewOn ? ' on' : '')}
           title={t(t('پنل پیش‌نمایش (F3)'))}
           onClick={togglePreview}
         >
           <PreviewIcon />
         </button>
-        <button className="tb" title={t(t('بازگردانی آخرین عملیات (Ctrl+Z)'))} onClick={() => void doUndo()}>
-          <UndoIcon />
-        </button>
-        <button
-          className="tb"
-          title={t(
-            nextPaneView === 'grid'
-              ? 'نمای شبکه'
-              : nextPaneView === 'compact'
-                ? 'نمای فشرده'
-                : 'نمای فهرست'
-          )}
-          onClick={() => setView(nextPaneView)}
-        >
-          {nextPaneView === 'grid' ? <GridIcon /> : nextPaneView === 'compact' ? <CompactIcon /> : <ListIcon />}
-        </button>
-        <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
-          <GaugeIcon />
-        </button>
+        <div className="view-switch" role="group" aria-label={t('تعویض نما')}>
+          <button
+            className={'tb' + (activeView === 'list' ? ' on' : '')}
+            title={t('نمای فهرست')}
+            aria-pressed={activeView === 'list'}
+            onClick={() => setView('list')}
+          >
+            <ListIcon />
+          </button>
+          <button
+            className={'tb' + (activeView === 'grid' ? ' on' : '')}
+            title={t('نمای شبکه')}
+            aria-pressed={activeView === 'grid'}
+            onClick={() => setView('grid')}
+          >
+            <GridIcon />
+          </button>
+          <button
+            className={'tb' + (activeView === 'compact' ? ' on' : '')}
+            title={t('نمای فشرده')}
+            aria-pressed={activeView === 'compact'}
+            onClick={() => setView('compact')}
+          >
+            <CompactIcon />
+          </button>
+        </div>
         <button
           className={'tb' + (hidden ? ' on' : '')}
           title={t(t('فایل‌های مخفی (Ctrl+H)'))}
           onClick={() => setHidden((h) => !h)}
         >
           {hidden ? <EyeIcon /> : <EyeOffIcon />}
+        </button>
+        <button
+          className={'tb' + (settingsOpen ? ' on' : '')}
+          title={t(t('تنظیمات'))}
+          onClick={() => setSettingsOpen((o) => !o)}
+        >
+          <SettingsIcon />
         </button>
         <button
           className="tb"
@@ -3636,7 +3665,7 @@ export default function App() {
         )}
       </header>
 
-      {prefs.toolbar.length > 0 && (
+      {!drivesPageOpen && prefs.toolbar.length > 0 && (
         <CommandBar
           items={prefs.toolbar as CommandId[]}
           mode={prefs.toolbarMode}
@@ -3704,6 +3733,8 @@ export default function App() {
               drives={prefs.sidebarDrives ? drives : undefined}
               onMountDrive={handleMountDrive}
               onUnmountDrive={handleUnmountDrive}
+              drivesPageActive={drivesPageOpen}
+              onOpenDrives={() => setDrivesPageOpen(true)}
               collapsed={prefs.sidebarCollapsed}
               onToggleSection={handleToggleSidebarSection}
             />
@@ -3718,7 +3749,7 @@ export default function App() {
           </>
         )}
 
-        {prefs.treePane === 'left' && (
+        {!drivesPageOpen && prefs.treePane === 'left' && (
           <>
             <TreePane
               path={curPath}
@@ -3742,7 +3773,17 @@ export default function App() {
           </>
         )}
 
-        {(prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
+        {drivesPageOpen && (
+          <DrivesPage
+            sizeFormat={prefs.sizeFormat}
+            onOpen={(path) => {
+              setDrivesPageOpen(false)
+              go(active, path)
+            }}
+          />
+        )}
+
+        {!drivesPageOpen && (prefs.layout === 'dual' ? [0, 1] : [active]).map((i) => {
           const pane = panes[i]
           // the preview/editor sits exactly where the opposite pane is
           if (sideOpen && prefs.layout === 'dual' && i === 1 - active) {
@@ -3927,7 +3968,7 @@ export default function App() {
           return renderedPane
         })}
 
-        {prefs.treePane === 'right' && (
+        {!drivesPageOpen && prefs.treePane === 'right' && (
           <>
             <div
               className="tree-split"
@@ -3951,7 +3992,7 @@ export default function App() {
           </>
         )}
 
-        {sideOpen && prefs.layout === 'single' && (
+        {!drivesPageOpen && sideOpen && prefs.layout === 'single' && (
           <>
             <div
               className="vsplit"
@@ -4022,6 +4063,8 @@ export default function App() {
                 drives={prefs.sidebarDrives ? drives : undefined}
                 onMountDrive={handleMountDrive}
                 onUnmountDrive={handleUnmountDrive}
+                drivesPageActive={drivesPageOpen}
+                onOpenDrives={() => setDrivesPageOpen(true)}
                 onPointerDownHead={startFloatDrag}
                 onDoubleClickHead={() => setFloatPos({ x: 0, y: 0 })}
                 collapsed={prefs.sidebarCollapsed}

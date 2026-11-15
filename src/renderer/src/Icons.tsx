@@ -323,6 +323,17 @@ export const DriveIcon = ({ size = 14 }: { size?: number }) => (
     <path d="M7 12h.01M17 12h.01" />
   </S>
 )
+export const MemoryIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <rect x="3.5" y="7" width="17" height="10" rx="1.7" />
+    <path d="M7 11v2M11 11v2M15 11v2M8 17v2M12 17v2M16 17v2" />
+  </S>
+)
+export const SwapIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M4 8h13l-3-3M20 16H7l3 3" />
+  </S>
+)
 export const UsbIcon = ({ size = 14 }: { size?: number }) => (
   <S size={size}>
     <circle cx="12" cy="18" r="1.5" />

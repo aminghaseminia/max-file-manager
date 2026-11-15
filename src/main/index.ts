@@ -110,7 +110,8 @@ import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
 import { createSymlink, freeName, remove } from './ops.ts'
 import { findDupes, walk, type WalkOpts } from './search.ts'
 import { breakdown, type BreakdownMode } from './breakdown.ts'
-import { listDrives, mountDrive, unmountDrive } from './drives.ts'
+import { listDrives, listVolumes, mountDrive, unmountDrive } from './drives.ts'
+import { memoryInfo } from './system.ts'
 import { dirs } from './dirs.ts'
 import { mediaPathFromUrl } from './media-path.ts'
 import type { DirRef, Entry } from './types.ts'
@@ -1036,8 +1037,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
   ipcMain.handle('drives:list', () => listDrives())
+  ipcMain.handle('drives:volumes', () => listVolumes())
   ipcMain.handle('drives:mount', (_e, dev: string) => mountDrive(dev))
   ipcMain.handle('drives:unmount', (_e, dev: string) => unmountDrive(dev))
+  ipcMain.handle('system:memory', () => memoryInfo())
   ipcMain.handle('fs:size', (_e, p: string) =>
     path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
   )

@@ -41,6 +41,14 @@ test('mergePrefs keeps real values and coerces booleans', () => {
   assert.equal(mergePrefs({ showSymlink: 'yes' as any }).showSymlink, false)
 })
 
+test('startup mode: session, folder and This PC survive; nonsense falls back', () => {
+  assert.equal(mergePrefs({}).startup, 'session')
+  assert.equal(mergePrefs({ startup: 'session' }).startup, 'session')
+  assert.equal(mergePrefs({ startup: 'folder' }).startup, 'folder')
+  assert.equal(mergePrefs({ startup: 'thisPc' }).startup, 'thisPc')
+  assert.equal(mergePrefs({ startup: 'desktop' as never }).startup, 'session')
+})
+
 test('language: English is the default, Persian survives, nonsense falls back', () => {
   assert.equal(mergePrefs({}).lang, 'en')
   assert.equal(mergePrefs({ lang: 'fa' }).lang, 'fa')

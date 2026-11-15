@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseLsblkOutput } from './drives.ts'
+import { parseLsblkOutput, parseLsblkVolumes, parseWindowsVolumes } from './drives.ts'
 
 test('parseLsblkOutput: empty or invalid string returns []', () => {
   assert.deepEqual(parseLsblkOutput(''), [])
@@ -139,4 +139,99 @@ test('parseLsblkOutput: unpartitioned single-filesystem USB stick', () => {
   assert.equal(res[0].device, '/dev/sdd')
   assert.equal(res[0].mounted, false)
   assert.equal(res[0].fsType, 'exfat')
+})
+
+
+test('parseLsblkVolumes: mounted internal root gets live-capacity fields and is the system disk', () => {
+  const json = JSON.stringify({
+    blockdevices: [
+      {
+        name: 'nvme0n1',
+        label: null,
+        mountpoint: null,
+        rm: false,
+        hotplug: false,
+        size: '2000398934016',
+        type: 'disk',
+        fstype: null,
+        model: 'Lexar SSD NM620 2TB',
+        tran: 'nvme',
+        children: [
+          {
+            name: 'nvme0n1p2',
+            label: 'root',
+            mountpoint: '/',
+            rm: false,
+            hotplug: false,
+            size: '1992294400000',
+            type: 'part',
+            fstype: 'ext4'
+          }
+        ]
+      }
+    ]
+  })
+  const res = parseLsblkVolumes(json)
+  assert.equal(res.length, 1)
+  assert.equal(res[0].name, 'root')
+  assert.equal(res[0].device, '/dev/nvme0n1p2')
+  assert.equal(res[0].mountpoint, '/')
+  assert.equal(res[0].mounted, true)
+  assert.equal(res[0].system, true)
+  assert.equal(res[0].total, 1992294400000)
+  assert.equal(res[0].removable, false)
+})
+
+test('parseLsblkVolumes: keeps unmounted removable volumes but skips internal recovery partitions', () => {
+  const json = JSON.stringify({
+    blockdevices: [
+      {
+        name: 'sda',
+        label: null,
+        mountpoint: null,
+        rm: false,
+        hotplug: false,
+        size: '500107862016',
+        type: 'disk',
+        fstype: null,
+        model: 'Internal SSD',
+        children: [
+          { name: 'sda1', label: 'EFI', mountpoint: null, rm: false, hotplug: false, size: '536870912', type: 'part', fstype: 'vfat' }
+        ]
+      },
+      {
+        name: 'sdb',
+        label: null,
+        mountpoint: null,
+        rm: true,
+        hotplug: true,
+        size: '64023257088',
+        type: 'disk',
+        fstype: null,
+        model: 'Cruzer Blade',
+        tran: 'usb',
+        children: [
+          { name: 'sdb1', label: 'BACKUP', mountpoint: null, rm: true, hotplug: true, size: '64000000000', type: 'part', fstype: 'exfat' }
+        ]
+      },
+      { name: 'loop0', label: 'snap', mountpoint: '/snap/core/1', rm: false, hotplug: false, size: '100000000', type: 'loop', fstype: 'squashfs' }
+    ]
+  })
+  const res = parseLsblkVolumes(json)
+  assert.deepEqual(res.map((v) => v.name), ['BACKUP'])
+  assert.equal(res[0].mounted, false)
+  assert.equal(res[0].removable, true)
+})
+
+test('parseWindowsVolumes: maps logical drives, free space and drive type', () => {
+  const res = parseWindowsVolumes(JSON.stringify([
+    { DeviceID: 'C:', VolumeName: 'Windows', Size: 1000, FreeSpace: 400, DriveType: 3, FileSystem: 'NTFS' },
+    { DeviceID: 'E:', VolumeName: 'USB', Size: 2000, FreeSpace: 500, DriveType: 2, FileSystem: 'exFAT' }
+  ]))
+  assert.equal(res.length, 2)
+  assert.equal(res[0].mountpoint, 'C:\\')
+  assert.equal(res[0].system, true)
+  assert.deepEqual({ total: res[0].total, free: res[0].free, used: res[0].used }, { total: 1000, free: 400, used: 600 })
+  assert.equal(res[1].removable, true)
+  assert.equal(res[1].name, 'USB')
 })

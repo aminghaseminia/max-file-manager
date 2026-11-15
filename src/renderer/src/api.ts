@@ -148,6 +148,27 @@ export type Drive = {
   removable: boolean
   mounted: boolean
 }
+export type DiskVolume = {
+  id: string
+  name: string
+  device: string
+  mountpoint: string | null
+  fsType: string
+  total: number
+  free: number | null
+  used: number | null
+  removable: boolean
+  mounted: boolean
+  system: boolean
+}
+export type MemoryInfo = {
+  total: number
+  available: number
+  used: number
+  swapTotal: number
+  swapFree: number
+  swapUsed: number
+}
 export type Result = { done: number; errors: string[] }
 export type SizeResult = { bytes: number; files: number; capped: boolean }
 
@@ -369,8 +390,12 @@ export type Api = {
   }
   drives: {
     list(): Promise<Drive[]>
+    volumes(): Promise<DiskVolume[]>
     mount(device: string): Promise<{ ok: boolean; mountpoint?: string; error?: string }>
     unmount(deviceOrMount: string): Promise<{ ok: boolean; error?: string }>
+  }
+  system: {
+    memory(): Promise<MemoryInfo>
   }
   update: {
     check(force?: boolean): Promise<{
