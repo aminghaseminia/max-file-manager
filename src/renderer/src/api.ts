@@ -538,6 +538,7 @@ export type Api = {
       close: boolean
     }>
     onMaximized(cb: (max: boolean) => void): () => void
+    onFullscreen(cb: (on: boolean) => void): () => void
   }
   state: {
     get(): Promise<StoredState | null>

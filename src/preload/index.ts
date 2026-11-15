@@ -232,6 +232,11 @@ contextBridge.exposeInMainWorld('api', {
       const fn = (_e: unknown, max: boolean) => cb(max)
       ipcRenderer.on('window:maximized', fn)
       return () => ipcRenderer.removeListener('window:maximized', fn)
+    },
+    onFullscreen: (cb: (on: boolean) => void) => {
+      const fn = (_e: unknown, on: boolean) => cb(on)
+      ipcRenderer.on('window:fullscreen-state', fn)
+      return () => ipcRenderer.removeListener('window:fullscreen-state', fn)
     }
   },
   state: {

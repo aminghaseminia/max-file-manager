@@ -601,6 +601,46 @@ function forceForeground(w: BrowserWindow | null): void {
   }
 }
 
+/**
+ * macOS refuses native full screen for a transparent window: `setFullScreen(true)` returns
+ * without resizing anything, so ⌃⌘F looked dead. Simple full screen emulates it (the app manages
+ * its own window) and works with our frameless, transparent chrome.
+ */
+function applyFullscreen(w: BrowserWindow, on: boolean): void {
+  if (process.platform === 'darwin') w.setSimpleFullScreen(on)
+  else w.setFullScreen(on)
+}
+
+/**
+ * The macOS menu bar. Electron's default menu also installs an Edit menu whose ⌘C/⌘X/⌘V/⌘A/⌘Z
+ * accelerators are matched *before* the page — so they did nothing in the file list while the
+ * app's own file commands never saw the key. This menu keeps only what macOS needs (app menu and
+ * window menu) and owns ⌃⌘F itself, because the default "Toggle Full Screen" item called the
+ * native full screen that a transparent window cannot enter.
+ */
+function installMacMenu(): void {
+  if (process.platform !== 'darwin') return
+  const toggle = (): void => {
+    const w = BrowserWindow.getFocusedWindow() ?? win
+    if (!w || w.isDestroyed()) return
+    const on = !w.isSimpleFullScreen()
+    applyFullscreen(w, on)
+    w.webContents.send('window:fullscreen-state', on)
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      {
+        label: 'View',
+        submenu: [
+          { label: 'Toggle Full Screen', accelerator: 'Control+Command+F', click: toggle }
+        ]
+      },
+      { role: 'windowMenu' }
+    ])
+  )
+}
+
 function ensureTray(labels: { show: string; quit: string }): void {
   const wanted = singleInstanceEnabled && (trayPrefs.minimize || trayPrefs.close)
   if (!wanted) {
@@ -909,6 +949,7 @@ app.whenReady().then(async () => {
   app.on('will-quit', () => closeWatched())
 
   if (!portalOnly) win = createWindow()
+  if (!portalOnly) installMacMenu()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   })
@@ -1796,7 +1837,11 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('window:isMax', (e) => !!senderWindow(e)?.isMaximized())
   ipcMain.handle('window:fullscreen', (e, on: boolean) => {
-    senderWindow(e)?.setFullScreen(!!on)
+    const w = senderWindow(e)
+    if (w) {
+      applyFullscreen(w, !!on)
+      w.webContents.send('window:fullscreen-state', !!on)
+    }
     return !!on
   })
   ipcMain.handle('window:getChrome', () => chrome)

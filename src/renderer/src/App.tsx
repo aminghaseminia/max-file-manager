@@ -50,7 +50,7 @@ import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
 import { COMMANDS, type CommandId } from './commands'
-import { matchAccel } from './keys'
+import { appModifier, matchAccel } from './keys'
 import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
 import {
   baseName,
@@ -356,6 +356,9 @@ export default function App() {
   const [diff, setDiff] = useState<{ a: string; b: string; result: any } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
+  // ⌃⌘F is handled by the macOS menu, so the renderer never sees that key: main reports the
+  // state and the gallery's own fullscreen flag stays in sync.
+  useEffect(() => api.window.onFullscreen(setFullscreen), [])
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null)
   const [marksMenu, setMarksMenu] = useState<{ x: number; y: number; pane: number } | null>(null)
   const [openWith, setOpenWith] = useState<string | null>(null)
@@ -3290,7 +3293,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const el = ev.target as HTMLElement | null
-      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
+      const typing =
+        !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
       if (!panes) return
       if (confirmAsk) {
         if (ev.key === 'Enter') {
@@ -3311,7 +3315,14 @@ export default function App() {
       if (editor || gallery || menu || columnMenu || marksMenu || markRowMenu || sortMenu || settingsOpen || openWith || propsFor || breakdownFor || confirmAsk) return
       const me = panes[active]
 
-      if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+      // Alt+←/→ is back/forward, but not in a text field (⌥←/→ is word-wise cursor movement
+      // on macOS) and not when a system chord (⌃/⌘) is involved
+      if (
+        !typing &&
+        ev.altKey &&
+        !appModifier(ev) &&
+        (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')
+      ) {
         ev.preventDefault()
         jump(active, ev.key === 'ArrowLeft' ? -1 : 1)
         return
@@ -3355,14 +3366,17 @@ export default function App() {
         Home: 'first',
         End: 'last'
       }
-      const move = NAV[ev.key]
+      // Plain arrows move the selection. With Ctrl/Cmd held they belong to macOS (⌃↑ Mission
+      // Control, ⌃↓ app windows, ⌃←/→ Spaces, ⌘↑/↓ document ends, ⌘←/→ line ends) — swallowing
+      // them with preventDefault made every one of those system shortcuts dead in this window.
+      const move = appModifier(ev) ? undefined : NAV[ev.key]
       if (move) {
         ev.preventDefault()
         typedBuf.current = ''
         moveSel(move, ev.shiftKey)
         return
       }
-      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      if (appModifier(ev) && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
         // in a grid the arrows walk the cells; in a list they do what Krusader does: up / open
         if (viewOf(active) === 'grid') {
           ev.preventDefault()

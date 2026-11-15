@@ -21,6 +21,16 @@ test('matchAccel respects every modifier', () => {
   assert.equal(matchAccel('', ev({ key: 'a' })), false)
 })
 
+test('Cmd is the app modifier on macOS, but a Ctrl+Cmd system chord is never ours', () => {
+  // ⌘F must reach Ctrl+F (the app is written for Ctrl and aliases Cmd)
+  assert.equal(matchAccel('Ctrl+F', ev({ key: 'f', metaKey: true })), true)
+  assert.equal(matchAccel('Ctrl+F', ev({ key: 'f', ctrlKey: true, metaKey: true })), false)
+  // ⌃⌘F is macOS full screen: the filter must not swallow it
+  assert.equal(matchAccel('Ctrl+F', ev({ key: 'f', ctrlKey: true, metaKey: true, shiftKey: false })), false)
+  // and a Cmd chord still never matches a plain accelerator
+  assert.equal(matchAccel('Space', ev({ key: ' ', metaKey: true })), false)
+})
+
 test('accelFromEvent builds a storable string', () => {
   assert.equal(accelFromEvent(ev({ key: 'F7' })), 'F7')
   assert.equal(accelFromEvent(ev({ key: 'z', ctrlKey: true, shiftKey: true })), 'Ctrl+Shift+Z')

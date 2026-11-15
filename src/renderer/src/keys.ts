@@ -40,11 +40,21 @@ const keyOf = (ev: KeyboardEvent): string => {
   return NAMED[ev.key.toLowerCase()] ?? ev.key
 }
 
+/**
+ * One app modifier: Ctrl on Linux/Windows, Cmd on macOS — but never *both* at once.
+ *
+ * macOS system shortcuts are chorded with both (⌃⌘F is full screen, ⌃⌘Space is the emoji
+ * panel). Treating Ctrl and Cmd as the same modifier made `Ctrl+F` (name filter) match ⌃⌘F and
+ * swallow the system shortcut before AppKit saw it.
+ */
+export const appModifier = (ev: KeyboardEvent): boolean =>
+  Boolean(ev.ctrlKey) !== Boolean(ev.metaKey)
+
 export function matchAccel(accel: string, ev: KeyboardEvent): boolean {
   if (!accel) return false
   const a = parseAccel(accel)
   if (!a.key) return false
-  if (a.ctrl !== Boolean(ev.ctrlKey || ev.metaKey)) return false
+  if (a.ctrl !== appModifier(ev)) return false
   if (a.shift !== Boolean(ev.shiftKey)) return false
   if (a.alt !== Boolean(ev.altKey)) return false
   return keyOf(ev) === a.key
