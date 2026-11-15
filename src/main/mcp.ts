@@ -23,12 +23,18 @@ const TOOLS: McpTool[] = [
   // ── look around ────────────────────────────────────────────────────────────
   { name: 'roots', description: 'home folder and mounted drives', read: true, input: {} },
   { name: 'drives_list', description: 'connected USB and removable block devices and their mount points', read: true, input: {} },
-  { name: 'list', description: 'entries of a folder with metadata, labels, ratings and notes', read: true, input: { path: 'string', hidden: 'boolean?', dims: 'boolean?' } },
-  { name: 'dirs', description: 'sub-folders only', read: true, input: { path: 'string', hidden: 'boolean?', links: 'boolean?' } },
+  { name: 'list', description: 'entries of a folder (local path or ftp/ftps/sftp/s3 URI) with metadata, labels, ratings and notes', read: true, input: { path: 'string', hidden: 'boolean?', dims: 'boolean?' } },
+  { name: 'dirs', description: 'sub-folders only (local or remote)', read: true, input: { path: 'string', hidden: 'boolean?', links: 'boolean?' } },
+  { name: 'remote_connections', description: 'saved FTP/FTPS/SFTP/S3 connections; credentials are never returned', read: true, input: {} },
+  { name: 'ssh_config', description: 'concrete hosts from ~/.ssh/config (alias, host, user, port, identity file)', read: true, input: {} },
+  { name: 'remote_test', description: 'test a saved connection (id) or a connection draft before saving', read: true, input: { id: 'string?', profile: 'object?' } },
+  { name: 'remote_connect', description: 'navigate a pane to a saved connection or a remote URI', read: false, input: { id: 'string?', path: 'string?', pane: 'number?' } },
+  { name: 'remote_add', description: 'save or update an FTP/FTPS/SFTP/S3 connection; secrets are encrypted by the OS keyring', read: false, input: { id: 'string?', protocol: 'string', name: 'string?', host: 'string?', port: 'number?', user: 'string?', root: 'string?', bucket: 'string?', region: 'string?', endpoint: 'string?', pathStyle: 'boolean?', implicitTLS: 'boolean?', verifyTls: 'boolean?', accessKey: 'string?', anonymous: 'boolean?', auth: 'string?', keyPath: 'string?', keyPassphrase: 'string?', acceptNewHostKey: 'boolean?', password: 'string?', secretKey: 'string?', sessionToken: 'string?' } },
+  { name: 'remote_remove', description: 'delete a saved connection', read: false, input: { id: 'string' } },
   { name: 'walk', description: 'recursive list with name/content filters', read: true, input: { dir: 'string', pattern: 'string?', regex: 'boolean?', content: 'string?', hidden: 'boolean?', exclude: 'string[]?', maxDepth: 'number?', cap: 'number?' } },
-  { name: 'properties', description: 'name, size, mode, owner, links, timestamps, image size', read: true, input: { path: 'string' } },
+  { name: 'properties', description: 'name, size, mode, owner, links, timestamps, image size (local or remote)', read: true, input: { path: 'string' } },
   { name: 'statfs', description: 'free and total bytes of a filesystem', read: true, input: { path: 'string' } },
-  { name: 'size', description: 'recursive size of a folder', read: true, input: { path: 'string' } },
+  { name: 'size', description: 'recursive size of a folder (local or remote)', read: true, input: { path: 'string' } },
   { name: 'breakdown', description: 'folder contents by size/type/extension, largest files and subfolder totals', read: true, input: { path: 'string', mode: 'string?' } },
   { name: 'hash', description: 'digest of files', read: true, input: { paths: 'string[]', algo: 'string?' } },
   { name: 'dupes', description: 'duplicate files under a folder (by content hash)', read: true, input: { dir: 'string' } },
@@ -40,8 +46,8 @@ const TOOLS: McpTool[] = [
   { name: 'search_sizes', description: 'folder sizes straight from the index', read: true, input: { dirs: 'string[]' } },
 
   // ── contents ───────────────────────────────────────────────────────────────
-  { name: 'preview', description: 'preview payload for a file (text, image, audio, office)', read: true, input: { path: 'string', maxKB: 'number?' } },
-  { name: 'read_text', description: 'file text up to 8 MB', read: true, input: { path: 'string' } },
+  { name: 'preview', description: 'preview payload for a file (text, image, audio, office), local or remote', read: true, input: { path: 'string', maxKB: 'number?' } },
+  { name: 'read_text', description: 'file text up to 8 MB, local or remote', read: true, input: { path: 'string' } },
   { name: 'archive_list', description: 'entries inside a zip/tar archive', read: true, input: { path: 'string' } },
   { name: 'diff', description: 'line diff of two text files', read: true, input: { a: 'string', b: 'string' } },
   { name: 'sync_compare', description: 'compare two trees for synchronisation', read: true, input: { left: 'string', right: 'string', deep: 'boolean?', compareBy: 'string?', ignore: 'string[]?' } },
@@ -74,8 +80,8 @@ const TOOLS: McpTool[] = [
   { name: 'create_file', description: 'create a new empty file or with text', read: false, input: { dir: 'string', name: 'string', content: 'string?' } },
   { name: 'rename', description: 'rename one file (never overwrites)', read: false, input: { path: 'string', name: 'string' } },
   { name: 'rename_many', description: 'rename many files in one batch', read: false, input: { pairs: 'object[]' } },
-  { name: 'copy', description: 'queue a copy into a folder', read: false, input: { paths: 'string[]', dest: 'string', skipExisting: 'boolean?', newerOnly: 'boolean?', limitBps: 'number?' } },
-  { name: 'move', description: 'queue a move into a folder', read: false, input: { paths: 'string[]', dest: 'string', skipExisting: 'boolean?', newerOnly: 'boolean?', limitBps: 'number?' } },
+  { name: 'copy', description: 'queue a copy into a local folder or remote URI (any direction)', read: false, input: { paths: 'string[]', dest: 'string', skipExisting: 'boolean?', newerOnly: 'boolean?', limitBps: 'number?' } },
+  { name: 'move', description: 'queue a move into a local folder or remote URI (any direction)', read: false, input: { paths: 'string[]', dest: 'string', skipExisting: 'boolean?', newerOnly: 'boolean?', limitBps: 'number?' } },
   { name: 'trash', description: 'send to the system trash', read: false, input: { paths: 'string[]' } },
   { name: 'delete', description: 'permanent delete, needs confirm:true', read: false, input: { paths: 'string[]', confirm: 'boolean' } },
   { name: 'symlink', description: 'create a symbolic link', read: false, input: { target: 'string', link: 'string' } },
@@ -105,7 +111,7 @@ const TOOLS: McpTool[] = [
   { name: 'shown_set', description: 'force a folder entry to stay visible while hidden files are off', read: false, input: { dir: 'string', name: 'string', on: 'boolean' } },
 
   // ── jobs, index and settings ───────────────────────────────────────────────
-  { name: 'job_start', description: 'start a transfer job', read: false, input: { kind: 'string', sources: 'string[]', dest: 'string', opts: 'object?' } },
+  { name: 'job_start', description: 'start a transfer job (local and remote sources/destinations)', read: false, input: { kind: 'string', sources: 'string[]', dest: 'string', opts: 'object?' } },
   { name: 'job_pause', description: 'pause a transfer job', read: false, input: { id: 'string' } },
   { name: 'job_resume', description: 'resume a transfer job', read: false, input: { id: 'string' } },
   { name: 'job_cancel', description: 'cancel a transfer job', read: false, input: { id: 'string' } },
@@ -135,7 +141,7 @@ const TOOLS: McpTool[] = [
 
   // ── driving the window itself ──────────────────────────────────────────────
   { name: 'command', description: 'run any UI command by id (see commands list in the app)', read: false, input: { id: 'string', pane: 'number?' } },
-  { name: 'goto', description: 'navigate a pane to a folder', read: false, input: { path: 'string', pane: 'number?' } },
+  { name: 'goto', description: 'navigate a pane to a local folder or remote URI', read: false, input: { path: 'string', pane: 'number?' } },
   { name: 'select', description: 'select files in a pane', read: false, input: { paths: 'string[]', pane: 'number?' } },
   { name: 'filter', description: 'set the name filter of a pane', read: false, input: { text: 'string', pane: 'number?' } },
   { name: 'tab', description: "tab actions: new, close, next, prev, reopen, select, rename, lock, color", read: false, input: { action: 'string', pane: 'number?', path: 'string?', name: 'string?', color: 'string?', on: 'boolean?' } },
@@ -303,15 +309,27 @@ const readBody = (req: IncomingMessage): Promise<string> =>
     req.on('error', reject)
   })
 
-/** Only shapes and sizes go into the log, never file contents. */
+/** Only shapes and sizes go into the log, never file contents and never credentials. */
+const SECRET_KEYS = new Set(['password', 'secretkey', 'sessiontoken', 'keypassphrase', 'secret', 'base64'])
+
+function redactMeta(v: unknown, depth = 0): unknown {
+  if (!v || typeof v !== 'object' || Array.isArray(v) || depth > 3) return v
+  const out: Record<string, unknown> = {}
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    out[k] = SECRET_KEYS.has(k.toLowerCase()) ? '<hidden>' : redactMeta(val, depth + 1)
+  }
+  return out
+}
+
 function summarise(args: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!args) return {}
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(args)) {
-    if (k === 'text') out.text = `<${String(v).length} chars>`
+    if (SECRET_KEYS.has(k.toLowerCase())) out[k] = '<hidden>'
+    else if (k === 'text') out.text = `<${String(v).length} chars>`
     else if (Array.isArray(v)) out[k] = `[${v.length}]`
     else if (typeof v === 'string') out[k] = v.slice(0, 160)
-    else out[k] = v
+    else out[k] = redactMeta(v)
   }
   return out
 }

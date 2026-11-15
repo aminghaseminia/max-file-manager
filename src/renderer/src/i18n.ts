@@ -53,7 +53,6 @@ const EN: Record<string, string> = {
   'بقیه': 'Others',
   'قابل اجراست': 'Is executable',
   'مالکیت': 'Ownership',
-  'کاربر': 'User',
   'تغییر مالکیت به دسترسی مدیر نیاز دارد': 'Changing ownership requires administrator rights',
   'مجوزهای پیشرفته': 'Advanced permissions',
   'عدد مجوز نامعتبر است': 'That permission number is not valid',
@@ -1165,7 +1164,66 @@ const EN: Record<string, string> = {
     'FFmpeg is not installed; only browser formats can play',
   'در حال آماده‌سازی…': 'Preparing…',
   'پخش این ویدئو با موتور داخلی ممکن نشد':
-    'The built-in player could not play this video'
+    'The built-in player could not play this video',
+
+  // remote connections (FTP/FTPS/S3)
+  'اتصال‌های دور': 'Remote connections',
+  'دور': 'Remote',
+  'مدیریت اتصال‌های دور': 'Manage remote connections',
+  'اتصال تازه (FTP/S3)': 'New connection (FTP/S3)',
+  'این اتصال مسیر معتبری ندارد': 'This connection has no valid address',
+  'اتصال تازه': 'New connection',
+  'هنوز اتصالی ذخیره نشده': 'No connection saved yet',
+  'این نشست': 'This session',
+  'نام اتصال': 'Connection name',
+  'مثلاً فایل‌های شرکت': 'e.g. Company files',
+  'پروتکل': 'Protocol',
+  'میزبان': 'Host',
+  'درگاه': 'Port',
+  'اتصال ناشناس (Anonymous)': 'Anonymous login',
+  'کاربر': 'User',
+  'رمز عبور': 'Password',
+  'ذخیره شده؛ برای تغییر بنویس': 'Saved; type to replace',
+  'مسیر مطلق روی سرور؛ پیش‌فرض ریشه است': 'Absolute path on the server; defaults to the root',
+  'TLS ضمنی (درگاه ۹۹۰)': 'Implicit TLS (port 990)',
+  'سطل (Bucket)': 'Bucket',
+  'ناحیه (Region)': 'Region',
+  'نقطهٔ پایانی (اختیاری)': 'Endpoint (optional)',
+  'برای MinIO/Ceph؛ خالی یعنی Amazon S3': 'For MinIO/Ceph; empty means Amazon S3',
+  'شناسهٔ دسترسی': 'Access key ID',
+  'کلید مخفی': 'Secret access key',
+  'توکن نشست (اختیاری)': 'Session token (optional)',
+  'آدرس‌دهی مسیر (Path-style)': 'Path-style addressing',
+  'بررسی گواهی TLS': 'Verify the TLS certificate',
+  'رمز ذخیره‌شده پاک شود': 'Delete the saved secret',
+  'جاکلیدی سیستم در دسترس نیست؛ رمز فقط تا بستن برنامه نگه داشته می‌شود.':
+    'No OS keyring is available; the secret is kept only until the app quits.',
+  'آزمایش': 'Test',
+  'باز کردن اتصال': 'Connect',
+  'رمزها با جاکلیدی سیستم رمزگذاری می‌شوند و هرگز به رابط کاربری برنمی‌گردند.':
+    'Secrets are encrypted with the OS keyring and never return to the interface.',
+  '{n} اتصال': '{n} connections',
+  'از سرور برای همیشه حذف شود؟': 'Delete from the server permanently?',
+  'واردکردن از ~/.ssh/config': 'Import from ~/.ssh/config',
+  'میزبان‌های SSH': 'SSH hosts',
+  'یک میزبان انتخاب کن…': 'Choose a host…',
+  'میزبانی در ~/.ssh/config پیدا نشد': 'No host was found in ~/.ssh/config',
+  'روش ورود': 'Login method',
+  'کلید خصوصی': 'Private key',
+  'عامل SSH (ssh-agent)': 'SSH agent',
+  'مسیر فایل کلید؛ مثلاً ~/.ssh/id_ed25519': 'Key file path, e.g. ~/.ssh/id_ed25519',
+  'رمز کلید (اختیاری)': 'Key passphrase (optional)',
+  'کلید از ssh-agent همین کاربر استفاده می‌شود (SSH_AUTH_SOCK یا Pageant در ویندوز).':
+    'The key is read from this user’s SSH agent (SSH_AUTH_SOCK, or Pageant on Windows).',
+  'کلید میزبان ذخیره‌شده': 'Saved host key',
+  'فراموش کردن': 'Forget',
+  'کلید میزبان ناشناس را بپذیر و ذخیره کن (TOFU)':
+    'Accept and remember an unknown host key (TOFU)',
+  'فایل‌های دور سطل بازیافت ندارند و برای همیشه حذف می‌شوند':
+    'Remote files have no trash and are deleted permanently',
+  'این عملیات برای پوشهٔ دور پشتیبانی نمی‌شود':
+    'This operation is not supported on a remote folder',
+  'برای پوشهٔ دور در دسترس نیست': 'not available on a remote folder'
 }
 
 export function t(key: string, vars?: Record<string, string | number>): string {

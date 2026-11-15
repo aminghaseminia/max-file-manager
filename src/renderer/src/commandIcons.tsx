@@ -25,6 +25,7 @@ import {
   RefreshIcon,
   RenameIcon,
   SearchIcon,
+  ServerIcon,
   SettingsIcon,
   SplitIcon,
   StarIcon,
@@ -80,5 +81,6 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   properties: <InfoIcon />,
   compress: <ArchiveOpenIcon />,
   extract: <ArchiveIcon />,
-  prefs: <SettingsIcon />
+  prefs: <SettingsIcon />,
+  remote: <ServerIcon />
 }

@@ -260,7 +260,11 @@ export function PreviewPanel({
             onDoubleClick={() => imageIndex && onGallery?.()}
           >
             {data?.kind === 'image' && entry.size < MAX_INLINE_IMAGE && (
-              <img className="preview-img" src={mediaUrl(entry.path)} alt="" />
+              <img
+                className="preview-img"
+                src={mediaUrl(entry.path, `${Math.round(entry.mtime)}-${entry.size}`)}
+                alt=""
+              />
             )}
             {data?.kind === 'image' && entry.size >= MAX_INLINE_IMAGE && (
               <div className="preview-empty">{t(t('تصویر بزرگ است؛ برای دیدن بازش کن'))}</div>
@@ -270,7 +274,7 @@ export function PreviewPanel({
                 className="preview-pdf"
                 // the viewer honours these fragment hints; without zoom the page renders tiny
                 key={pdfBoot}
-                src={`${mediaUrl(entry.path)}#zoom=page-width&view=FitH&t=${pdfBoot}`}
+                src={`${mediaUrl(entry.path, `${Math.round(entry.mtime)}-${entry.size}`)}#zoom=page-width&view=FitH&t=${pdfBoot}`}
                 title={entry.name}
               />
             )}
@@ -287,7 +291,13 @@ export function PreviewPanel({
                 ))}
               </div>
             )}
-            {data?.kind === 'audio' && <audio className="preview-media" controls src={mediaUrl(entry.path)} />}
+            {data?.kind === 'audio' && (
+              <audio
+                className="preview-media"
+                controls
+                src={mediaUrl(entry.path, `${Math.round(entry.mtime)}-${entry.size}`)}
+              />
+            )}
             {data?.kind === 'video' &&
               (pv?.kind === 'ready' ? (
                 <VideoPlayer

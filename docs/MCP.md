@@ -26,8 +26,10 @@ agent ──stdio(MCP)──> bin/mfm-mcp.mjs ──HTTP 127.0.0.1:47321 + token
 3. **Token required** on every request (`Authorization: Bearer <token>`), compared in constant time.
 4. **Two modes.** `read-only` (default) exposes only the read tools; any mutating tool answers
    `E_READONLY` until the user switches to `read-write` in Preferences → «ایجنت‌ها».
-5. **Never secrets.** Card numbers, passwords, vault entries and the token itself are never returned
-   by any tool. `prefs` reads redact nothing today because prefs hold no secrets — keep it that way.
+5. **Never secrets.** Card numbers, passwords, key passphrases, vault entries and the token itself
+   are never returned by any tool; remote-connection tools return metadata only and the audit log
+   redacts `password`, `secretKey`, `sessionToken`, `keyPassphrase` and `base64`. `prefs` reads
+   redact nothing today because prefs hold no secrets — keep it that way.
 6. **Audit log.** Every call appends `{ts, tool, args-summary, ok}` to `~/.config/max-file-manager/mcp.log`
    (append-only, no file contents). The Preferences page shows the last 50 lines.
 7. **Trash by default.** `trash` uses `shell.trashItem`; `delete` (permanent) needs `confirm: true`
@@ -35,12 +37,17 @@ agent ──stdio(MCP)──> bin/mfm-mcp.mjs ──HTTP 127.0.0.1:47321 + token
 
 ## Tools
 
+Remote paths are ordinary arguments: `list`, `preview`, `read_text`, `write_text`, `copy`,
+`move`, `rename`, `mkdir`, `trash`, `delete` and the transfer tools all accept them. Details:
+[REMOTE.md](REMOTE.md).
+
 `mcp_status` reports the mode and audit log, but enabling/disabling MCP itself (and rotating its
 token) is deliberately **not** an MCP tool: an agent must never be able to widen its own access.
 That switch stays in Preferences → Agents, in front of the human.
 
-Paths must be absolute; relative paths are rejected with `E_PATH`. Every listing call returns
-the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
+Paths must be absolute **or a remote URI** (`ftp://…`, `ftps://…`, `sftp://…`, `s3://…`);
+relative local paths are rejected with `E_PATH`. Every listing call returns the same `Entry` shape
+the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 
 ### Read (always available)
 
@@ -48,6 +55,9 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | --- | --- | --- |
 | `roots` | – | home folder and mounted drives |
 | `drives_list` | – | connected USB and removable block devices and their mount points |
+| `remote_connections` | – | saved FTP/FTPS/SFTP/S3 connections (no secrets) |
+| `ssh_config` | – | concrete hosts from `~/.ssh/config` |
+| `remote_test` | `id?` / `profile?` | test a saved connection or a draft |
 | `list` | `path`, `hidden?`, `dims?` | entries + `pins`, `labels`, `ratings`, `notes`, `format`, file colours |
 | `dirs` | `path`, `hidden?`, `links?` | child folders only (`links`: include symlinked folders, flagged `link`) |
 | `walk` | `dir`, `pattern?`, `regex?`, `content?`, `exclude[]?`, `cap?` | recursive matches with a budget |

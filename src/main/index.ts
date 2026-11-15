@@ -114,7 +114,29 @@ import { listDrives, listVolumes, mountDrive, unmountDrive } from './drives.ts'
 import { memoryInfo } from './system.ts'
 import { dirs } from './dirs.ts'
 import { mediaPathFromUrl } from './media-path.ts'
+import {
+  isRemotePath,
+  parseRemote,
+  remoteDir,
+  remoteJoin,
+  remoteName,
+  remoteProtocolLabel
+} from '../shared/remote-path.ts'
+import {
+  forgetRemoteHostKey,
+  listRemoteProfiles,
+  readSshConfigHosts,
+  remoteFs,
+  remoteProfileUri,
+  removeRemoteProfile,
+  saveRemoteProfile,
+  testRemoteDraft,
+  testSavedProfile
+} from './remotes.ts'
+import { createRemoteCache, type RemoteCache } from './remote-cache.ts'
+import { closeFtpClients } from './remote-ftp.ts'
 import type { DirRef, Entry } from './types.ts'
+import type { ProfileDraft } from '../shared/remote-profile.ts'
 import { PortalServer, type PortalRequestData } from './portal.ts'
 import { installPortal, portalInstalled, uninstallPortal } from './portal-install.ts'
 
@@ -125,6 +147,13 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 type Chrome = { customTitlebar: boolean; rounded: boolean }
+
+/** Created after `app.ready` (it lives under userData); every remote viewer goes through it. */
+let remoteCache: RemoteCache | null = null
+const cacheFor = (): RemoteCache => {
+  if (!remoteCache) throw new Error('the remote cache is not ready yet')
+  return remoteCache
+}
 
 const idCache = new Map<string, string>()
 /** one drag-debug session per process: the header line is written once */
@@ -292,6 +321,210 @@ async function list(dir: string, showHidden: boolean, dims = false) {
   }
   const parent = path.dirname(dir)
   return { path: dir, parent: parent === dir ? null : parent, entries }
+}
+
+/** One listing path for the two stores; callers never care which protocol answers. */
+async function listAny(dir: string, showHidden: boolean, dims = false) {
+  if (!isRemotePath(dir)) return list(dir, showHidden, dims)
+  const remote = await remoteFs.list(dir, showHidden)
+  return {
+    ...remote,
+    pins: [],
+    labels: {},
+    ratings: {},
+    notes: {},
+    format: null
+  }
+}
+
+async function dirsAny(dir: string, showHidden = false, followLinks = false): Promise<DirRef[]> {
+  if (isRemotePath(dir)) return remoteFs.dirs(dir, showHidden)
+  return dirs(dir, { showHidden, followLinks })
+}
+
+const remoteVersionOf = async (p: string): Promise<string> => {
+  if (!isRemotePath(p)) {
+    const st = await fs.stat(p).catch(() => null)
+    return st ? `${st.mtimeMs}-${st.size}` : ''
+  }
+  const st = await remoteFs.stat(p).catch(() => null)
+  return st ? `${st.mtime}-${st.size}` : ''
+}
+
+/** A real local path for any entry: local paths pass through, remote ones are cached first. */
+async function localCopyOf(p: string, version = '', maxBytes?: number): Promise<string> {
+  if (!isRemotePath(p)) return p
+  return cacheFor().ensure(p, version, maxBytes ? { maxBytes } : {})
+}
+
+async function propertiesAny(p: string): Promise<Record<string, unknown>> {
+  return isRemotePath(p) ? remoteFs.properties(p) : propertiesOf(p)
+}
+
+async function sizeAny(p: string): Promise<{ bytes: number; files: number; capped: boolean }> {
+  if (isRemotePath(p)) return remoteFs.measure(p)
+  return dirSize(p)
+}
+
+async function previewAny(p: string, maxKB?: number) {
+  if (!isRemotePath(p)) return preview(p, maxKB)
+  const st = await remoteFs.stat(p)
+  if (!st) return null
+  if (st.dir) return { kind: 'dir' as const, size: 0, mtime: st.mtime }
+  const local = await localCopyOf(p, `${st.mtime}-${st.size}`, 256 * 1024 * 1024)
+  const pv = await preview(local, maxKB)
+  return { ...pv, size: st.size, mtime: st.mtime }
+}
+
+async function hashAny(paths: string[], algo: string) {
+  const local: string[] = []
+  for (const p of (paths ?? []).slice(0, 500)) {
+    if (isRemotePath(p)) {
+      try {
+        local.push(await localCopyOf(p, await remoteVersionOf(p)))
+      } catch {
+        // hashMany reports a missing file instead of failing the whole batch
+      }
+    } else if (path.isAbsolute(p)) local.push(p)
+  }
+  return hashMany(local, algo || 'sha256')
+}
+
+async function readTextAny(p: string) {
+  if (!isRemotePath(p)) return readTextFile(p)
+  return remoteFs.readText(p)
+}
+
+async function writeTextAny(p: string, text: string) {
+  if (!isRemotePath(p)) return writeTextFile(p, text)
+  return remoteFs.writeText(p, text)
+}
+
+/** Editing a remote image: edit the cached copy, then push it back to its real home. */
+async function saveImageAny(src: string, dataUrl: string, mode: 'overwrite' | 'copy') {
+  if (!isRemotePath(src)) return saveImage(src, dataUrl, mode)
+  const st = await remoteFs.stat(src)
+  if (!st || st.dir) return { error: 'not_found' }
+  const local = await localCopyOf(src, `${st.mtime}-${st.size}`)
+  const saved = await saveImage(local, dataUrl, mode)
+  if ('error' in saved) return saved
+  try {
+    if (mode === 'overwrite') {
+      await remoteFs.uploadFile(local, src)
+      return { path: src }
+    }
+    const target = await remoteFs.freeName(remoteJoin(remoteDir(src), path.basename(saved.path)))
+    await remoteFs.uploadFile(saved.path, target)
+    return { path: target }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+async function saveImageAsAny(src: string, dataUrl: string, dest?: string) {
+  const remoteSource = isRemotePath(src)
+  const remoteDest = !!dest && isRemotePath(dest)
+  if (!remoteSource && !remoteDest) return saveImageAs(src, dataUrl, dest)
+  const localSource = remoteSource ? await localCopyOf(src, await remoteVersionOf(src)) : src
+  if (!remoteDest) return saveImageAs(localSource, dataUrl, dest)
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-save-'))
+  try {
+    const saved = await saveImageAs(localSource, dataUrl, tmp)
+    if ('error' in saved) return saved
+    const target = await remoteFs.freeName(remoteJoin(dest!, path.basename(saved.path)))
+    await remoteFs.uploadFile(saved.path, target)
+    return { path: target }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+async function clipboardImageAny(dir: string, name: string, data: Uint8Array) {
+  if (!isRemotePath(dir)) return saveClipboardImage(dir, name, data)
+  const buf = Buffer.from(data ?? [])
+  if (!buf.length || buf.length > 50 * 1024 * 1024) return { error: 'bad_image' }
+  try {
+    const safe = /^[\w.-]{1,80}$/.test(name ?? '') ? name : 'clipboard.png'
+    const target = await remoteFs.freeName(remoteJoin(dir, safe))
+    await remoteFs.writeBuffer(target, buf)
+    return { path: target }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+async function removeAnyPaths(paths: string[], permanent: boolean): Promise<{ done: number; errors: string[] }> {
+  const errors: string[] = []
+  let done = 0
+  const local: string[] = []
+  for (const p of paths) {
+    if (!isRemotePath(p)) {
+      local.push(p)
+      continue
+    }
+    try {
+      await remoteFs.remove(p)
+      done++
+    } catch (e) {
+      errors.push(`${remoteName(p)}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  if (local.length) {
+    const r = await remove(local, permanent ? {} : { trash: (p) => shell.trashItem(p) })
+    done += r.done
+    errors.push(...r.errors)
+  }
+  return { done, errors }
+}
+
+/** Serve an existing local file with the byte-range headers Chromium needs for media. */
+async function serveLocalFile(req: Request, p: string): Promise<Response> {
+  const st = await fs.stat(p).catch(() => null)
+  if (!st?.isFile()) return new Response('not found', { status: 404 })
+  const headers = new Headers({
+    'Content-Type': mimeForPath(p),
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-cache',
+    // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
+    'Access-Control-Allow-Origin': '*'
+  })
+  const range = parseByteRange(req.headers.get('range'), st.size)
+  const head = req.method === 'HEAD'
+  if (range) {
+    headers.set('Content-Range', `bytes ${range.start}-${range.end}/${st.size}`)
+    headers.set('Content-Length', String(range.end - range.start + 1))
+    if (head) return new Response(null, { status: 206, headers })
+    const stream = createReadStream(p, { start: range.start, end: range.end })
+    return new Response(Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>, {
+      status: 206,
+      headers
+    })
+  }
+  headers.set('Content-Length', String(st.size))
+  if (head) return new Response(null, { status: 200, headers })
+  return new Response(Readable.toWeb(createReadStream(p)) as unknown as ReadableStream<Uint8Array>, {
+    status: 200,
+    headers
+  })
+}
+
+/** `mfm://remote/<encoded remote URI>?v=…` → the remote location and its listing version. */
+function remoteFromMediaUrl(raw: string): { uri: string; version: string } | null {
+  let u: URL
+  try {
+    u = new URL(raw)
+  } catch {
+    return null
+  }
+  if (u.hostname !== 'remote') return null
+  try {
+    const uri = decodeURIComponent(u.pathname.replace(/^\//, ''))
+    return isRemotePath(uri) ? { uri, version: u.searchParams.get('v') ?? '' } : null
+  } catch {
+    return null
+  }
 }
 
 /** Subfolders only, no stat: what the sidebar tree needs. */
@@ -813,7 +1046,7 @@ function openStandalone(kind: 'gallery' | 'editor', file: string): { ok: true } 
       height: kind === 'gallery' ? 760 : 720,
       minWidth: 520,
       minHeight: 380,
-      title: path.basename(file),
+      title: remoteName(file),
       frame: !frameless,
       hasShadow: false,
       backgroundColor: '#16181d',
@@ -849,45 +1082,44 @@ function openStandalone(kind: 'gallery' | 'editor', file: string): { ok: true } 
 
 app.whenReady().then(async () => {
   void initPlayer()
+  // Remote files are materialized here before the renderer sees a path; the version in the URL
+  // keeps a changed remote file from being served from an old cache entry.
+  remoteCache = createRemoteCache({
+    dir: path.join(app.getPath('userData'), 'remote-cache'),
+    fs: remoteFs
+  })
   protocol.handle('mfm', async (req) => {
+    const remote = remoteFromMediaUrl(req.url)
+    if (remote) {
+      try {
+        const local = await cacheFor().ensure(remote.uri, remote.version)
+        return await serveLocalFile(req, local)
+      } catch {
+        return new Response('remote file unavailable', { status: 404 })
+      }
+    }
     const p = mediaPathFromUrl(req.url)
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
-    const st = await fs.stat(p).catch(() => null)
-    if (!st?.isFile()) return new Response('not found', { status: 404 })
     // Seeking in <video> is HTTP byte-range based. `net.fetch(file://)` reads the whole file,
     // so serve it here with the headers Chromium needs and a real bounded stream.
-    const headers = new Headers({
-      'Content-Type': mimeForPath(p),
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-cache',
-      // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
-      'Access-Control-Allow-Origin': '*'
-    })
-    const range = parseByteRange(req.headers.get('range'), st.size)
-    const head = req.method === 'HEAD'
-    if (range) {
-      headers.set('Content-Range', `bytes ${range.start}-${range.end}/${st.size}`)
-      headers.set('Content-Length', String(range.end - range.start + 1))
-      if (head) return new Response(null, { status: 206, headers })
-      const stream = createReadStream(p, { start: range.start, end: range.end })
-      return new Response(Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>, {
-        status: 206,
-        headers
-      })
-    }
-    headers.set('Content-Length', String(st.size))
-    if (head) return new Response(null, { status: 200, headers })
-    return new Response(Readable.toWeb(createReadStream(p)) as unknown as ReadableStream<Uint8Array>, {
-      status: 200,
-      headers
-    })
+    return serveLocalFile(req, p)
   })
 
   protocol.handle('thumb', async (req) => {
     const url = new URL(req.url)
-    const p = mediaPathFromUrl(req.url)
     const side = Number(url.searchParams.get('s') ?? 256) || 256
-    if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
+    const remote = remoteFromMediaUrl(req.url)
+    let p = ''
+    if (remote) {
+      try {
+        p = await cacheFor().ensure(remote.uri, remote.version)
+      } catch {
+        return new Response('remote file unavailable', { status: 404 })
+      }
+    } else {
+      p = mediaPathFromUrl(req.url)
+      if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
+    }
     const file = await thumbFor(p, side)
     if (!file) return new Response('no thumb', { status: 404 })
     const res = await net.fetch(pathToFileURL(file).toString())
@@ -899,6 +1131,20 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('thumbs:clear', () => clearThumbs())
+
+  // ── remote connection profiles (metadata only; secrets never cross this boundary) ──────────
+  ipcMain.handle('remote:profiles', () => listRemoteProfiles())
+  ipcMain.handle('remote:save', (_e, draft: ProfileDraft) => saveRemoteProfile(draft ?? {}))
+  ipcMain.handle('remote:remove', (_e, id: string) => ({ ok: removeRemoteProfile(String(id ?? '')) }))
+  ipcMain.handle('remote:test', (_e, draft: ProfileDraft) => testRemoteDraft(draft ?? {}))
+  ipcMain.handle('remote:testSaved', (_e, id: string) => testSavedProfile(String(id ?? '')))
+  ipcMain.handle('remote:uri', (_e, id: string) => remoteProfileUri(String(id ?? '')))
+  ipcMain.handle('remote:sshConfig', () => readSshConfigHosts())
+  ipcMain.handle('remote:forgetHostKey', (_e, id: string) => forgetRemoteHostKey(String(id ?? '')))
+  ipcMain.handle('remote:clearCache', async () => {
+    await cacheFor().clear()
+    return true
+  })
 
   /**
    * One fs.watch per folder that is on screen, event-driven (no polling). A save or rename fires
@@ -947,16 +1193,19 @@ app.whenReady().then(async () => {
     }
     return true
   })
-  app.on('will-quit', () => closeWatched())
+  app.on('will-quit', () => {
+    closeWatched()
+    closeFtpClients()
+  })
 
   if (!portalOnly) win = createWindow()
   if (!portalOnly) installMacMenu()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
-  })
+  }, remoteFs)
 
   ipcMain.handle('fs:list', async (_e, dir: string, showHidden: boolean, dims = false) => {
-    const l = await list(dir, showHidden, dims)
+    const l = await listAny(dir, !!showHidden, dims)
     const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
     // file colours live in the parent folder's marker; folders carry their own colour already
     if (meta?.colors) {
@@ -991,7 +1240,7 @@ app.whenReady().then(async () => {
     }
   })
 
-  ipcMain.handle('fs:properties', (_e, p: string) => propertiesOf(p))
+  ipcMain.handle('fs:properties', (_e, p: string) => propertiesAny(p))
 
   ipcMain.handle('fs:breakdown', (_e, a: { path?: string; mode?: BreakdownMode }) =>
     path.isAbsolute(a?.path ?? '')
@@ -1019,20 +1268,33 @@ app.whenReady().then(async () => {
   /** Raw bytes for the drag-out cache: a web drop zone needs a real File, not just a path. */
   ipcMain.handle('fs:readBytes', async (_e, a: { path?: string; max?: number }) => {
     const p = a?.path ?? ''
-    if (!path.isAbsolute(p)) return { error: 'bad_path' }
+    if (!isRemotePath(p) && !path.isAbsolute(p)) return { error: 'bad_path' }
     const max = Math.min(32 * 1024 * 1024, Math.max(1, Number(a?.max ?? 32 * 1024 * 1024)))
-    const st = await fs.stat(p).catch(() => null)
-    if (!st?.isFile()) return { error: 'not_a_file' }
-    if (st.size > max) return { error: 'too_large' }
-    const data = await fs.readFile(p).catch(() => null)
-    return data ? { data } : { error: 'read_failed' }
+    try {
+      const local = isRemotePath(p) ? await localCopyOf(p, await remoteVersionOf(p), max) : p
+      const st = await fs.stat(local).catch(() => null)
+      if (!st?.isFile()) return { error: 'not_a_file' }
+      if (st.size > max) return { error: 'too_large' }
+      const data = await fs.readFile(local).catch(() => null)
+      return data ? { data } : { error: 'read_failed' }
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
   })
-  ipcMain.handle('fs:imageData', (_e, p: string) => readImageData(p))
+  ipcMain.handle('fs:imageData', async (_e, p: string) => {
+    if (!isRemotePath(p)) return readImageData(p)
+    try {
+      const local = await localCopyOf(p, await remoteVersionOf(p), 40_000_000)
+      return await readImageData(local)
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
+  })
   ipcMain.handle('image:save', (_e, a: { src: string; dataUrl: string; mode: 'overwrite' | 'copy' }) =>
-    saveImage(a.src, a.dataUrl, a.mode)
+    saveImageAny(a.src, a.dataUrl, a.mode)
   )
   ipcMain.handle('fs:dirs', (_e, dir: string, showHidden = false, followLinks = false) =>
-    dirs(dir, { showHidden: !!showHidden, followLinks: !!followLinks })
+    dirsAny(dir, !!showHidden, !!followLinks)
   )
   ipcMain.handle('fs:roots', () => roots())
   ipcMain.handle('fs:home', () => os.homedir())
@@ -1042,10 +1304,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('drives:unmount', (_e, dev: string) => unmountDrive(dev))
   ipcMain.handle('system:memory', () => memoryInfo())
   ipcMain.handle('fs:size', (_e, p: string) =>
-    path.isAbsolute(p) ? dirSize(p) : { bytes: 0, files: 0, capped: true }
+    isRemotePath(p) || path.isAbsolute(p) ? sizeAny(p) : { bytes: 0, files: 0, capped: true }
   )
   ipcMain.handle('fs:remove', (_e, a: { paths: string[]; permanent: boolean }) =>
-    remove(a.paths ?? [], a.permanent ? {} : { trash: (p) => shell.trashItem(p) })
+    removeAnyPaths(
+      (Array.isArray(a?.paths) ? a.paths : []).filter(
+        (p) => typeof p === 'string' && (isRemotePath(p) || path.isAbsolute(p))
+      ),
+      a?.permanent !== false
+    )
   )
   ipcMain.handle('fs:walk', (_e, dir: string, opts: WalkOpts) =>
     path.isAbsolute(dir) ? walk(dir, opts ?? {}) : { entries: [], scanned: 0, capped: false }
@@ -1078,20 +1345,56 @@ app.whenReady().then(async () => {
   ipcMain.handle('wine:takeover', (_e, on: boolean, autostart: boolean) =>
     winETakeover(on === true, autostart === true)
   )
-  ipcMain.handle('app:runScript', (_e, a: { command?: string; path?: string; dir?: string }) => runScriptCommand(a))
-  ipcMain.handle('app:runCustomCommand', (_e, a: { command?: string; path?: string }) =>
-    runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
-  )
-  ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
-  ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
-  ipcMain.handle('app:setWallpaper', (_e, p: string, fillMode?: string) =>
-    setDesktopWallpaper(String(p ?? ''), fillMode === undefined ? undefined : String(fillMode))
-  )
+  ipcMain.handle('app:runScript', (_e, a: { command?: string; path?: string; dir?: string }) => {
+    if (isRemotePath(a?.path ?? '') || isRemotePath(a?.dir ?? '')) {
+      return { error: 'a remote folder cannot run a local script; copy the files down first' }
+    }
+    return runScriptCommand(a)
+  })
+  ipcMain.handle('app:runCustomCommand', (_e, a: { command?: string; path?: string }) => {
+    if (isRemotePath(a?.path ?? '')) return { error: 'a remote file cannot be opened by a local command' }
+    return runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
+  })
+  ipcMain.handle('app:terminal', (_e, dir: string) => {
+    if (isRemotePath(dir ?? '')) return { error: 'a remote folder has no local terminal' }
+    return openTerminal(dir ?? '')
+  })
+  ipcMain.handle('app:reveal', async (_e, p: string) => {
+    if (!isRemotePath(p)) return revealFile(p ?? '')
+    try {
+      const local = await localCopyOf(p, await remoteVersionOf(p))
+      return await revealFile(local)
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('app:setWallpaper', async (_e, p: string, fillMode?: string) => {
+    try {
+      const local = isRemotePath(p) ? await localCopyOf(p, await remoteVersionOf(p)) : String(p ?? '')
+      return await setDesktopWallpaper(local, fillMode === undefined ? undefined : String(fillMode))
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
+  })
   ipcMain.on('app:dragOut', (e, files: string[]) => {
-    void startFileDrag(e.sender, files ?? []).then((r) => {
+    void (async () => {
+      // a native drag needs real local files: remote rows are materialized first
+      const local: string[] = []
+      for (const p of files ?? []) {
+        if (!isRemotePath(p)) {
+          local.push(p)
+          continue
+        }
+        try {
+          local.push(await localCopyOf(p, await remoteVersionOf(p)))
+        } catch (err) {
+          console.error('drag out:', err instanceof Error ? err.message : String(err))
+        }
+      }
+      const r = await startFileDrag(e.sender, local)
       // a drag that cannot start must not fail silently: the user sees the row do nothing
       if ('error' in r) console.error('drag out:', r.error)
-    })
+    })()
   })
   /**
    * Search indexing is one run at a time and its state is global: the pending state, the settings
@@ -1198,6 +1501,18 @@ app.whenReady().then(async () => {
       if (!p) throw new Error('absolute path required')
       return p
     }
+    /** local absolute or remote URI: the same accepted set the renderer uses */
+    const anyPath = (v: unknown): string | null =>
+      typeof v === 'string' && (path.isAbsolute(v) || isRemotePath(v)) ? v : null
+    const anyList = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => anyPath(x) !== null) : []
+    const needPath = (v: unknown): string => {
+      const p = anyPath(v)
+      if (!p) throw new Error('an absolute path or a remote URI is required')
+      return p
+    }
+    const localForMcp = async (p: string): Promise<string> =>
+      isRemotePath(p) ? localCopyOf(p, await remoteVersionOf(p)) : p
     /** Anything the window itself must do is sent to the renderer, which owns that state. */
     const ui = (extra: Record<string, unknown> = {}) => {
       win?.webContents.send('mcp:ui', { tool, args, ...extra })
@@ -1213,9 +1528,9 @@ app.whenReady().then(async () => {
       case 'drive_unmount':
         return unmountDrive(String(args.device ?? ''))
       case 'list': {
-        const dir = needAbs(args.path)
-        const l = await list(dir, !!args.hidden, !!args.dims)
-        const meta = await readMeta(dir)
+        const dir = needPath(args.path)
+        const l = await listAny(dir, !!args.hidden, !!args.dims)
+        const meta = path.isAbsolute(dir) ? await readMeta(dir) : null
         if (meta?.colors) for (const e of l.entries) if (!e.dir && meta.colors[e.name]) e.color = meta.colors[e.name]
         return {
           ...l,
@@ -1227,7 +1542,7 @@ app.whenReady().then(async () => {
         }
       }
       case 'dirs':
-        return dirs(needAbs(args.path), { showHidden: !!args.hidden, followLinks: !!args.links })
+        return dirsAny(needPath(args.path), !!args.hidden, !!args.links)
       case 'walk':
         return walk(needAbs(args.dir), {
           query: args.pattern ? String(args.pattern) : undefined,
@@ -1238,17 +1553,17 @@ app.whenReady().then(async () => {
           limit: Number.isFinite(Number(args.cap)) ? Number(args.cap) : 2000
         })
       case 'properties':
-        return propertiesOf(needAbs(args.path))
+        return propertiesAny(needPath(args.path))
       case 'statfs': {
         const st = await fs.statfs(needAbs(args.path)).catch(() => null)
         return st ? { free: Number(st.bavail) * Number(st.bsize), size: Number(st.blocks) * Number(st.bsize) } : null
       }
       case 'size':
-        return dirSize(needAbs(args.path))
+        return sizeAny(needPath(args.path))
       case 'breakdown':
         return breakdown(needAbs(args.path), { mode: args.mode === 'level1' ? 'level1' : 'all' })
       case 'hash':
-        return hashMany(absList(args.paths), String(args.algo ?? 'sha256'))
+        return hashAny(anyList(args.paths), String(args.algo ?? 'sha256'))
       case 'dupes':
         return findDupes(needAbs(args.dir), { limit: Number(args.limit ?? 4000) })
       case 'search':
@@ -1258,9 +1573,9 @@ app.whenReady().then(async () => {
       case 'search_sizes':
         return indexSizes(searchDbFile(), absList(args.dirs).slice(0, 500))
       case 'preview':
-        return preview(needAbs(args.path), Number(args.maxKB ?? 200))
+        return previewAny(needPath(args.path), Number(args.maxKB ?? 200))
       case 'read_text':
-        return readTextFile(needAbs(args.path))
+        return readTextAny(needPath(args.path))
       case 'archive_list':
         return listArchive(needAbs(args.path))
       case 'diff':
@@ -1288,6 +1603,47 @@ app.whenReady().then(async () => {
         const theme = themes.find((d) => d.dir === args.theme || d.name === args.theme)
         return theme ? iconsIn(theme.dir) : []
       }
+      case 'remote_connections':
+        return listRemoteProfiles()
+      case 'ssh_config':
+        return readSshConfigHosts()
+      case 'remote_add':
+        return saveRemoteProfile({
+          id: typeof args.id === 'string' ? args.id : undefined,
+          protocol: String(args.protocol ?? 'ftp'),
+          name: typeof args.name === 'string' ? args.name : undefined,
+          host: typeof args.host === 'string' ? args.host : undefined,
+          port: args.port === undefined ? undefined : Number(args.port),
+          user: typeof args.user === 'string' ? args.user : undefined,
+          root: typeof args.root === 'string' ? args.root : undefined,
+          bucket: typeof args.bucket === 'string' ? args.bucket : undefined,
+          region: typeof args.region === 'string' ? args.region : undefined,
+          endpoint: typeof args.endpoint === 'string' ? args.endpoint : undefined,
+          pathStyle: args.pathStyle === undefined ? undefined : args.pathStyle === true,
+          implicitTLS: args.implicitTLS === undefined ? undefined : args.implicitTLS === true,
+          verifyTls: args.verifyTls === undefined ? undefined : args.verifyTls !== false,
+          accessKey: typeof args.accessKey === 'string' ? args.accessKey : undefined,
+          anonymous: args.anonymous === true,
+          auth: typeof args.auth === 'string' ? args.auth : undefined,
+          keyPath: typeof args.keyPath === 'string' ? args.keyPath : undefined,
+          keyPassphrase: typeof args.keyPassphrase === 'string' ? args.keyPassphrase : undefined,
+          acceptNewHostKey: args.acceptNewHostKey === undefined ? undefined : args.acceptNewHostKey === true,
+          password: typeof args.password === 'string' ? args.password : undefined,
+          secretKey: typeof args.secretKey === 'string' ? args.secretKey : undefined,
+          sessionToken: typeof args.sessionToken === 'string' ? args.sessionToken : undefined
+        })
+      case 'remote_remove':
+        return { removed: removeRemoteProfile(String(args.id ?? '')) }
+      case 'remote_test': {
+        if (typeof args.id === 'string' && args.id) return testSavedProfile(args.id)
+        return testRemoteDraft((args.profile ?? args) as ProfileDraft)
+      }
+      case 'remote_connect': {
+        const uri = typeof args.id === 'string' ? remoteProfileUri(args.id) : anyPath(args.path)
+        if (!uri) throw new Error('a connection id or remote path is required')
+        if (win && !win.isDestroyed()) win.webContents.send('mcp:ui', { tool: 'goto', args: { path: uri, pane: args.pane } })
+        return { ok: true, path: uri }
+      }
       case 'jobs_list':
         return engine.list()
       case 'undo_depth':
@@ -1299,9 +1655,9 @@ app.whenReady().then(async () => {
         return { mode: cfg.mode, port: cfg.port, log: await mcpLogTail(50) }
       }
       case 'apps':
-        return listApps(needAbs(args.path), !!args.all)
+        return listApps(await localForMcp(needPath(args.path)), !!args.all)
       case 'app_default': {
-        const d = await defaultApp(needAbs(args.path))
+        const d = await defaultApp(await localForMcp(needPath(args.path)))
         return d ?? {}
       }
       case 'desktop_default_manager':
@@ -1316,20 +1672,22 @@ app.whenReady().then(async () => {
       case 'update_check':
         return checkUpdate(!!args.force)
       case 'write_text':
-        return writeTextFile(needAbs(args.path), String(args.text ?? ''))
+        return writeTextAny(needPath(args.path), String(args.text ?? ''))
       case 'mkdir':
-        return engine.makeDir(needAbs(args.dir), String(args.name ?? ''))
+        return engine.makeDir(needPath(args.dir), String(args.name ?? ''))
       case 'create_file':
-        return engine.createFile(needAbs(args.dir), String(args.name ?? ''), typeof args.content === 'string' ? args.content : '')
+        return engine.createFile(needPath(args.dir), String(args.name ?? ''), typeof args.content === 'string' ? args.content : '')
       case 'rename': {
-        const from = needAbs(args.path)
-        return engine.renameMany([{ from, to: path.join(path.dirname(from), String(args.name ?? '')) }])
+        const from = needPath(args.path)
+        const name = String(args.name ?? '')
+        const to = isRemotePath(from) ? remoteJoin(remoteDir(from), name) : path.join(path.dirname(from), name)
+        return engine.renameMany([{ from, to }])
       }
       case 'rename_many': {
         const pairs: { from: string; to: string }[] = []
         for (const x of Array.isArray(args.pairs) ? args.pairs : []) {
-          const from = abs(x?.from)
-          const to = abs(x?.to)
+          const from = anyPath(x?.from)
+          const to = anyPath(x?.to)
           if (from && to) pairs.push({ from, to })
         }
         if (!pairs.length) throw new Error('pairs with absolute from/to are required')
@@ -1337,8 +1695,8 @@ app.whenReady().then(async () => {
       }
       case 'copy':
       case 'move': {
-        const dest = needAbs(args.dest)
-        const files = absList(args.sources ?? args.paths)
+        const dest = needPath(args.dest)
+        const files = anyList(args.sources ?? args.paths)
         if (!files.length) throw new Error('paths are required')
         const opts: JobOpts = {
           skipExisting: !!args.skipExisting,
@@ -1348,10 +1706,10 @@ app.whenReady().then(async () => {
         return engine.start(tool === 'copy' ? 'copy' : 'move', files, dest, opts)
       }
       case 'trash':
-        return remove(absList(args.paths), { trash: (p) => shell.trashItem(p) })
+        return removeAnyPaths(anyList(args.paths), false)
       case 'delete': {
         if (args.confirm !== true) throw new Error('permanent delete needs confirm:true')
-        return remove(absList(args.paths), {})
+        return removeAnyPaths(anyList(args.paths), true)
       }
       case 'symlink':
         return createSymlink(needAbs(args.target), needAbs(args.link))
@@ -1380,11 +1738,11 @@ app.whenReady().then(async () => {
       case 'pdf':
         return htmlToPdf(String(args.html ?? ''), needAbs(args.out), String(args.theme ?? 'light'))
       case 'image_get':
-        return readImageData(needAbs(args.path))
+        return readImageData(await localForMcp(needPath(args.path)))
       case 'image_save':
-        return saveImage(needAbs(args.src), String(args.dataUrl ?? ''), args.mode === 'overwrite' ? 'overwrite' : 'copy')
+        return saveImageAny(needPath(args.src), String(args.dataUrl ?? ''), args.mode === 'overwrite' ? 'overwrite' : 'copy')
       case 'image_save_as':
-        return saveImageAs(needAbs(args.src), String(args.dataUrl ?? ''))
+        return saveImageAsAny(needPath(args.src), String(args.dataUrl ?? ''), anyPath(args.dest) ?? undefined)
       case 'image_convert':
         return convertImages(absList(args.files).slice(0, 500), {
           format: args.format === 'png' ? 'png' : args.format === 'webp' ? 'webp' : 'jpeg',
@@ -1417,8 +1775,8 @@ app.whenReady().then(async () => {
       case 'job_start':
         return engine.start(
           (args.kind === 'move' ? 'move' : args.kind === 'copy' ? 'copy' : 'copy') as JobKind,
-          absList(args.sources),
-          needAbs(args.dest),
+          anyList(args.sources),
+          needPath(args.dest),
           (args.opts ?? {}) as JobOpts
         )
       case 'job_pause':
@@ -1457,20 +1815,21 @@ app.whenReady().then(async () => {
         return ui({ prefs })
       }
       case 'open':
-        return openWithDefault(needAbs(args.path))
+        return openWithDefault(await localForMcp(needPath(args.path)))
       case 'reveal':
-        return revealFile(needAbs(args.path))
+        return revealFile(await localForMcp(needPath(args.path)))
       case 'wallpaper_set':
         return setDesktopWallpaper(
-          needAbs(args.path),
+          await localForMcp(needPath(args.path)),
           args.fillMode === undefined ? undefined : String(args.fillMode)
         )
       case 'terminal':
+        if (isRemotePath(args.dir ?? '')) throw new Error('a remote folder has no local terminal')
         return openTerminal(needAbs(args.dir))
       case 'apps_launch':
-        return launchApp(needAbs(args.id), needAbs(args.path))
+        return launchApp(needAbs(args.id), await localForMcp(needPath(args.path)))
       case 'app_set_default': {
-        const file = needAbs(args.path)
+        const file = await localForMcp(needPath(args.path))
         const wanted = String(args.app ?? '')
         const known = await listApps(file, true)
         const hit =
@@ -1508,7 +1867,7 @@ app.whenReady().then(async () => {
       case 'run_custom_command':
         return runCustomCommand(String(args.command ?? ''), needAbs(args.path))
       case 'clipboard_image':
-        return saveClipboardImage(needAbs(args.dir), String(args.name ?? 'clipboard.png'), Buffer.from(String(args.base64 ?? ''), 'base64'))
+        return clipboardImageAny(needPath(args.dir), String(args.name ?? 'clipboard.png'), Buffer.from(String(args.base64 ?? ''), 'base64'))
       case 'window': {
         if (!win) throw new Error('no window')
         const action = String(args.action ?? '')
@@ -1634,7 +1993,7 @@ app.whenReady().then(async () => {
     return out
   })
   ipcMain.handle('image:saveAs', (_e, a: { src: string; dataUrl: string; dest?: string }) =>
-    saveImageAs(a?.src ?? '', String(a?.dataUrl ?? ''), a?.dest)
+    saveImageAsAny(a?.src ?? '', String(a?.dataUrl ?? ''), a?.dest)
   )
   ipcMain.handle('meta:writeTags', (_e, a: { path: string; fields: Record<string, string> }) =>
     writeId3(a?.path ?? '', a?.fields ?? {})
@@ -1670,42 +2029,45 @@ app.whenReady().then(async () => {
       applySync(a.left, a.right, a.rows ?? [], a.mode, !!a.deleteExtra, (p) => shell.trashItem(p))
   )
   ipcMain.handle('fs:diff', (_e, a: { a: string; b: string }) => diffFiles(a?.a ?? '', a?.b ?? ''))
-  ipcMain.handle('fs:readText', (_e, p: string) => readTextFile(p ?? ''))
+  ipcMain.handle('fs:readText', (_e, p: string) => readTextAny(p ?? ''))
+  const editablePath = (p: string): boolean => isRemotePath(p) || path.isAbsolute(p)
   ipcMain.handle('drafts:get', (_e, p: string) =>
-    path.isAbsolute(p ?? '') ? drafts.get(p) : null
+    editablePath(p ?? '') ? drafts.get(p) : null
   )
   ipcMain.handle('drafts:set', (_e, a: { path?: string; text?: string }) => {
     const p = a?.path ?? ''
-    if (!path.isAbsolute(p) || typeof a?.text !== 'string') return null
+    if (!editablePath(p) || typeof a?.text !== 'string') return null
     if (a.text.length > 8 * 1024 * 1024) return null // the same ceiling as writeText
     return drafts.set(p, a.text)
   })
   ipcMain.handle('drafts:clear', (_e, p: string) => {
-    if (path.isAbsolute(p ?? '')) drafts.clear(p)
+    if (editablePath(p ?? '')) drafts.clear(p)
     return true
   })
   ipcMain.handle('fs:writeText', (_e, a: { path: string; text: string }) =>
-    writeTextFile(a?.path ?? '', String(a?.text ?? ''))
+    writeTextAny(a?.path ?? '', String(a?.text ?? ''))
   )
   ipcMain.handle('pdf:html', (_e, a: { html: string; out: string; theme?: string }) =>
     htmlToPdf(String(a?.html ?? ''), a?.out ?? '', a?.theme ?? 'dark')
   )
   ipcMain.handle('fs:preview', (_e, p: string, maxKB?: number) =>
-    path.isAbsolute(p) ? preview(p, maxKB) : null
+    isRemotePath(p) || path.isAbsolute(p) ? previewAny(p, maxKB) : null
   )
-  ipcMain.handle('player:open', (e, p: string) =>
-    path.isAbsolute(p)
-      ? openPlayerFile(p, e.sender)
-      : { kind: 'unsupported', error: 'invalid path' }
-  )
+  ipcMain.handle('player:open', async (e, p: string) => {
+    if (!isRemotePath(p) && !path.isAbsolute(p)) return { kind: 'unsupported', error: 'invalid path' }
+    try {
+      const local = isRemotePath(p) ? await localCopyOf(p, await remoteVersionOf(p), 2 * 1024 * 1024 * 1024) : p
+      return await openPlayerFile(local, e.sender)
+    } catch (e2) {
+      return { kind: 'unsupported', error: e2 instanceof Error ? e2.message : String(e2) }
+    }
+  })
   ipcMain.handle('player:cancel', (_e, id: string) => cancelPlayerJob(String(id ?? '')))
   ipcMain.handle('player:saveFrame', (_e, p: string, at: number) =>
-    path.isAbsolute(p) ? saveVideoFrame(p, Number(at)) : { error: 'invalid path' }
+    isRemotePath(p) ? { error: 'saving a frame of a remote video is not supported' } : path.isAbsolute(p) ? saveVideoFrame(p, Number(at)) : { error: 'invalid path' }
   )
   ipcMain.handle('player:capabilities', () => ffmpegCapabilities())
-  ipcMain.handle('fs:hash', (_e, paths: string[], algo: string) =>
-    hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
-  )
+  ipcMain.handle('fs:hash', (_e, paths: string[], algo: string) => hashAny(paths, algo))
   ipcMain.handle('meta:get', (_e, dir: string) => (path.isAbsolute(dir) ? readMeta(dir) : null))
   ipcMain.handle('meta:setFormat', (_e, a: { dir: string; format: FolderFormat }) =>
     path.isAbsolute(a?.dir ?? '') ? setFormat(a.dir, a.format ?? {}) : null
@@ -1745,14 +2107,18 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('app:launchPath', () => firstPath)
   ipcMain.handle('app:openViewer', (_e, a: { kind?: string; path?: string }) => {
-    if (!path.isAbsolute(a?.path ?? '')) return { error: 'bad_path' }
-    return openStandalone(a?.kind === 'editor' ? 'editor' : 'gallery', a.path!)
+    const p = a?.path ?? ''
+    if (!isRemotePath(p) && !path.isAbsolute(p)) return { error: 'bad_path' }
+    return openStandalone(a?.kind === 'editor' ? 'editor' : 'gallery', p)
   })
-  ipcMain.handle('fs:symlink', (_e, target: string, linkPath: string) =>
-    typeof target === 'string' && typeof linkPath === 'string'
+  ipcMain.handle('fs:symlink', (_e, target: string, linkPath: string) => {
+    if (isRemotePath(target) || isRemotePath(linkPath)) {
+      return { ok: false, error: 'symbolic links are not supported on a remote server' }
+    }
+    return typeof target === 'string' && typeof linkPath === 'string'
       ? createSymlink(target, linkPath)
       : { ok: false, error: 'invalid paths' }
-  )
+  })
   ipcMain.handle('fs:renameMany', (_e, pairs: { from: string; to: string }[]) =>
     engine.renameMany(pairs ?? [])
   )
@@ -1773,16 +2139,34 @@ app.whenReady().then(async () => {
    * looked up and spawned directly — the same path «Open with» proves works.
    */
   ipcMain.handle('shell:open', async (_e, p: string) => {
-    if (!path.isAbsolute(p)) return { error: 'bad_path' }
-    return openWithDefault(p)
+    if (!isRemotePath(p) && !path.isAbsolute(p)) return { error: 'bad_path' }
+    try {
+      const local = isRemotePath(p) ? await localCopyOf(p, await remoteVersionOf(p)) : p
+      return await openWithDefault(local)
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
   })
 
   /** Save an image from the renderer's clipboard as a normal file in the target folder. */
   /** Main-process clipboard write works even when the renderer is not focused. */
   /** A real file list (text/uri-list) so Telegram/Dolphin paste the file, not its path. */
-  ipcMain.handle('clipboard:copyFiles', (_e, a: { paths?: string[]; cut?: boolean }) =>
-    copyFilesToClipboard((a?.paths ?? []).filter((p) => path.isAbsolute(p)), !!a?.cut)
-  )
+  ipcMain.handle('clipboard:copyFiles', async (_e, a: { paths?: string[]; cut?: boolean }) => {
+    const paths = (a?.paths ?? []).filter((p) => typeof p === 'string' && (isRemotePath(p) || path.isAbsolute(p)))
+    const local: string[] = []
+    for (const p of paths) {
+      if (!isRemotePath(p)) {
+        local.push(p)
+        continue
+      }
+      try {
+        local.push(await localCopyOf(p, await remoteVersionOf(p)))
+      } catch {
+        // a remote file that cannot be cached must not clear the rest of the clipboard selection
+      }
+    }
+    return copyFilesToClipboard(local, !!a?.cut)
+  })
   ipcMain.handle('clipboard:releaseFiles', () => {
     releaseFileClipboard()
     return true
@@ -1792,30 +2176,47 @@ app.whenReady().then(async () => {
     return true
   })
   ipcMain.handle('clipboard:saveImage', (_e, a: { dir: string; name: string; data: Uint8Array }) =>
-    saveClipboardImage(a?.dir ?? '', a?.name ?? '', a?.data ?? new Uint8Array())
+    clipboardImageAny(a?.dir ?? '', a?.name ?? '', a?.data ?? new Uint8Array())
   )
 
-  ipcMain.handle('apps:list', (_e, p: string) => (path.isAbsolute(p) ? listApps(p) : []))
+  /** Opening a remote file with a local app first materializes it in the cache. */
+  const localForApp = async (p: string): Promise<string | null> => {
+    if (path.isAbsolute(p)) return p
+    if (!isRemotePath(p)) return null
+    try {
+      return await localCopyOf(p, await remoteVersionOf(p))
+    } catch {
+      return null
+    }
+  }
+  ipcMain.handle('apps:list', async (_e, p: string) => {
+    const local = await localForApp(p)
+    return local ? listApps(local) : []
+  })
   ipcMain.handle('apps:openWith', async (_e, a: { path?: string; all?: boolean }) => {
-    if (!path.isAbsolute(a?.path ?? '')) return { mime: '', canSetDefault: false, apps: [] }
-    const info = await openWithInfo(a.path!, !!a.all)
+    const local = await localForApp(a?.path ?? '')
+    if (!local) return { mime: '', canSetDefault: false, apps: [] }
+    const info = await openWithInfo(local, !!a.all)
     return { ...info, apps: await withAppIcons(info.apps) }
   })
-  ipcMain.handle('apps:setDefault', (_e, a: { path?: string; id?: string }) =>
-    path.isAbsolute(a?.path ?? '') && typeof a?.id === 'string'
-      ? setDefaultApp(a.path!, a.id)
-      : { error: 'bad_path' }
-  )
-  ipcMain.handle('apps:default', (_e, p: string) => (path.isAbsolute(p) ? defaultApp(p) : null))
-  ipcMain.handle('apps:launch', (_e, id: string, p: string) => {
+  ipcMain.handle('apps:setDefault', async (_e, a: { path?: string; id?: string }) => {
+    const local = await localForApp(a?.path ?? '')
+    return local && typeof a?.id === 'string' ? setDefaultApp(local, a.id) : { error: 'bad_path' }
+  })
+  ipcMain.handle('apps:default', async (_e, p: string) => {
+    const local = await localForApp(p)
+    return local ? defaultApp(local) : null
+  })
+  ipcMain.handle('apps:launch', async (_e, id: string, p: string) => {
     // Windows ids are `assoc:Photos` / `progid:…` / `exe:…`; an absolute path is only the
     // Linux `.desktop` and macOS `.app` shape.
     const known =
       process.platform === 'win32'
         ? typeof id === 'string' && /^(assoc|progid|exe|appid):.+/.test(id)
         : typeof id === 'string' && path.isAbsolute(id)
-    if (!known || !path.isAbsolute(p)) return { error: 'bad_path' }
-    return launchApp(id, p)
+    const local = await localForApp(p)
+    if (!known || !local) return { error: 'bad_path' }
+    return launchApp(id, local)
   })
   ipcMain.handle('desktop:isDefaultFileManager', () => isDefaultFileManager())
   ipcMain.handle('desktop:setDefaultFileManager', async () => {

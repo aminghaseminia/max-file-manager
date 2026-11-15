@@ -1,4 +1,17 @@
 import type { PortalFilter } from '../../shared/portal-filters.ts'
+import type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
+
+export type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
+export type RemoteTestResult =
+  | { ok: true; detail: string; hostKey?: string }
+  | { ok: false; error: string }
+export type SshConfigHost = {
+  alias: string
+  host: string
+  user: string
+  port: number
+  identityFile: string
+}
 
 export type PortalOperation = 'open' | 'save' | 'saveFiles'
 export type PortalRequestData = {
@@ -296,6 +309,10 @@ export type IconRef = { name: string; path: string }
 export type IconTheme = { name: string; dir: string }
 
 export type FileProperties = {
+  /** remote profiles show general/checksums/details only */
+  remote?: boolean
+  protocol?: string
+  location?: string
   name: string
   path: string
   dir: boolean
@@ -511,6 +528,19 @@ export type Api = {
     setDefault(p: string, id: string): Promise<{ ok: true } | { error: string }>
     default(p: string): Promise<{ id: string; name: string } | null>
     launch(id: string, p: string): Promise<{ ok: true } | { error: string }>
+  }
+  remote: {
+    /** saved connections; secrets never cross this boundary */
+    profiles(): Promise<RemoteProfile[]>
+    save(draft: ProfileDraft): Promise<{ ok: true; profile: RemoteProfile } | { ok: false; error: string }>
+    remove(id: string): Promise<{ ok: boolean }>
+    test(draft: ProfileDraft): Promise<RemoteTestResult>
+    testSaved(id: string): Promise<RemoteTestResult>
+    uri(id: string): Promise<string | null>
+    /** concrete hosts from ~/.ssh/config, for the SFTP import list */
+    sshConfig(): Promise<SshConfigHost[]>
+    forgetHostKey(id: string): Promise<boolean>
+    clearCache(): Promise<boolean>
   }
   preview(p: string, maxKB?: number): Promise<Preview | null>
   /**

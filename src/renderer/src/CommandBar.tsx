@@ -11,6 +11,8 @@ type Props = {
   items: CommandId[]
   mode: ToolbarMode
   shortcuts: Record<string, string>
+  /** commands that exist but do not apply to what the active pane shows (e.g. a remote folder) */
+  disabled?: CommandId[]
   onRun(id: CommandId, anchor?: { x: number; y: number }): void
 }
 
@@ -20,7 +22,7 @@ const MORE = 34
  * The command bar. Every item is measured in an off-screen copy first, so a narrow window shows
  * a `…` button instead of silently cutting (or scrolling) the tail of the toolbar.
  */
-export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
+export function CommandBar({ items, mode, shortcuts, disabled = [], onRun }: Props) {
   const bar = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
   const [shown, setShown] = useState(items.length)
@@ -59,11 +61,13 @@ export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
   const button = (id: CommandId, hidden: boolean) => {
     const c = COMMAND_BY_ID[id]
     if (!c) return null
+    const off = disabled.includes(id)
     return (
       <button
         key={(hidden ? 'm:' : '') + id}
         className="cmdb"
-        title={`${labelOf(c)} (${formatAccel(shortcuts[id] ?? c.key)})`}
+        disabled={off}
+        title={`${labelOf(c)} (${formatAccel(shortcuts[id] ?? c.key)})${off ? ' — ' + t('برای پوشهٔ دور در دسترس نیست') : ''}`}
         tabIndex={hidden ? -1 : undefined}
         onClick={(ev) => {
           const r = ev.currentTarget.getBoundingClientRect()
@@ -84,7 +88,8 @@ export function CommandBar({ items, mode, shortcuts, onRun }: Props) {
       id: c.id,
       label: labelOf(c),
       key: formatAccel(shortcuts[c.id] ?? c.key),
-      icon: CMD_ICON[c.id]
+      icon: CMD_ICON[c.id],
+      disabled: disabled.includes(c.id)
     }))
 
   return (

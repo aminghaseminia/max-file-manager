@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry } from './api'
-import { baseName, fa, mediaUrl } from './format'
+import { baseName, fa, isRemotePath, mediaUrl, thumbUrl } from './format'
 import { copyImageContent } from './clipboard'
 import { GalleryInfo } from './GalleryInfo'
 import { WindowButtons } from './WindowButtons'
@@ -502,7 +502,7 @@ export function Gallery({
     }
   }
 
-  const src = edit?.url ?? (cur ? mediaUrl(cur.path) : '')
+  const src = edit?.url ?? (cur ? mediaUrl(cur.path, `${Math.round(cur.mtime)}-${cur.size}`) : '')
   const dims = edit
     ? { w: edit.w, h: edit.h }
     : natural ?? { w: cur?.w ?? 0, h: cur?.h ?? 0 }
@@ -810,7 +810,15 @@ export function Gallery({
                 resetView()
               }}
             >
-              <img src={mediaUrl(img.path)} alt="" loading="lazy" />
+              <img
+                src={
+                  isRemotePath(img.path)
+                    ? thumbUrl(img.path, 160, `${Math.round(img.mtime)}-${img.size}`)
+                    : mediaUrl(img.path)
+                }
+                alt=""
+                loading="lazy"
+              />
             </button>
           ))}
           {total > strip.length && (

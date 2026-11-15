@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type SearchProgress } from './api'
+import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type RemoteProfile, type SearchProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { DrivesPage } from './DrivesPage'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
@@ -46,10 +46,12 @@ import { PaneTree } from './PaneTree'
 import { TreePane } from './TreePane'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
+import { RemoteDialog } from './RemoteDialog'
 import { SyncDialog } from './SyncDialog'
 import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
+import { profileUri } from '../../shared/remote-profile.ts'
 import { COMMANDS, type CommandId } from './commands'
 import { appModifier, matchAccel } from './keys'
 import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
@@ -65,6 +67,7 @@ import {
   isArchiveName,
   isIgnoredName,
   isImage,
+  isRemotePath,
   isVideo,
   joinPath,
   matchCustomCommand,
@@ -75,6 +78,8 @@ import {
   opensInEditor,
   orderEntries,
   reorderItem,
+  remoteProtocolLabel,
+  remoteRootLabel,
   terminalDir,
   typeLabel,
   type GroupKey,
@@ -267,6 +272,9 @@ export default function App() {
   const [panes, setPanes] = useState<PaneState[] | null>(null)
   const [roots, setRoots] = useState<DirRef[]>([])
   const [drives, setDrives] = useState<Drive[]>([])
+  const [remotes, setRemotes] = useState<RemoteProfile[]>([])
+  const [remoteOpen, setRemoteOpen] = useState(false)
+  const [remoteInitial, setRemoteInitial] = useState<string | undefined>(undefined)
   const [drivesPageOpen, setDrivesPageOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
@@ -599,9 +607,10 @@ export default function App() {
 
   // boot: restore the last session, fall back to home
   useEffect(() => {
-    Promise.all([api.roots(), api.home(), api.state.get()]).then(([r, home, st]) => {
+    Promise.all([api.roots(), api.home(), api.state.get(), api.remote.profiles().catch(() => [])]).then(([r, home, st, remoteProfiles]) => {
       setRoots(r)
       setHome(home)
+      setRemotes(remoteProfiles)
       void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
       const p = mergePrefs(s.prefs ?? migrateLegacy(s))
@@ -1049,6 +1058,10 @@ export default function App() {
   useEffect(() => {
     const p = panes?.[active] ? tabOf(panes[active]) : ''
     if (!p) return
+    if (isRemotePath(p)) {
+      setFree(null)
+      return
+    }
     void api.statfs(p).then((r) => setFree(r?.free ?? null))
   }, [path0, path1, active])
 
@@ -1281,7 +1294,8 @@ export default function App() {
       setPanes((p) => p && patch(p, i, { sel: [] }))
       return
     }
-    if (prefs.confirmDelete) {
+    // a remote delete is permanent whatever the trash preference says, so always ask there
+    if (prefs.confirmDelete || me.sel.some(isRemotePath)) {
       setConfirmAsk({ kind, paths: me.sel })
       return
     }
@@ -1368,7 +1382,15 @@ export default function App() {
     }
   }
 
+  /** Operations with no remote implementation answer with a note instead of an empty sheet. */
+  const remoteGuard = (p?: string | null): boolean => {
+    if (!isRemotePath(p ?? '')) return false
+    setNote(t('این عملیات برای پوشهٔ دور پشتیبانی نمی‌شود'))
+    return true
+  }
+
   const openArchive = async (i: number, archive: string) => {
+    if (remoteGuard(archive)) return
     setPanes((p) => p && patch(p, i, { loading: true }))
     const r = await api.archive(archive)
     setPanes((p) =>
@@ -1387,6 +1409,7 @@ export default function App() {
   const openCompress = (i: number) => {
     if (!panes) return
     const me = panes[i]
+    if (remoteGuard(tabOf(me)) || me.sel.some((p) => remoteGuard(p))) return
     if (!me.sel.length) {
       setNote(t('چیزی انتخاب نشده'))
       return
@@ -1408,6 +1431,7 @@ export default function App() {
   const openExtract = (i: number, path?: string) => {
     if (!panes) return
     const p = path ?? panes[i].sel[0]
+    if (remoteGuard(p)) return
     if (!p || !isArchiveName(baseName(p))) {
       setNote(t('یک فایل فشرده انتخاب کن'))
       return
@@ -1549,7 +1573,12 @@ export default function App() {
     ? panes.map((p) => (p.archive || p.virtual ? '' : p.tabs[p.ti])).join('\u0000')
     : ''
   useEffect(() => {
-    const dirs = panes ? panes.filter((p) => !p.archive && !p.virtual).map((p) => p.tabs[p.ti]) : []
+    const dirs = panes
+      ? panes
+          .filter((p) => !p.archive && !p.virtual)
+          .map((p) => p.tabs[p.ti])
+          .filter((p) => !isRemotePath(p))
+      : []
     void api.watchDirs(dirs).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchKey])
@@ -1635,7 +1664,7 @@ export default function App() {
     setPanes((p) => p && patch(p, i, { virtual: { kind, label }, results, sel: [], loading: false }))
 
   const runFlat = async (i: number) => {
-    if (!panes) return
+    if (!panes || remoteGuard(tabOf(panes[i]))) return
     setPanes((p) => p && patch(p, i, { loading: true }))
     const r = await api.walk(tabOf(panes[i]), { limit: 5000 })
     const entries = r.entries.filter((e) => !isIgnoredName(e.name, prefs.ignoreFiles))
@@ -1670,7 +1699,7 @@ export default function App() {
   }
 
   const runDupes = async (i: number) => {
-    if (!panes) return
+    if (!panes || remoteGuard(tabOf(panes[i]))) return
     setPanes((p) => p && patch(p, i, { loading: true }))
     setNote(t('در حال محاسبهٔ hash…'))
     const r = await api.dupes(tabOf(panes[i]))
@@ -1685,6 +1714,7 @@ export default function App() {
    */
   const openFolderLook = async (i: number, path?: string) => {
     if (!panes) return
+    if (remoteGuard(path) || remoteGuard(tabOf(panes[i]))) return
     const me = panes[i]
     const source = me.virtual && me.results ? me.results : (me.listing?.entries ?? [])
     const dirs = path
@@ -1706,6 +1736,7 @@ export default function App() {
   const openFolderLookAt = async (dirs: string[]) => {
     const list = dirs.filter((d) => !!d)
     if (!list.length) return
+    if (remoteGuard(list[0])) return
     const meta = await api.getMeta(list[0])
     setFolderLook({
       dirs: list,
@@ -2500,6 +2531,9 @@ export default function App() {
   const menuItems = (path: string | null): MenuItem[] => {
     const me = panes?.[active]
     if (!me) return []
+    // remote folders support navigation, transfers, open/preview and properties; local-only
+    // features (metadata, archives, scripts, terminal, sync) are deliberately not offered
+    const remoteHere = isRemotePath(curPath) || (!!path && isRemotePath(path))
     if (menu?.tab != null) {
       const idx = menu.tab
       const pinned = idx < me.pinCount
@@ -2577,14 +2611,22 @@ export default function App() {
         },
         { id: 'refresh', label: t('نوسازی'), key: 'F3', icon: <RefreshIcon /> },
         ...folderOpenWith,
-        { sep: true },
-        { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> },
-        { sep: true },
-        { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> },
-        { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> },
+        ...(remoteHere
+          ? []
+          : [
+              { sep: true } as MenuItem,
+              { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem,
+              { sep: true } as MenuItem,
+              { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> } as MenuItem,
+              { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> } as MenuItem
+            ]),
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
-        { id: 'breakdown', label: t('نمودار محتوای پوشه…'), icon: <PieIcon /> },
-        { id: 'look', label: t('آیکون این پوشه'), icon: <PaletteIcon /> },
+        ...(remoteHere
+          ? []
+          : [
+              { id: 'breakdown', label: t('نمودار محتوای پوشه…'), icon: <PieIcon /> } as MenuItem,
+              { id: 'look', label: t('آیکون این پوشه'), icon: <PaletteIcon /> } as MenuItem
+            ]),
         { id: 'columns', label: t('ستون‌ها و اطلاعات…'), icon: <LayersIcon /> },
         { sep: true },
         { id: 'tabNew', label: t('تب نو'), icon: <PlusIcon /> }
@@ -2634,7 +2676,7 @@ export default function App() {
       openWithItem,
       { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
       { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
-      ...(entry?.dir
+      ...(entry?.dir && !remoteHere
         ? [
             { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem,
             { id: 'breakdown', label: t('نمودار محتوا…'), icon: <PieIcon /> } as MenuItem
@@ -2668,7 +2710,7 @@ export default function App() {
     ]
 
     const archiveItems: MenuItem[] =
-      entry && !entry.dir && isArchiveName(entry.name)
+      !remoteHere && entry && !entry.dir && isArchiveName(entry.name)
         ? [
             { id: 'archive', label: t('مرور آرشیو'), icon: <ArchiveOpenIcon /> },
             { id: 'extract', label: t('استخراج…'), icon: <ArchiveOpenIcon /> },
@@ -2689,7 +2731,7 @@ export default function App() {
       ...(me.sel.length > 1
         ? [{ id: 'batch', label: t('تغییر نام گروهی…'), icon: <RenameIcon /> } as MenuItem]
         : []),
-      { id: 'compress', label: t('فشرده‌سازی…'), icon: <ArchiveOpenIcon /> },
+      ...(remoteHere ? [] : [{ id: 'compress', label: t('فشرده‌سازی…'), icon: <ArchiveOpenIcon /> } as MenuItem]),
       { sep: true },
       { id: 'trash', label: t('سطل بازیافت'), key: 'F8', icon: <TrashIcon /> },
       { id: 'delete', label: t('حذف قطعی'), key: 'Shift+F8', icon: <TrashIcon />, danger: true }
@@ -2703,69 +2745,85 @@ export default function App() {
             { id: 'openTab', label: t('باز کردن در تب نو'), icon: <PlusIcon /> },
             { id: 'tabHere', label: t('تب نو در این پوشه'), icon: <PlusIcon /> },
             { id: 'size', label: t('محاسبهٔ اندازه'), key: 'F9', icon: <GaugeIcon /> },
-            { id: 'look', label: t('آیکون پوشه'), icon: <PaletteIcon /> },
+            ...(remoteHere ? [] : [{ id: 'look', label: t('آیکون پوشه'), icon: <PaletteIcon /> } as MenuItem]),
             {
               id: 'bookmarkDir',
               label:
                 path && marks.includes(path) ? t('برداشتن نشان') : t('نشان‌کردن در سایدبار'),
               icon: <StarIcon filled={!!path && marks.includes(path)} />
             },
-            {
-              id: 'hideEntry',
-              label: entry.hidden ? t('نمایش دوباره در فهرست') : t('پنهان‌کردن از فهرست'),
-              icon: entry.hidden ? <EyeIcon /> : <EyeOffIcon />
-            }
+            ...(remoteHere
+              ? []
+              : [
+                  {
+                    id: 'hideEntry',
+                    label: entry.hidden ? t('نمایش دوباره در فهرست') : t('پنهان‌کردن از فهرست'),
+                    icon: entry.hidden ? <EyeIcon /> : <EyeOffIcon />
+                  } as MenuItem
+                ])
           ]
         : []),
-      { id: 'saveFormat', label: t('ذخیرهٔ قالب نمایش این پوشه'), icon: <LayersIcon /> },
-      {
-        id: 'pinFile',
-        label: isPinned ? t('برداشتن سنجاق') : t('سنجاق به بالای پوشه'),
-        icon: <PinIcon filled={isPinned} />
-      },
-      {
-        id: 'forceShow',
-        label: entry?.forceShow ? t('حذف از «همیشه نشان بده»') : t('همیشه نشان بده'),
-        icon: <EyeIcon />
-      }
+      ...(remoteHere ? [] : [{ id: 'saveFormat', label: t('ذخیرهٔ قالب نمایش این پوشه'), icon: <LayersIcon /> } as MenuItem]),
+      ...(remoteHere
+        ? []
+        : [
+            {
+              id: 'pinFile',
+              label: isPinned ? t('برداشتن سنجاق') : t('سنجاق به بالای پوشه'),
+              icon: <PinIcon filled={isPinned} />
+            } as MenuItem,
+            {
+              id: 'forceShow',
+              label: entry?.forceShow ? t('حذف از «همیشه نشان بده»') : t('همیشه نشان بده'),
+              icon: <EyeIcon />
+            } as MenuItem
+          ])
     ]
 
     const systemItems: MenuItem[] = [
       { id: 'copyPath', label: t('کپی مسیر'), icon: <CopyIcon /> },
-      { id: 'symlink', label: t('ایجاد پیوند نمادین…'), icon: <LinkIcon /> },
+      ...(remoteHere ? [] : [{ id: 'symlink', label: t('ایجاد پیوند نمادین…'), icon: <LinkIcon /> } as MenuItem]),
       { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
-      { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> },
+      ...(remoteHere ? [] : [{ id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem]),
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> },
-      { sep: true },
-      { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> },
-      ...(me.sel.length === 2
-        ? [
-            {
-              id: 'diff',
-              label: t('مقایسهٔ دو فایل انتخاب‌شده'),
-              key: 'Ctrl+Shift+Z',
-              icon: <DupeIcon />
-            } as MenuItem
-          ]
-        : []),
-      ...Object.keys(prefs.scripts).map(
-        (name) =>
-          ({
-            id: 'script:' + name,
-            label: `اجرای «${name}»`,
-            icon: <PlayIcon />
-          }) as MenuItem
-      )
+      ...(remoteHere
+        ? []
+        : [
+            { sep: true } as MenuItem,
+            { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem,
+            ...(me.sel.length === 2
+              ? [
+                  {
+                    id: 'diff',
+                    label: t('مقایسهٔ دو فایل انتخاب‌شده'),
+                    key: 'Ctrl+Shift+Z',
+                    icon: <DupeIcon />
+                  } as MenuItem
+                ]
+              : []),
+            ...Object.keys(prefs.scripts).map(
+              (name) =>
+                ({
+                  id: 'script:' + name,
+                  label: `اجرای «${name}»`,
+                  icon: <PlayIcon />
+                }) as MenuItem
+            )
+          ])
     ]
 
     const detailItems: MenuItem[] = [
       { id: 'edit', label: t('ویرایش یا گالری'), key: 'F4', icon: <RenameIcon /> },
-      { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> },
-      { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> },
-      ...(/\.(mp3|m4a)$/i.test(path)
-        ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> } as MenuItem]
-        : []),
-      { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> }
+      ...(remoteHere
+        ? []
+        : [
+            { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> } as MenuItem,
+            { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> } as MenuItem,
+            ...(/\.(mp3|m4a)$/i.test(path)
+              ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> } as MenuItem]
+              : []),
+            { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> } as MenuItem
+          ])
     ]
 
     return [
@@ -2800,15 +2858,19 @@ export default function App() {
         icon: <StarIcon />,
         children: detailItems
       },
-      {
-        id: 'group-export',
-        label: t('خروجی فهرست'),
-        icon: <DocIcon />,
-        children: [
-          { id: 'exportCsv', label: t('صدور فهرست (CSV)'), icon: <DocIcon /> },
-          { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> }
-        ]
-      }
+      ...(remoteHere
+        ? []
+        : ([
+            {
+              id: 'group-export',
+              label: t('خروجی فهرست'),
+              icon: <DocIcon />,
+              children: [
+                { id: 'exportCsv', label: t('صدور فهرست (CSV)'), icon: <DocIcon /> },
+                { id: 'exportPdf', label: t('صدور فهرست (PDF)'), icon: <PdfIcon /> }
+              ]
+            }
+          ] as MenuItem[]))
     ]
   }
 
@@ -3012,6 +3074,7 @@ export default function App() {
   const openSync = async () => {
     const left = tabOf(panes![active])
     const right = tabOf(panes![1 - active])
+    if (remoteGuard(left) || remoteGuard(right)) return
     if (!right || right === left) {
       setNote(t('پنجرهٔ مقابل پوشهٔ دیگری باشد'))
       return
@@ -3021,6 +3084,7 @@ export default function App() {
 
   const openDiff = async () => {
     const me = panes![active]
+    if (me.sel.some((p) => remoteGuard(p))) return
     if (me.sel.length !== 2) {
       setNote(t('برای مقایسه دو فایل را انتخاب کن'))
       return
@@ -3076,6 +3140,7 @@ export default function App() {
     toggleView: () => setView(cycleView(viewOf(active))),
     toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
     terminal: () => {
+      if (remoteGuard(tabOf(panes![active]))) return
       void api.openTerminal(tabOf(panes![active])).then((r) => {
         if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
       })
@@ -3131,7 +3196,8 @@ export default function App() {
       const p = panes![active].sel[0]
       if (p) setPropsFor(p)
     },
-    prefs: () => setSettingsOpen(true)
+    prefs: () => setSettingsOpen(true),
+    remote: () => setRemoteOpen(true)
   }
 
   /**
@@ -3670,6 +3736,11 @@ export default function App() {
           items={prefs.toolbar as CommandId[]}
           mode={prefs.toolbarMode}
           shortcuts={prefs.shortcuts}
+          disabled={
+            isRemotePath(curPath)
+              ? (['flat', 'dupes', 'sync', 'diff', 'compress', 'extract', 'terminal', 'look', 'saveFormat', 'indexSizes'] as CommandId[])
+              : []
+          }
           onRun={(id, anchor) => {
             if (id === 'newItem') openNewMenu(anchor)
             else RUN[id]?.()
@@ -3731,6 +3802,18 @@ export default function App() {
               onMarkDrop={addMarks}
               onReorderMarks={handleReorderMarks}
               drives={prefs.sidebarDrives ? drives : undefined}
+              remotes={remotes}
+              onRemote={(p) => {
+                try {
+                  go(active, profileUri(p))
+                } catch (e) {
+                  setNote(t('این اتصال مسیر معتبری ندارد'))
+                }
+              }}
+              onManageRemotes={() => {
+                setRemoteInitial(undefined)
+                setRemoteOpen(true)
+              }}
               onMountDrive={handleMountDrive}
               onUnmountDrive={handleUnmountDrive}
               drivesPageActive={drivesPageOpen}
@@ -4061,6 +4144,18 @@ export default function App() {
                 onMarkDrop={addMarks}
                 onReorderMarks={handleReorderMarks}
                 drives={prefs.sidebarDrives ? drives : undefined}
+                remotes={remotes}
+                onRemote={(p) => {
+                  try {
+                    go(active, profileUri(p))
+                  } catch (e) {
+                    setNote(t('این اتصال مسیر معتبری ندارد'))
+                  }
+                }}
+                onManageRemotes={() => {
+                  setRemoteInitial(undefined)
+                  setRemoteOpen(true)
+                }}
                 onMountDrive={handleMountDrive}
                 onUnmountDrive={handleUnmountDrive}
                 drivesPageActive={drivesPageOpen}
@@ -4153,6 +4248,11 @@ export default function App() {
               done: fa(indexStatus.done),
               total: fa(indexStatus.total)
             })}
+          </span>
+        )}
+        {isRemotePath(curPath) && (
+          <span className="remote-chip" title={curPath} dir="ltr">
+            {remoteProtocolLabel(curPath)} · {remoteRootLabel(curPath)}
           </span>
         )}
         {free != null && <span>{t('آزاد:')} {fmtSize(free, false, prefs.sizeFormat)}</span>}
@@ -4408,13 +4508,22 @@ export default function App() {
         <div className="modal" onMouseDown={() => setConfirmAsk(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
             <div className="dlg-title">
-              {confirmAsk.kind === 'trash' ? t('به سطل بازیافت برود؟') : t('برای همیشه حذف شود؟')}
+              {confirmAsk.paths.every(isRemotePath)
+                ? t('از سرور برای همیشه حذف شود؟')
+                : confirmAsk.kind === 'trash'
+                  ? t('به سطل بازیافت برود؟')
+                  : t('برای همیشه حذف شود؟')}
             </div>
             <div className="hint" dir="auto">
               {t('{n} مورد', { n: fa(confirmAsk.paths.length) })} ·{' '}
               {confirmAsk.paths.slice(0, 3).map(baseName).join(t('، '))}
               {confirmAsk.paths.length > 3 ? ' …' : ''}
             </div>
+            {confirmAsk.paths.some(isRemotePath) && (
+              <div className="hint remote-warn">
+                {t('فایل‌های دور سطل بازیافت ندارند و برای همیشه حذف می‌شوند')}
+              </div>
+            )}
             <div className="dlg-actions">
               <button
                 autoFocus
@@ -4527,6 +4636,23 @@ export default function App() {
           items={sortMenuItems()}
           onPick={pickSort}
           onClose={() => setSortMenu(null)}
+        />
+      )}
+
+      {remoteOpen && (
+        <RemoteDialog
+          profiles={remotes}
+          initialId={remoteInitial}
+          onProfiles={setRemotes}
+          onOpen={(uri) => {
+            setRemoteOpen(false)
+            setRemoteInitial(undefined)
+            go(active, uri)
+          }}
+          onClose={() => {
+            setRemoteOpen(false)
+            setRemoteInitial(undefined)
+          }}
         />
       )}
 

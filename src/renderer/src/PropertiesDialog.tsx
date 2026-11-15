@@ -9,6 +9,8 @@ import {
   fmtDate,
   fmtSize,
   isImage,
+  isRemotePath,
+  joinPath,
   modeString,
   permLevel,
   permMode,
@@ -60,6 +62,7 @@ export function PropertiesDialog({
   onUpdate,
   onChangeIcon
 }: Props) {
+  const remote = isRemotePath(path)
   const [tab, setTab] = useState<TabId>('general')
   const [data, setData] = useState<FileProperties | null>(null)
   const [failed, setFailed] = useState(false)
@@ -85,6 +88,7 @@ export function PropertiesDialog({
 
   useEffect(() => {
     setData(null)
+    setTab('general')
     setFailed(false)
     setHashes({})
     setExpected('')
@@ -127,7 +131,7 @@ export function PropertiesDialog({
 
   useEffect(() => {
     setNameDraft(data?.name ?? '')
-    setOctal(data ? (data.mode & 0o777).toString(8).padStart(3, '0') : '')
+    setOctal(data && data.mode != null ? (data.mode & 0o777).toString(8).padStart(3, '0') : '')
   }, [data?.name, data?.mode])
 
   const entry = useMemo<Entry | null>(
@@ -159,8 +163,7 @@ export function PropertiesDialog({
       setNameDraft(data.name)
       return
     }
-    const sep = path.startsWith('/') ? '/' : '\\'
-    const target = `${dirOf(path)}${sep}${next}`
+    const target = joinPath(dirOf(path), next)
     const taken = await api.properties(target)
     if (!('error' in taken)) {
       onNote(t('نام تکراری است'))
@@ -178,7 +181,7 @@ export function PropertiesDialog({
   }
 
   const applyMode = async (mode: number) => {
-    if (!data) return
+    if (!data || remote) return
     const next = mode & 0o777
     if (next === data.mode) return
     const r = await api.chmod(data.path, next)
@@ -303,7 +306,7 @@ export function PropertiesDialog({
 
   const icon =
     data && !data.dir && isImage(data.ext) ? (
-      <img src={thumbUrl(data.path, 96)} alt="" draggable={false} />
+      <img src={thumbUrl(data.path, 96, `${Math.round(data.mtime)}-${data.size}`)} alt="" draggable={false} />
     ) : entry ? (
       <EntryIcon entry={entry} size={54} iconSet={iconSet} />
     ) : null
@@ -504,6 +507,8 @@ export function PropertiesDialog({
       {row(t('آخرین دسترسی'), fmtDate(d.atime, 'iso', true), true)}
       {row(t('تغییر متادیتا'), fmtDate(d.ctime, 'iso', true), true)}
 
+      {!remote && (
+      <>
       <div className="prop-section">
         <h4>{t('برچسب')}</h4>
         <div className="prop-chips">
@@ -541,7 +546,10 @@ export function PropertiesDialog({
           </span>
         </div>
       </div>
+      </>
+      )}
 
+      {!remote && (
       <div className="prop-section">
         <h4>{t('توضیح')}</h4>
         <textarea
@@ -559,6 +567,7 @@ export function PropertiesDialog({
           </button>
         </div>
       </div>
+      )}
     </>
   )
 
@@ -578,7 +587,7 @@ export function PropertiesDialog({
               {data?.name ?? baseName(path)}
             </div>
             <div className="props-kind">{entry ? typeLabel(entry) : t('در حال خواندن…')}</div>
-            {data?.dir && onChangeIcon && (
+            {data?.dir && !remote && onChangeIcon && (
               <button className="btn ghost props-icon-btn" onClick={onChangeIcon}>
                 {t('تغییر آیکون…')}
               </button>
@@ -587,7 +596,7 @@ export function PropertiesDialog({
         </div>
 
         <div className="props-tabs" role="tablist">
-          {TABS.map((tb) => (
+          {(remote ? TABS.filter((tb) => tb.id !== 'permissions') : TABS).map((tb) => (
             <button
               key={tb.id}
               role="tab"
@@ -604,7 +613,7 @@ export function PropertiesDialog({
           {failed && <p className="hint">{t('ویژگی‌ها خوانده نشد')}</p>}
           {!data && !failed && <p className="hint">{t('در حال خواندن…')}</p>}
           {data && tab === 'general' && general(data)}
-          {data && tab === 'permissions' && permissions(data)}
+          {data && !remote && tab === 'permissions' && permissions(data)}
           {data && tab === 'checksums' && checksums(data)}
           {data && tab === 'details' && details(data)}
         </div>

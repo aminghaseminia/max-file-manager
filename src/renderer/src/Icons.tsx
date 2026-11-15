@@ -323,6 +323,18 @@ export const DriveIcon = ({ size = 14 }: { size?: number }) => (
     <path d="M7 12h.01M17 12h.01" />
   </S>
 )
+export const ServerIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <rect x="3" y="4" width="18" height="7" rx="2" />
+    <rect x="3" y="13" width="18" height="7" rx="2" />
+    <path d="M7 7.5h.01M7 16.5h.01M16 7.5h1M16 16.5h1" />
+  </S>
+)
+export const CloudIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.4 4.3 4.3 0 0 1 16.7 18z" />
+  </S>
+)
 export const MemoryIcon = ({ size = 15 }: { size?: number }) => (
   <S size={size}>
     <rect x="3.5" y="7" width="17" height="10" rx="1.7" />

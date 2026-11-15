@@ -80,6 +80,17 @@ contextBridge.exposeInMainWorld('api', {
       }
     }
   },
+  remote: {
+    profiles: () => ipcRenderer.invoke('remote:profiles'),
+    save: (draft: unknown) => ipcRenderer.invoke('remote:save', draft),
+    remove: (id: string) => ipcRenderer.invoke('remote:remove', id),
+    test: (draft: unknown) => ipcRenderer.invoke('remote:test', draft),
+    testSaved: (id: string) => ipcRenderer.invoke('remote:testSaved', id),
+    uri: (id: string) => ipcRenderer.invoke('remote:uri', id),
+    sshConfig: () => ipcRenderer.invoke('remote:sshConfig'),
+    forgetHostKey: (id: string) => ipcRenderer.invoke('remote:forgetHostKey', id),
+    clearCache: () => ipcRenderer.invoke('remote:clearCache')
+  },
   drives: {
     list: () => ipcRenderer.invoke('drives:list'),
     volumes: () => ipcRenderer.invoke('drives:volumes'),

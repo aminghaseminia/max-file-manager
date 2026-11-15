@@ -1,6 +1,19 @@
 import { getLang, t } from './i18n.ts'
 import { isHtmlPath } from './html.ts'
+import {
+  formatRemote,
+  isRemotePath,
+  parseRemote,
+  remoteDir,
+  remoteJoin,
+  remoteName,
+  remoteProtocolLabel,
+  remoteRoot,
+  remoteRootLabel
+} from '../../shared/remote-path.ts'
 import type { Entry } from './api.ts'
+
+export { isRemotePath, remoteProtocolLabel, remoteRootLabel }
 
 export type SortKey =
   | 'name'
@@ -113,8 +126,21 @@ export function modeString(mode: number): string {
 
 export type Crumb = { name: string; path: string }
 
-/** Breadcrumb segments for POSIX and Windows paths. */
+/** Breadcrumb segments for POSIX and Windows paths, and for remote URIs. */
 export function crumbs(p: string): Crumb[] {
+  if (isRemotePath(p)) {
+    const loc = parseRemote(p)
+    if (!loc) return []
+    const root = remoteRoot(p)
+    const out: Crumb[] = [{ name: remoteRootLabel(p), path: root }]
+    let acc = root
+    const segments = loc.scheme === 's3' ? loc.path.split('/').filter(Boolean) : loc.path.split('/').filter(Boolean)
+    for (const seg of segments) {
+      acc = remoteJoin(acc, seg)
+      out.push({ name: seg, path: acc })
+    }
+    return out
+  }
   const win = /^[A-Za-z]:[\\/]/.test(p)
   const parts = p.split(/[\\/]+/).filter(Boolean)
   if (win) {
@@ -199,6 +225,7 @@ export function orderEntries(
 }
 
 export function baseName(p: string): string {
+  if (isRemotePath(p)) return remoteName(p)
   const s = p.replace(/[\\/]+$/, '')
   return s.split(/[\\/]/).pop() || s
 }
@@ -212,6 +239,9 @@ export function baseName(p: string): string {
  * never regenerates anything — no polling and no watcher needed.
  */
 export function thumbUrl(p: string, side = 256, version = ''): string {
+  if (isRemotePath(p)) {
+    return `thumb://remote/${encodeURIComponent(p)}?s=${side}${version ? `&v=${encodeURIComponent(version)}` : ''}`
+  }
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
   const tail = segs.join('/')
   // same trap as `mediaUrl`: `thumb://localD:/x` parses `localD` as the host, so the drive path
@@ -219,8 +249,11 @@ export function thumbUrl(p: string, side = 256, version = ''): string {
   return `thumb://local${tail.startsWith('/') ? '' : '/'}${tail}?s=${side}${version ? `&v=${encodeURIComponent(version)}` : ''}`
 }
 
-/** Local file → the mfm:// URL the renderer may load in <img>. */
-export function mediaUrl(p: string): string {
+/** Local file → the mfm:// URL the renderer may load in <img>; remote files get cached in main. */
+export function mediaUrl(p: string, version = ''): string {
+  if (isRemotePath(p)) {
+    return `mfm://remote/${encodeURIComponent(p)}${version ? `?v=${encodeURIComponent(version)}` : ''}`
+  }
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
   const tail = segs.join('/')
   return `mfm://local${tail.startsWith('/') ? '' : '/'}${tail}`
@@ -234,6 +267,8 @@ export function menuTargets(selection: string[], path: string | null): string[] 
 
 /** Local path → the `file://` URI external apps expect on a drag (`text/uri-list`). */
 export function fileUri(p: string): string {
+  // a remote entry has no file:// URI; main has to download it before a native drag can start
+  if (isRemotePath(p)) return ''
   const segs = p.split(/[\\/]/).map((s) => (/^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)))
   const tail = segs.join('/')
   return `file://${tail.startsWith('/') ? '' : '/'}${tail}`
@@ -351,8 +386,9 @@ export function openAction(
   return 'external'
 }
 
-/** POSIX or Windows: parent folder of a path, keeping its own separator. */
+/** POSIX, Windows or remote: parent folder of a path. */
 export function dirOf(p: string): string {
+  if (isRemotePath(p)) return remoteDir(p)
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   if (i < 0) return ''
   const head = p.slice(0, Math.max(1, i))
@@ -369,8 +405,20 @@ export function isAbsolutePath(p: string): boolean {
   return s.startsWith('/') || /^[A-Za-z]:[\\/]/.test(s) || /^\\\\[^\\]/.test(s)
 }
 
+/** Local absolute path *or* a remote URI: what navigation and the transfer engine accept. */
+export function isNavigablePath(p: string): boolean {
+  return isRemotePath(p) || isAbsolutePath(p)
+}
+
 export function joinPath(dir: string, name: string): string {
   if (!dir) return name
+  if (isRemotePath(dir)) {
+    try {
+      return remoteJoin(dir, name)
+    } catch {
+      return dir
+    }
+  }
   return /[\\/]$/.test(dir) ? dir + name : dir + (dir.includes('\\') ? '\\' : '/') + name
 }
 

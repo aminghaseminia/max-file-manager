@@ -1,10 +1,11 @@
 import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DirRef, type Drive } from './api'
+import { api, type DirRef, type Drive, type RemoteProfile } from './api'
 import { baseName, fa } from './format'
 import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, CloudIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, PlusIcon, ServerIcon, StarIcon, UsbIcon, XIcon } from './Icons'
+import { profileUri } from '../../shared/remote-profile.ts'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
 
@@ -83,6 +84,10 @@ type Props = {
   floating: boolean
   onToggleFloat(): void
   drives?: Drive[]
+  /** saved FTP/FTPS/S3 connections; undefined hides the section entirely */
+  remotes?: RemoteProfile[]
+  onRemote?(profile: RemoteProfile): void
+  onManageRemotes?(): void
   onMountDrive?(device: string): void
   onUnmountDrive?(deviceOrMount: string): void
   /** the dedicated drives/memory page is currently open */
@@ -117,6 +122,9 @@ export function Sidebar({
   floating,
   onToggleFloat,
   drives,
+  remotes,
+  onRemote,
+  onManageRemotes,
   onMountDrive,
   onUnmountDrive,
   drivesPageActive,
@@ -460,6 +468,69 @@ export function Sidebar({
                 </button>
               </div>
               {treeOpen.has(r.path) && renderTree(r.path, 1)}
+            </div>
+          )
+        })}
+
+      {remotes && (
+        <div className="side-section-head">
+          <button
+            type="button"
+            className="side-section-toggle"
+            onClick={() => toggleSection('remote')}
+            aria-expanded={!isCollapsed('remote')}
+          >
+            <span className="side-twisty">
+              {!isCollapsed('remote') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+            </span>
+            <span className="side-title" title={t('اتصال‌های دور')}>{t('دور')}</span>
+            {remotes.length > 0 && <span className="side-section-badge">{fa(remotes.length)}</span>}
+          </button>
+          {onManageRemotes && (
+            <button
+              type="button"
+              className="side-add"
+              title={t('مدیریت اتصال‌های دور')}
+              aria-label={t('مدیریت اتصال‌های دور')}
+              onClick={onManageRemotes}
+            >
+              <PlusIcon size={12} />
+            </button>
+          )}
+        </div>
+      )}
+      {remotes && !isCollapsed('remote') && remotes.length === 0 && onManageRemotes && (
+        <button type="button" className="tree-row remote-empty-row" onClick={onManageRemotes}>
+          <span className="twisty" />
+          <CloudIcon size={13} />
+          <span>{t('اتصال تازه (FTP/S3)')}</span>
+        </button>
+      )}
+      {remotes &&
+        !isCollapsed('remote') &&
+        remotes.map((r) => {
+          let uri = ''
+          try {
+            uri = profileUri(r)
+          } catch {
+            uri = ''
+          }
+          const active =
+            !!uri && (activePath === uri || activePath.startsWith(uri.endsWith('/') ? uri : uri + '/'))
+          return (
+            <div key={r.id} className={'tree-row remote-row' + (active ? ' on' : '')}>
+              <span className="twisty" />
+              <button
+                type="button"
+                className="tree-name"
+                dir="auto"
+                title={uri || r.name}
+                onClick={() => onRemote?.(r)}
+              >
+                {r.protocol === 's3' ? <CloudIcon size={13} /> : <ServerIcon size={13} />}
+                <span>{r.name}</span>
+                <span className="remote-proto">{r.protocol === 's3' ? 'S3' : r.protocol.toUpperCase()}</span>
+              </button>
             </div>
           )
         })}

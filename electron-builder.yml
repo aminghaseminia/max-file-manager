@@ -8,6 +8,10 @@ files:
   # dbus-next's Windows-only transport (usocket) is never used: the XDG portal is Linux-only,
   # and it drags a build-time node-gyp/request/tar chain we do not want in the artifact
   - "!**/node_modules/usocket/**"
+  # ssh2 ships pure JavaScript; cpu-features is an optional native speed-up and is loaded in a
+  # try/catch, so it can never be the reason a user has to install or build anything
+  - "!**/node_modules/cpu-features/**"
+  - "!**/node_modules/nan/**"
 extraResources:
   - from: build/icon.png
     to: icon.png

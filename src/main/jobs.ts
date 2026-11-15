@@ -1,6 +1,9 @@
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { freeName } from './ops.ts'
+import { isRemotePath, remoteJoin, remoteName, remoteOriginKey } from '../shared/remote-path.ts'
+import type { RemoteControl, RemoteFs } from './remote-core.ts'
 import type { Result } from './types.ts'
 
 export type JobKind = 'copy' | 'move'
@@ -152,7 +155,7 @@ async function copyTree(
 }
 
 // shortcut: cancelled transfers leave a partially filled directory (files are removed, dirs are not) and undo only covers move/rename/mkdir; upgrade when transfers get a journal.
-export function createEngine(emit: (job: Job) => void): Engine {
+export function createEngine(emit: (job: Job) => void, remote?: RemoteFs): Engine {
   const jobs = new Map<string, Job>()
   const ctls = new Map<string, Ctl>()
   const undoStack: UndoRec[] = []
@@ -160,6 +163,146 @@ export function createEngine(emit: (job: Job) => void): Engine {
   let seq = 0
 
   const clone = (j: Job): Job => ({ ...j, errors: [...j.errors] })
+
+  /** Local or remote: one naming rule for label/current/free-name/recursion. */
+  const baseOf = (p: string): string => (isRemotePath(p) ? remoteName(p) : path.basename(p))
+  const joinAny = (dir: string, name: string): string =>
+    isRemotePath(dir) ? remoteJoin(dir, name) : path.join(dir, name)
+  const requireRemote = (): RemoteFs => {
+    if (!remote) throw new Error('remote support is not available in this window')
+    return remote
+  }
+  const statAny = async (
+    p: string
+  ): Promise<{ size: number; mtime: number; dir: boolean } | null> => {
+    if (isRemotePath(p)) {
+      const st = await requireRemote().stat(p)
+      return st ? { size: st.size, mtime: st.mtime, dir: st.dir } : null
+    }
+    const st = await fs.stat(p).catch(() => null)
+    return st ? { size: st.size, mtime: st.mtimeMs, dir: st.isDirectory() } : null
+  }
+  const measureAny = async (p: string): Promise<{ bytes: number; files: number }> => {
+    if (!isRemotePath(p)) return measure(p)
+    const m = await requireRemote().measure(p)
+    return { bytes: m.bytes, files: m.files }
+  }
+  const removeAny = async (p: string): Promise<void> => {
+    if (isRemotePath(p)) {
+      await requireRemote().remove(p)
+      return
+    }
+    await fs.rm(p, { recursive: true, force: true })
+  }
+  const freeNameAny = async (natural: string): Promise<string> =>
+    isRemotePath(natural) ? requireRemote().freeName(natural) : freeName(natural)
+
+  function controlOf(ctl: Ctl, onBytes: (n: number) => void, onFile: () => void): RemoteControl {
+    return {
+      onBytes,
+      cancelled: () => ctl.cancelled,
+      paused: () => ctl.paused,
+      waitIfPaused: async () => {
+        while (ctl.paused && !ctl.cancelled) await sleep(100)
+      }
+    }
+  }
+
+  /**
+   * Move a local file/folder between any two stores. Same-store renames stay a rename; everything
+   * else goes through the transfer path, which is also what undo uses to put a moved item back.
+   */
+  async function moveAny(from: string, to: string): Promise<void> {
+    const aRemote = isRemotePath(from)
+    const bRemote = isRemotePath(to)
+    if (aRemote && bRemote && remoteOriginKey(from) === remoteOriginKey(to)) {
+      await requireRemote().rename(from, to)
+      return
+    }
+    if (!aRemote && !bRemote) {
+      try {
+        await fs.rename(from, to)
+        return
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException)?.code !== 'EXDEV') throw e
+      }
+    }
+    const ctl: Ctl = { paused: false, cancelled: false }
+    await transferTree(from, to, ctl, () => undefined, () => undefined)
+    await removeAny(from)
+  }
+
+  /**
+   * Copy one tree in any direction: local↔local (the original fast path), remote→local,
+   * local→remote and remote→remote (through a temp file). Symlinks are preserved locally and
+   * refused for a remote destination; a remote symlink is transferred as the file it points at.
+   */
+  async function transferTree(
+    src: string,
+    dest: string,
+    ctl: Ctl,
+    onBytes: (n: number) => void,
+    onFile: () => void
+  ): Promise<void> {
+    if (ctl.cancelled) throw new Error('cancelled')
+    const srcRemote = isRemotePath(src)
+    const destRemote = isRemotePath(dest)
+    if (!srcRemote && !destRemote) {
+      await copyTree(src, dest, ctl, onBytes, onFile)
+      return
+    }
+    const rfs = requireRemote()
+    const control = controlOf(ctl, onBytes, onFile)
+    if (srcRemote) {
+      const st = await rfs.stat(src)
+      if (!st) throw new Error('the remote source does not exist')
+      if (st.dir) {
+        if (destRemote) await rfs.mkdir(dest).catch(() => undefined)
+        else await fs.mkdir(dest, { recursive: true })
+        const listing = await rfs.list(src, true)
+        for (const entry of listing.entries) {
+          if (ctl.cancelled) throw new Error('cancelled')
+          await transferTree(entry.path, joinAny(dest, entry.name), ctl, onBytes, onFile)
+        }
+        return
+      }
+      if (destRemote) {
+        const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-remote-'))
+        const local = path.join(tmp, 'item')
+        try {
+          await rfs.downloadFile(src, local, control)
+          // progress was already counted on the download leg; do not count the same bytes twice
+          await rfs.uploadFile(local, dest, controlOf(ctl, () => undefined, onFile))
+        } finally {
+          await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+        }
+      } else {
+        await rfs.downloadFile(src, dest, control)
+      }
+      onFile()
+      return
+    }
+    const st = await fs.lstat(src)
+    if (st.isSymbolicLink()) {
+      if (destRemote) throw new Error('symbolic links cannot be copied to a remote folder')
+      await fs.symlink(await fs.readlink(src), dest)
+      onFile()
+      return
+    }
+    if (st.isDirectory()) {
+      if (destRemote) await rfs.mkdir(dest)
+      else await fs.mkdir(dest, { recursive: true })
+      for (const name of await fs.readdir(src)) {
+        if (ctl.cancelled) throw new Error('cancelled')
+        await transferTree(path.join(src, name), joinAny(dest, name), ctl, onBytes, onFile)
+      }
+      return
+    }
+    if (destRemote) await rfs.uploadFile(src, dest, control)
+    else await copyFile(src, dest, ctl, onBytes, onFile)
+    if (destRemote) onFile()
+  }
+
   const lastEmit = new Map<string, number>()
   const push = (job: Job, force = false) => {
     const now = Date.now()
@@ -199,23 +342,29 @@ export function createEngine(emit: (job: Job) => void): Engine {
         return
       }
       job.state = 'running'
-      job.label = sources.length === 1 ? path.basename(sources[0]) : `${sources.length} مورد`
+      job.label = sources.length === 1 ? baseOf(sources[0]) : `${sources.length} مورد`
       push(job, true)
 
       const pairs: [string, string][] = []
       try {
-        if (!path.isAbsolute(dest)) throw new Error('no destination')
+        const remoteDest = isRemotePath(dest)
+        if (remoteDest) {
+          const target = await requireRemote().stat(dest)
+          if (!target?.dir) throw new Error('the destination is not a remote folder')
+        } else if (!path.isAbsolute(dest)) {
+          throw new Error('no destination')
+        }
         for (const s of sources) {
-          const natural = path.join(dest, path.basename(s))
+          const natural = joinAny(dest, baseOf(s))
           if (opts.skipExisting || opts.newerOnly) {
-            const there = await fs.stat(natural).catch(() => null)
+            const there = await statAny(natural)
             if (there) {
               if (opts.skipExisting) {
                 job.skipped++
                 continue
               }
-              const here = await fs.stat(s).catch(() => null)
-              if (here && there.mtimeMs >= here.mtimeMs) {
+              const here = await statAny(s)
+              if (here && there.mtime >= here.mtime) {
                 job.skipped++
                 continue
               }
@@ -224,8 +373,8 @@ export function createEngine(emit: (job: Job) => void): Engine {
               continue
             }
           }
-          pairs.push([s, await freeName(natural)])
-          const m = await measure(s)
+          pairs.push([s, await freeNameAny(natural)])
+          const m = await measureAny(s)
           job.bytes += m.bytes
           job.files += m.files
         }
@@ -251,10 +400,10 @@ export function createEngine(emit: (job: Job) => void): Engine {
       try {
         for (const [src, target] of pairs) {
           if (ctl.cancelled) break
-          job.current = path.basename(src)
+          job.current = baseOf(src)
           push(job, true)
           try {
-            await copyTree(
+            await transferTree(
               src,
               target,
               ctl,
@@ -268,12 +417,12 @@ export function createEngine(emit: (job: Job) => void): Engine {
               }
             )
             if (kind === 'move') {
-              await fs.rm(src, { recursive: true, force: true })
+              await removeAny(src)
               movedPairs.push([src, target])
             }
           } catch (e: any) {
             if (ctl.cancelled) break
-            job.errors.push(`${path.basename(src)}: ${e?.message ?? String(e)}`)
+            job.errors.push(`${baseOf(src)}: ${e?.message ?? String(e)}`)
           }
         }
         if (movedPairs.length) undoPush(`انتقال ${movedPairs.length} مورد`, movedPairs)
@@ -316,11 +465,18 @@ export function createEngine(emit: (job: Job) => void): Engine {
       const donePairs: [string, string][] = []
       for (const { from, to } of pairs) {
         try {
-          if (!path.isAbsolute(from) || !path.isAbsolute(to)) throw new Error('not an absolute path')
-          await fs.rename(from, to)
+          const aRemote = isRemotePath(from)
+          const bRemote = isRemotePath(to)
+          if (aRemote !== bRemote) throw new Error('a rename cannot cross local and remote')
+          if (aRemote) {
+            await requireRemote().rename(from, to)
+          } else {
+            if (!path.isAbsolute(from) || !path.isAbsolute(to)) throw new Error('not an absolute path')
+            await fs.rename(from, to)
+          }
           donePairs.push([from, to])
         } catch (e: any) {
-          errors.push(`${path.basename(from)}: ${e?.message ?? String(e)}`)
+          errors.push(`${baseOf(from)}: ${e?.message ?? String(e)}`)
         }
       }
       if (donePairs.length) undoPush(`${donePairs.length} تغییر نام`, donePairs)
@@ -328,9 +484,11 @@ export function createEngine(emit: (job: Job) => void): Engine {
     },
     makeDir: async (dir, name) => {
       try {
-        if (!path.isAbsolute(dir)) throw new Error('not an absolute path')
-        const target = path.join(dir, name)
-        await fs.mkdir(target)
+        const remoteDir = isRemotePath(dir)
+        if (!remoteDir && !path.isAbsolute(dir)) throw new Error('not an absolute path')
+        const target = joinAny(dir, name)
+        if (remoteDir) await requireRemote().mkdir(target)
+        else await fs.mkdir(target)
         undoPush(`پوشهٔ ${name}`, [[target, target]], 'rmdir')
         return { done: 1, errors: [] }
       } catch (e: any) {
@@ -339,17 +497,27 @@ export function createEngine(emit: (job: Job) => void): Engine {
     },
     createFile: async (dir, name, content = '') => {
       try {
-        if (!path.isAbsolute(dir)) throw new Error('not an absolute path')
-        const target = path.join(dir, name)
+        const remoteDirPath = isRemotePath(dir)
+        if (!remoteDirPath && !path.isAbsolute(dir)) throw new Error('not an absolute path')
+        const target = joinAny(dir, name)
         const data =
           typeof content === 'string' && content.startsWith('base64:')
             ? Buffer.from(content.slice(7), 'base64')
             : content
-        await fs.writeFile(target, data, { flag: 'wx' })
+        if (remoteDirPath) {
+          const rfs = requireRemote()
+          if (await rfs.exists(target)) throw new Error('این نام از قبل وجود دارد')
+          await rfs.writeBuffer(target, Buffer.isBuffer(data) ? data : Buffer.from(data))
+        } else {
+          await fs.writeFile(target, data, { flag: 'wx' })
+        }
         undoPush(`فایل ${name}`, [[target, target]], 'unlink')
         return { done: 1, errors: [] }
       } catch (e: any) {
-        const msg = e?.code === 'EEXIST' ? 'این نام از قبل وجود دارد' : (e?.message ?? String(e))
+        const msg =
+          e?.code === 'EEXIST' || /وجود دارد/.test(String(e?.message))
+            ? 'این نام از قبل وجود دارد'
+            : (e?.message ?? String(e))
         return { done: 0, errors: [`${name}: ${msg}`] }
       }
     },
@@ -360,17 +528,13 @@ export function createEngine(emit: (job: Job) => void): Engine {
       for (const [from, to] of [...rec.pairs].reverse()) {
         try {
           if (rec.inverse === 'rmdir') {
-            await fs.rmdir(from)
+            if (isRemotePath(from)) await requireRemote().remove(from)
+            else await fs.rmdir(from)
           } else if (rec.inverse === 'unlink') {
-            await fs.unlink(from)
+            if (isRemotePath(from)) await requireRemote().remove(from)
+            else await fs.unlink(from)
           } else {
-            try {
-              await fs.rename(to, from)
-            } catch (e: any) {
-              if (e?.code !== 'EXDEV') throw e
-              await fs.cp(to, from, { recursive: true }) // cross-device move: copy back, then drop
-              await fs.rm(to, { recursive: true, force: true })
-            }
+            await moveAny(to, from)
           }
           done++
         } catch {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {thumbUrl, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isAbsolutePath, isIgnoredName, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {thumbUrl, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isAbsolutePath, isIgnoredName, isNavigablePath, isRemotePath, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -535,4 +535,37 @@ test('cleanMarkNames keeps trimmed titles and drops junk', () => {
   )
   assert.deepEqual(cleanMarkNames(null), {})
   assert.equal(cleanMarkNames({ '/x': 'a'.repeat(200) })['/x'].length, 80)
+})
+
+
+test('remote URIs navigate like local folders: crumbs, parent, name and join', () => {
+  assert.equal(isRemotePath('ftps://alice@example.com/inbox'), true)
+  assert.equal(isRemotePath('/home/alice'), false)
+  assert.equal(isNavigablePath('s3://acct@bucket/photos'), true)
+  assert.equal(isNavigablePath('relative/path'), false)
+
+  const ftp = 'ftp://alice@example.com:2121/inbox/hello%20world.txt'
+  assert.equal(baseName(ftp), 'hello world.txt')
+  assert.equal(dirOf(ftp), 'ftp://alice@example.com:2121/inbox')
+  assert.equal(joinPath('ftp://alice@example.com/inbox', 'a b.txt'), 'ftp://alice@example.com/inbox/a%20b.txt')
+  assert.deepEqual(crumbs(ftp).map((c) => [c.name, c.path]), [
+    ['alice@example.com', 'ftp://alice@example.com:2121/'],
+    ['inbox', 'ftp://alice@example.com:2121/inbox'],
+    ['hello world.txt', 'ftp://alice@example.com:2121/inbox/hello%20world.txt']
+  ])
+
+  const s3 = 's3://acct@bucket/photos/2024/a.jpg'
+  assert.equal(baseName(s3), 'a.jpg')
+  assert.equal(dirOf(s3), 's3://acct@bucket/photos/2024')
+  assert.deepEqual(crumbs(s3).map((c) => c.name), ['acct@bucket', 'photos', '2024', 'a.jpg'])
+  assert.equal(crumbs('s3://acct@bucket/')[0].path, 's3://acct@bucket/')
+})
+
+test('remote media and thumbnail URLs use the remote protocol host', () => {
+  const uri = 'ftp://alice@example.com/a b/photo #1.png'
+  assert.equal(mediaUrl(uri), `mfm://remote/${encodeURIComponent(uri)}`)
+  assert.equal(mediaUrl(uri, '12-34'), `mfm://remote/${encodeURIComponent(uri)}?v=12-34`)
+  assert.equal(thumbUrl(uri, 128, '12-34'), `thumb://remote/${encodeURIComponent(uri)}?s=128&v=12-34`)
+  assert.equal(fileUri(uri), '', 'a remote entry has no local file:// URI')
+  assert.equal(mediaUrl('/home/me/a.png'), 'mfm://local/home/me/a.png')
 })

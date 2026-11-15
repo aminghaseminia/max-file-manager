@@ -15,6 +15,7 @@ A dual-pane desktop file manager for KDE and Windows, aiming at Directory Opus l
 | **One command registry** | every action is a command (`commands.ts`); the toolbar, the shortcut editor and the status bar all read the same list, and every key is rebindable |
 | **Transfers never block the UI** | a queue with byte progress, speed, pause/resume, cancel, per-item errors, and undo |
 | **Nothing is overwritten** | existing names become `name (2).ext`; delete goes to the OS trash unless you hold `Shift` |
+| **Remote locations built in** | FTP, FTPS (explicit/implicit), SFTP and S3 (AWS/MinIO/Ceph) as tabs and transfer endpoints; SFTP key/agent auth and `~/.ssh/config` import; secrets in the OS keyring; nothing extra to install |
 
 Grid view with real thumbnails (256px cache, served over `thumb://`):
 
@@ -44,7 +45,7 @@ One typed preferences object, persisted atomically in SQLite (`search.db`, table
 
 ## Agents (MCP) — off by default
 
-A loopback-only HTTP API with a bearer token (`~/.config/max-file-manager/mcp.json`, mode `600`) exposes 91 tools over the *same* operations the UI uses — files, transfers, the index, tags, colours, ratings, apps and the window itself, plus a dependency-free stdio bridge (`bin/mfm-mcp.mjs`) and an append-only audit log that records the tool and the shape of its arguments — never file contents.
+A loopback-only HTTP API with a bearer token (`~/.config/max-file-manager/mcp.json`, mode `600`) exposes 107 tools over the *same* operations the UI uses — files, transfers, the index, tags, colours, ratings, apps and the window itself, plus a dependency-free stdio bridge (`bin/mfm-mcp.mjs`) and an append-only audit log that records the tool and the shape of its arguments — never file contents.
 
 ![agents](docs/screenshot-agents.png)
 
@@ -54,6 +55,7 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 
 - **Single or dual pane**, full tabs in each, session restore (panes, tabs, sort, bookmarks, every preference)
 - **Single instance**: launching again raises the open window and opens the path you handed it; optional **minimize to tray / close to tray** with a show/quit tray menu
+- **Remote tabs**: FTP/FTPS, SFTP (password, private key or SSH agent, `~/.ssh/config` import, `known_hosts` verification) and S3-compatible buckets — transfers in any direction, preview/editor/gallery over a local cache; secrets are encrypted with the OS keyring and nothing has to be installed ([docs/REMOTE.md](docs/REMOTE.md))
 - **Startup choice**: restore the previous session or always open one fixed folder
 - **Configurable columns**: type, size, date (ISO or Jalali), permissions, owner, hard links, image dimensions — all sortable (asc/desc), and every folder remembers its own sort in `.mfm.json`; folders stay grouped first for name and size sorts
 - **Inline address bar**: `Ctrl+L` or a double-click on the breadcrumb edits the path in place; the field stays LTR in Persian, and the row itself is LTR

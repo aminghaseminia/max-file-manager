@@ -38,7 +38,7 @@
 
 | قابلیت | Opus | Krusader | ما | فاز |
 | --- | --- | --- | --- | --- |
-| FTP/SFTP | ✅ | ✅ | ❌ | J |
+| FTP/FTPS/SFTP/S3 | ✅ | ✅ (FTP/SFTP) | ✅ (FTP/FTPS/SFTP/S3، بدون SFTP ProxyJump/متادیتای محلی) | J |
 | SMB / KIO slaves (fish, smb) | ◐ | ✅ | ❌ | J |
 | جست‌وجوی ایندکس‌شده (Everything/Windows Search، Baloo/Tracker) | ✅ | ◐ | ❌ (walk دستی، سقف ۵۰۰۰) | N |
 | مجموعه‌های ذخیره‌شده (Collections / Find results) | ✅ | ◐ | ◐ (فهرست تخت/جست‌وجو/تکراری‌ها، بی‌ذخیره) | G |
@@ -80,7 +80,7 @@
 5. **Colors & Fonts تفصیلی** — به‌ازای هر عنصر (پس‌زمینه، انتخاب، برچسب، ردیف یکدرمیان).
 6. **پشتیبان‌گیری/بازیابی تنظیمات** — صدور/درون‌ریزی کل تنظیمات (در فاز I باز است).
 7. **Default programs / context menu سفارشی** — افزودن اکشن به منوی ویندوز/KDE.
-8. **Address book شبکه** (FTP/SFTP) — مربوط به فاز J.
+8. **Address book شبکه** (FTP/FTPS/SFTP/S3) — انجام شد؛ [docs/REMOTE.md](REMOTE.md).
 
 ## نتیجهٔ صادقانه
 
