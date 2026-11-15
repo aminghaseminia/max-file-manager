@@ -9,7 +9,7 @@ import { Editor } from './Editor'
 import { Gallery } from './Gallery'
 import { OpenWithDialog } from './OpenWithDialog'
 import { PropertiesDialog } from './PropertiesDialog'
-import { clearDragPaths, lastDragPaths } from './drag'
+import { clearDragPaths, dragOutPaths, lastDragPaths, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
 import { JobsBar } from './JobsBar'
 import { Pane, type FolderView, type PaneState, type SearchQuery, type View } from './Pane'
@@ -1720,9 +1720,10 @@ export default function App() {
     if (!paths.length) return
     // a native drag of our own rows comes back as `Files`: treat it as the internal move/copy
     // it was, not as a foreign copy
-    const mine = lastDragPaths()
+    const mine = lastDragPaths().length ? lastDragPaths() : dragOutPaths()
     const internal = mine.length > 0 && paths.every((p) => mine.includes(p))
     clearDragPaths()
+    releaseDragOut()
     if (internal) {
       await dropInternal(paths, dest, copy)
       return

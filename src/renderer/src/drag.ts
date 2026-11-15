@@ -35,3 +35,30 @@ export const clearDragPaths = (): void => {
   }, 300)
 }
 
+/**
+ * The drag that main started with `wc.startDrag` (macOS/Windows).
+ *
+ * Those platforms cancel Chromium's own drag, so `dragend` fires at once and `clearDragPaths()`
+ * wipes the list above — but the real OS drag keeps running for as long as the user holds the
+ * mouse, and the drop still arrives with no custom payload. This record lives until the drop
+ * consumes it; the timestamp only guards against a drag that was cancelled with Esc.
+ */
+let outPaths: string[] = []
+let outAt = 0
+
+export const holdDragOut = (next: string[]): void => {
+  outPaths = next
+  outAt = Date.now()
+}
+
+export const dragOutPaths = (): string[] => {
+  if (outPaths.length && Date.now() - outAt > 60_000) {
+    outPaths = []
+    return []
+  }
+  return outPaths
+}
+
+export const releaseDragOut = (): void => {
+  outPaths = []
+}

@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Entry, type Listing } from './api'
-import { keepDragPaths } from './drag'
+import { dragOutPaths, holdDragOut, keepDragPaths, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
 import type { ColId } from './prefs'
 import {
@@ -530,12 +530,17 @@ export function Pane(props: Props) {
     const paths = dragPaths(path)
     if (!paths.length) return
     keepDragPaths(paths)
+    holdDragOut(paths)
     dragLog(`start ${path} all='${paths.join(',')}'`)
-    // Windows: Chromium's own native drag and the `startDrag` in main would be two drags at
-    // once, and the second one crashes the whole process. Cancelling this one leaves the OS
-    // drag as the only native drag; it still lands back here as `Files`, and `dropFiles`
-    // treats our own paths as the internal move/copy they are.
-    if (api.platform === 'win32') {
+    // One drag session per gesture. Chromium's own HTML5 drag and `wc.startDrag` in main are two
+    // native drags for the same mouse-down: on Windows the second crashes the process, and on
+    // macOS the second re-activates this app mid-drag (the target app drops behind) while the
+    // pasteboard also carries a URL rather than a file — Telegram reads that as a zero-byte file
+    // promise («file parts invalid»). Cancel the HTML one and keep the real file drag from main;
+    // it lands back here as `Files`, and `dropFiles` recognises our own paths as internal.
+    // Linux keeps the HTML drag: `startDrag` is not reliable under Wayland and both orders were
+    // tested there.
+    if (api.platform !== 'linux') {
       ev.preventDefault()
       api.dragOut(paths)
       return
@@ -568,7 +573,17 @@ export function Pane(props: Props) {
       return
     }
     const files = [...ev.dataTransfer.files]
-    if (files.length) props.onDropFiles(files, dest, ev.ctrlKey)
+    if (files.length) {
+      props.onDropFiles(files, dest, ev.ctrlKey)
+      return
+    }
+    // the native drag of our own rows can arrive without the custom payload (and without File
+    // objects) — the drag that started here is still known, so the internal move/copy survives
+    const mine = dragOutPaths()
+    if (mine.length && ev.dataTransfer.types.includes('Files')) {
+      releaseDragOut()
+      props.onDropInternal(mine, dest, ev.ctrlKey)
+    }
   }
 
   const menu = (ev: React.MouseEvent, path: string | null) => {

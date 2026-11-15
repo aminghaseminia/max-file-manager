@@ -991,7 +991,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
   ipcMain.on('app:dragOut', (e, files: string[]) => {
-    void startFileDrag(e.sender, files ?? [])
+    void startFileDrag(e.sender, files ?? []).then((r) => {
+      // a drag that cannot start must not fail silently: the user sees the row do nothing
+      if ('error' in r) console.error('drag out:', r.error)
+    })
   })
   /**
    * Search indexing is one run at a time and its state is global: the pending state, the settings

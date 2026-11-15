@@ -2,7 +2,7 @@ import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DirRef, type Drive } from './api'
 import { baseName, fa } from './format'
-import { clearDragPaths, keepDragPaths, lastDragPaths } from './drag'
+import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
 import { ChevronDownIcon, ChevronLeftIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, StarIcon, UsbIcon, XIcon } from './Icons'
 
@@ -35,12 +35,13 @@ const pathsOf = (dt: DataTransfer): string[] => {
       // fall through to the in-memory copy of our own drag
     }
   }
-  // a Wayland drop can lose the custom data; the drag that started here is still known
-  const internal = lastDragPaths()
-  if (internal.length) return internal
+  // a Wayland drop can lose the custom data; a real file list (a native drag from anywhere,
+  // including our own rows) is the most truthful answer while it exists
   if (dt.files.length) {
     return [...dt.files].map((f) => api.pathForFile(f)).filter(Boolean)
   }
+  const internal = lastDragPaths().length ? lastDragPaths() : dragOutPaths()
+  if (internal.length) return internal
   const text = dt.getData('text/uri-list') || dt.getData('text/plain')
   if (text) {
     const list = text
@@ -183,7 +184,7 @@ export function Sidebar({
     if (types.includes('application/x-mfm-bookmark')) return
     const ours = types.includes('application/x-mfm') || types.includes('application/x-mfm-mark')
     const outside = types.includes('Files') || types.includes('text/uri-list') || types.includes('text/plain')
-    if (!ours && !outside && !lastDragPaths().length) return
+    if (!ours && !outside && !lastDragPaths().length && !dragOutPaths().length) return
     ev.preventDefault()
     ev.dataTransfer.dropEffect = 'copy'
     lastOver.current = { x: ev.clientX, y: ev.clientY, at: performance.now() }
@@ -220,6 +221,7 @@ export function Sidebar({
         .getData('application/x-mfm')}' internal='${lastDragPaths().join(',')}' files=${ev.dataTransfer.files.length} resolved='${paths.join(',')}'`
     )
     if (!paths.length) return
+    releaseDragOut()
     onMarkDrop(paths)
   }
 
