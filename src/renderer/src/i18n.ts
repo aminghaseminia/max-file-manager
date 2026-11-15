@@ -1237,7 +1237,28 @@ const EN: Record<string, string> = {
     'Remote files have no trash and are deleted permanently',
   'این عملیات برای پوشهٔ دور پشتیبانی نمی‌شود':
     'This operation is not supported on a remote folder',
-  'برای پوشهٔ دور در دسترس نیست': 'not available on a remote folder'
+  'برای پوشهٔ دور در دسترس نیست': 'not available on a remote folder',
+  'ژانر': 'Genre',
+  'آهنگساز': 'Composer',
+  'هنرمند آلبوم': 'Album artist',
+  'شماره دیسک': 'Disc number',
+  'تعداد دیسک': 'Disc count',
+  'شماره آهنگ': 'Track number',
+  'تعداد آهنگ': 'Track count',
+  'شماره': 'Number',
+  'کاور': 'Cover',
+  'بدون کاور': 'No cover',
+  'کاور از پوشه': 'Cover from folder',
+  'حذف کاور': 'Remove cover',
+  'نگه‌داشتن کاور فعلی': 'Keep current cover',
+  'شماره‌گذاری خودکار': 'Auto-number',
+  'مقادیر متفاوت — با نوشتن، برای همه اعمال می‌شود': 'Different values — typing applies it to every file',
+  'برچسب‌های صوتی — {n} فایل': 'Audio tags — {n} files',
+  'برچسب‌های صوتی… ({n})': 'Audio tags… ({n})',
+  'خواندن برچسب‌ها ممکن نشد': 'The tags could not be read',
+  'نوشتن برچسب نشد': 'The tags could not be written',
+  'ترتیب فعلی فایل‌ها': 'Current file order',
+  '{n} مورد نادیده گرفته شد (فقط mp3)': '{n} items ignored (mp3 only)'
 }
 
 export function t(key: string, vars?: Record<string, string | number>): string {

@@ -60,6 +60,11 @@ src/renderer/src/JobsBar.tsx  نوار عملیات‌ها: پیشرفت، سر�
 src/renderer/src/RenameDialog.tsx  تغییر نام گروهی با پیش‌نمایش زنده
 src/renderer/src/TitleBar.tsx      تایتل‌بار خود برنامه (drag، کوچک/بزرگ/بستن)
 src/renderer/src/Preferences.tsx پنجرهٔ تنظیمات: دسته‌ها، صفحه‌ها، اعمال فوری
+src/main/id3.ts        تگر کامل ID3v2.2/2.3/2.4: merge با حفظ فریم ناشناس، APIC، نوشتن اتمیک — + تست
+src/main/audioTags.ts  خواندن/نوشتن گروهی برچسب mp3 + کاور مشترک/پوشه (پشت IPC meta:audioRead/audioWrite)
+src/main/metadata.ts   پوستهٔ نازک: parseId3/parseExif برای پیش‌نمایش و readTags/writeId3 سازگار
+src/renderer/src/tags.ts    منطق خالص تگر (commonValues، autoTracks، tagPlan) — + تست
+src/renderer/src/TagEditor.tsx  دیالوگ تگر چندفایلی + کاور (جانشین TagDialog)
 src/main/image.ts      ذخیرهٔ تصویر ویرایش‌شده (data URL → فایل، اتمیک) — + تست
 src/main/portal.ts     بک‌اند XDG FileChooser روی D-Bus + پنجرهٔ انتخاب فایل
 src/main/portal-install.ts  نصب/حذف فایل‌های پروفایل کاربر برای انتخابگر فایل (mfm.portal، سرویس D-Bus، portals.conf)
@@ -214,7 +219,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 - **نوار بندانگشتی گالری با تصویر حرکت می‌کند**: اثر روی `at`، `activeThumb.scrollIntoView({inline:'center'})`؛ `scrollIntoView` در RTL درست کار می‌کند، `scrollLeft` منفی را دستی حساب نکن.
 - **`Object.keys` روی آرایه** (`GROUP_ORDER`) کلیدهای `"0"…"4"` می‌دهد و صفحهٔ کلیدهای میان‌بر خالی می‌ماند؛ آرایه را مستقیم `map` کن. تست: `Preferences` → Shortcuts باید ردیف‌های `keycap` بدهد.
 - **نمونه‌های نام‌دار (Layouts/Filters/FileTypes) در `prefs` هستند** و اعتبارسنجی‌شان در `prefs.ts` است: ستون ناشناس، رنگ غیرhex و نام خالی دور ریخته می‌شوند.
-- **متادیتا فقط خوانده می‌شود**: `metadata.ts` ID3v2 و EXIF را بدون کتابخانه پارس می‌کند (تست با فایل ساخته‌شده). فیلدهای Rational (fnumber/focal) هنوز در نمی‌آیند — اگر لازم شد همان IFD را کامل کن.
+- **ID3v2 نوشته می‌شود، EXIF هنوز فقط خوانده**: `metadata.ts` فقط پوستهٔ نازک است؛ خواندن و نوشتن کامل ID3v2.2/2.3/2.4 در `id3.ts` است (بدون کتابخانه، خالص و تست‌شده). نوشتن همیشه **merge** است: کلیدهای `patch` جایگزین/حذف می‌شوند و هر فریم دیگر (UFID/TXXX/PRIV/USLT و…) بایت‌به‌بایت و به همان ترتیب می‌ماند؛ 2.4 اگر بود 2.4 می‌ماند و بقیه 2.3 (متن UTF-16) نوشته می‌شوند. نوشتن اتمیک (temp + rename) و حفظ mode فقط از `writeId3File` رد می‌شود. EXIF همچنان فقط خوانده می‌شود؛ فیلدهای Rational (fnumber/focal) هنوز در نمی‌آیند. UI از `TagEditor.tsx` و منطق خالصش (`tags.ts`: `tagPlan`/`commonValues`/`autoTracks`) می‌آید — `TagDialog` قدیمی حذف شده و نباید برگردد.
 - **کلیدهای متادیتا با نام فایل‌اند نه مسیر**: `fs:tags` با مسیر مطلق برمی‌گردد ولی `planRename` با نام؛ تبدیل در `RenameDialog` انجام می‌شود. این تله یک بار نام فایل‌ها را خراب کرد.
 - **پیش‌نمایش PDF به پلاگین کرومیوم وابسته است**: پنجرهٔ اصلی `plugins: true` دارد و CSP باید `frame-src 'self' mfm:` را مجاز بداند؛ بدون این دو، قاب خالی می‌ماند.
 - **`.mfm.json` یک نویسنده در هر لحظه دارد**: همهٔ نوشتن‌ها از `setMeta` و صف `serial(dir, …)` می‌گذرند. بدون آن، دو تنظیم هم‌زمان (مثلاً امتیاز + توضیح که با هم می‌آیند) همدیگر را پاک می‌کنند — تست `mfm-race` همین را قفل کرده است.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setLang } from './i18n.ts'
 import test from 'node:test'
-import {thumbUrl, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isAbsolutePath, isIgnoredName, isNavigablePath, isRemotePath, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
+import {thumbUrl, audioTargets, baseName, cleanMarkNames, crumbs, dirOf, groupEntries, isAbsolutePath, isIgnoredName, isNavigablePath, isRemotePath, fa, fileUri, fmtDate, fmtSize, groupLabel, joinPath, kindOf, matchCustomCommand, mediaUrl, menuTargets, modeString, navIndex, openAction, opensInEditor, orderEntries, permLevel, permMode, planRename, reorderItem, sortEntries, terminalDir, toJalali, typeLabel, downloadUrl} from './format.ts'
 
 type Entry = {
   name: string
@@ -568,4 +568,14 @@ test('remote media and thumbnail URLs use the remote protocol host', () => {
   assert.equal(thumbUrl(uri, 128, '12-34'), `thumb://remote/${encodeURIComponent(uri)}?s=128&v=12-34`)
   assert.equal(fileUri(uri), '', 'a remote entry has no local file:// URI')
   assert.equal(mediaUrl('/home/me/a.png'), 'mfm://local/home/me/a.png')
+})
+
+
+test('audioTargets follows the selection like Explorer does', () => {
+  assert.deepEqual(audioTargets('/a.mp3', []), ['/a.mp3'], 'a bare mp3 row is its own target')
+  assert.deepEqual(audioTargets('/a.mp3', ['/b.mp3']), ['/a.mp3'], 'a row outside the selection only targets itself')
+  assert.deepEqual(audioTargets('/a.mp3', ['/a.mp3', '/b.mp3', '/c.txt']), ['/a.mp3', '/b.mp3'], 'a row inside the selection targets all selected mp3s')
+  assert.deepEqual(audioTargets('/a.png', ['/b.mp3', '/c.txt', '/d.MP3']), ['/b.mp3', '/d.MP3'])
+  assert.deepEqual(audioTargets(null, ['/b.mp3', '/b.mp3']), ['/b.mp3'], 'no duplicates')
+  assert.deepEqual(audioTargets('/a.txt', ['/b.txt']), [])
 })

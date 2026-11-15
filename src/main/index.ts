@@ -78,6 +78,13 @@ import { revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
 import { autoTerminal, listTerminals, openTerminal } from './terminals.ts'
 import { setDesktopWallpaper } from './wallpaper.ts'
 import { readTags, writeId3 } from './metadata.ts'
+import {
+  cleanAudioFields,
+  readAudioCover,
+  readAudioTags,
+  writeAudioTags,
+  type AudioWriteRequest
+} from './audioTags.ts'
 import { execFile } from 'node:child_process'
 import { clearThumbs, thumbFor } from './thumbs.ts'
 import {
@@ -1591,6 +1598,24 @@ app.whenReady().then(async () => {
         for (const pp of absList(args.paths).slice(0, 200)) out[pp] = await readTags(pp)
         return out
       }
+      case 'tags_cover': {
+        const cover = await readAudioCover(needAbs(args.path))
+        if (!cover) return { error: 'کاور جاسازی‌شده‌ای ندارد' }
+        const wantsOut = args.out !== undefined && args.out !== null && args.out !== ''
+        if (!wantsOut) {
+          if (cover.data.length > 4 * 1024 * 1024) {
+            throw new Error('cover is larger than 4 MB; pass out to write it to a file')
+          }
+          return {
+            mime: cover.mime,
+            size: cover.data.length,
+            dataUrl: `data:${cover.mime};base64,${cover.data.toString('base64')}`
+          }
+        }
+        const target = await freeName(needAbs(args.out))
+        await fs.writeFile(target, cover.data)
+        return { path: target, size: cover.data.length }
+      }
       case 'meta_get':
         return (await readMeta(needAbs(args.dir))) ?? {}
       case 'labels':
@@ -1731,8 +1756,30 @@ app.whenReady().then(async () => {
         const level = Math.min(9, Math.max(0, Number(args.level ?? 6))) as ZipLevel
         return createZip(needAbs(args.dir), String(args.name ?? 'archive'), absList(args.sources), level)
       }
-      case 'tags_write':
-        return writeId3(needAbs(args.path), (args.fields ?? {}) as Record<string, string>)
+      case 'tags_write': {
+        const list = Array.isArray(args.paths)
+          ? absList(args.paths)
+          : typeof args.path === 'string' && abs(args.path)
+            ? [needAbs(args.path)]
+            : []
+        if (!list.length) throw new Error('path or paths is required')
+        let cover: AudioWriteRequest['cover'] = 'keep'
+        if (args.coverFromFolder === true) cover = 'folder'
+        else if (args.cover === undefined) cover = 'keep'
+        else if (args.cover === null || args.cover === '') cover = 'clear'
+        else cover = { path: needAbs(args.cover) }
+        const fields = cleanAudioFields(args.fields)
+        return writeAudioTags({ items: list.map((p) => ({ path: p, fields })), cover })
+      }
+      case 'tags_number': {
+        const list = absList(args.paths).slice(0, 500)
+        if (!list.length) throw new Error('paths are required')
+        const start = Number.isFinite(Number(args.start)) ? Math.trunc(Number(args.start)) : 1
+        return writeAudioTags({
+          items: list.map((p, i) => ({ path: p, fields: { track: String(start + i) } })),
+          cover: 'keep'
+        })
+      }
       case 'export_listing':
         return exportListing(
           needAbs(args.dir),
@@ -2003,6 +2050,10 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('meta:writeTags', (_e, a: { path: string; fields: Record<string, string> }) =>
     writeId3(a?.path ?? '', a?.fields ?? {})
+  )
+  ipcMain.handle('meta:audioRead', (_e, paths: string[]) => readAudioTags(Array.isArray(paths) ? paths : []))
+  ipcMain.handle('meta:audioWrite', (_e, a: AudioWriteRequest) =>
+    writeAudioTags(a && Array.isArray(a.items) ? a : { items: [], cover: 'keep' })
   )
   ipcMain.handle('image:batchConvert', (_e, a: { files: string[]; opts: ConvertOpts }) =>
     convertImages((a?.files ?? []).slice(0, 500), a?.opts ?? { format: 'jpeg', maxSide: 0, quality: 90 })

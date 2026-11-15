@@ -51,7 +51,8 @@ const TOOLS: McpTool[] = [
   { name: 'archive_list', description: 'entries inside a zip/tar archive', read: true, input: { path: 'string' } },
   { name: 'diff', description: 'line diff of two text files', read: true, input: { a: 'string', b: 'string' } },
   { name: 'sync_compare', description: 'compare two trees for synchronisation', read: true, input: { left: 'string', right: 'string', deep: 'boolean?', compareBy: 'string?', ignore: 'string[]?' } },
-  { name: 'tags', description: 'audio/EXIF tags of files', read: true, input: { paths: 'string[]' } },
+  { name: 'tags', description: 'audio/EXIF tags of files, including the embedded cover MIME', read: true, input: { paths: 'string[]' } },
+  { name: 'tags_cover', description: 'embedded cover of an mp3 as a data URL, or written to a new image file (never overwrites)', read: true, input: { path: 'string', out: 'string?' } },
 
   // ── per-folder metadata (.mfm.json) ────────────────────────────────────────
   { name: 'meta_get', description: 'labels, file colours, pins, ratings, notes and format of a folder', read: true, input: { dir: 'string' } },
@@ -88,7 +89,8 @@ const TOOLS: McpTool[] = [
   { name: 'chmod', description: 'change permission bits of a path', read: false, input: { path: 'string', mode: 'number' } },
   { name: 'extract', description: 'extract an archive (never overwrites)', read: false, input: { archive: 'string', dest: 'string', names: 'string[]?' } },
   { name: 'create_zip', description: 'zip files into a folder', read: false, input: { dir: 'string', name: 'string', sources: 'string[]', level: 'number?' } },
-  { name: 'tags_write', description: 'write ID3 tags of an audio file', read: false, input: { path: 'string', fields: 'object' } },
+  { name: 'tags_write', description: 'merge ID3v2 tags into mp3 files, keeping unknown frames; an empty string removes a frame; optional cover image or folder cover', read: false, input: { path: 'string?', paths: 'string[]?', fields: 'object', cover: 'string?', coverFromFolder: 'boolean?' } },
+  { name: 'tags_number', description: 'number mp3 files in the given order with sequential track numbers', read: false, input: { paths: 'string[]', start: 'number?' } },
   { name: 'export_listing', description: 'write a folder listing as CSV or PDF', read: false, input: { dir: 'string', name: 'string', rows: 'object[]', format: 'string', theme: 'string?' } },
   { name: 'pdf', description: 'render HTML to a PDF file', read: false, input: { html: 'string', out: 'string', theme: 'string?' } },
 

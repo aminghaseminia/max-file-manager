@@ -75,7 +75,8 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `archive_list` | `path` | entries inside a zip/tar |
 | `diff` | `a`, `b` | line diff of two text files |
 | `sync_compare` | `left`, `right`, `deep?`, `compareBy?`, `ignore[]?` | a two-way synchronisation plan |
-| `tags` | `paths[]` | ID3 / EXIF tags |
+| `tags` | `paths[]` | ID3 / EXIF tags, including `coverMime` for an embedded picture |
+| `tags_cover` | `path`, `out?` | embedded cover: `{mime, size, dataUrl}` (max 4 MB), or with an absolute `out` the image is written to a free name and `{path, size}` comes back |
 | `meta_get` | `dir` | `{color, icon, pins, labels, colors, ratings, notes, format}` |
 | `labels` | – | the colour-label palette (id, name, colour) |
 | `folder_look` | `path` | colour/icon from `.mfm.json`, Dolphin `.directory` or Windows `desktop.ini` |
@@ -108,7 +109,8 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `chmod` | `path`, `mode` | `0..0o7777` |
 | `extract` | `archive`, `dest`, `names[]?` | never overwrites (free name) |
 | `create_zip` | `dir`, `name`, `sources[]`, `level?` | streamed |
-| `tags_write` | `path`, `fields` | ID3 (audio only) |
+| `tags_write` | `path?` \| `paths?[]`, `fields`, `cover?`, `coverFromFolder?` | merges ID3v2 into mp3 files, keeping unknown frames; an empty string clears a frame; `cover` is an absolute image path, `""`/`null` clears it, undefined leaves it alone; `coverFromFolder: true` embeds the folder's cover/folder/album/artwork image. Returns `{done, errors[]}` |
+| `tags_number` | `paths[]`, `start?` | sequential track numbers in the given order (`TRCK`), returns `{done, errors[]}` |
 | `export_listing` | `dir`, `name`, `rows[]`, `format`, `theme?` | CSV or PDF |
 | `pdf` | `html`, `out`, `theme?` | always rendered light |
 | `image_save` | `src`, `dataUrl`, `mode` | `overwrite` keeps the original format |
@@ -166,6 +168,12 @@ and `write_text`, and a draft is never applied to the file without the user rest
 
 The gallery's information sheet and edit tools add no new file operation: it reads `properties`
 and `tags` and writes through `image_save` / `image_save_as`, which agents already have.
+
+Embedded audio covers have their own read tool: `tags_cover` returns the picture as a data URL
+(max 4 MB) or writes it to a new file with `out` (never overwriting). `tags_write` accepts
+`cover`/`coverFromFolder` to embed one, or `cover: ""` to clear it, and `tags_number` numbers a
+selection in order. Both write through the app's single merging ID3v2 writer, so unknown frames
+(UFID, TXXX, PRIV, USLT, …) are preserved and only mp3 files are supported.
 
 The folder-tree pane needs no tool of its own: `prefs_set` with `treePane` (`off|left|right`),
 `treeWidth` and `treeAutoFocus` controls it, and `goto` makes auto-focus reveal the folder.

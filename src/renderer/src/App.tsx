@@ -17,7 +17,8 @@ import { Pane, type FolderView, type PaneState, type SearchQuery, type View } fr
 import { PreviewPanel } from './PreviewPanel'
 import { RenameDialog } from './RenameDialog'
 import { BreakdownDialog } from './BreakdownDialog'
-import { ConvertDialog, RatingDialog, TagDialog, convertInRenderer } from './RatingDialog'
+import { ConvertDialog, RatingDialog, convertInRenderer } from './RatingDialog'
+import { TagEditor } from './TagEditor'
 import { rowsOf } from '../../shared/export.ts'
 import {
   WALLPAPER_FILL_LABELS,
@@ -57,6 +58,7 @@ import { COMMANDS, type CommandId } from './commands'
 import { appModifier, matchAccel } from './keys'
 import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
 import {
+  audioTargets,
   baseName,
   defaultSearchRoots,
   dirOf,
@@ -342,11 +344,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [update, setUpdate] = useState<{ current: string; latest: string | null; url: string | null; newer: boolean } | null>(null)
   const [presetsOpen, setPresetsOpen] = useState(false)
-  const [tagFor, setTagFor] = useState<{
-    path: string
-    name: string
-    tags: Record<string, string>
-  } | null>(null)
+  const [tagEdit, setTagEdit] = useState<{ paths: string[] } | null>(null)
   const [rateFor, setRateFor] = useState<{ dir: string; name: string } | null>(null)
   const [convertAsk, setConvertAsk] = useState<{
     files: string[]
@@ -2314,12 +2312,11 @@ export default function App() {
         })
         break
       }
-      case 'tags':
-        if (path)
-          void api.tags([path]).then((r) =>
-            setTagFor({ path, name: baseName(path), tags: (r?.[path] as Record<string, string>) ?? {} })
-          )
+      case 'tags': {
+        const targets = audioTargets(path, me.sel)
+        if (targets.length) setTagEdit({ paths: targets })
         break
+      }
       case 'presets':
         setPresetsOpen(true)
         break
@@ -2813,6 +2810,8 @@ export default function App() {
           ])
     ]
 
+    // an mp3 under the cursor is the target; otherwise every selected mp3 of the pane
+    const audioSel = remoteHere ? [] : audioTargets(path, me.sel)
     const detailItems: MenuItem[] = [
       { id: 'edit', label: t('ویرایش یا گالری'), key: 'F4', icon: <RenameIcon /> },
       ...(remoteHere
@@ -2820,8 +2819,17 @@ export default function App() {
         : [
             { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> } as MenuItem,
             { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> } as MenuItem,
-            ...(/\.(mp3|m4a)$/i.test(path)
-              ? [{ id: 'tags', label: t('برچسب‌های صوتی…'), icon: <AudioIcon /> } as MenuItem]
+            ...(audioSel.length
+              ? [
+                  {
+                    id: 'tags',
+                    label:
+                      audioSel.length > 1
+                        ? t('برچسب‌های صوتی… ({n})', { n: fa(audioSel.length) })
+                        : t('برچسب‌های صوتی…'),
+                    icon: <AudioIcon />
+                  } as MenuItem
+                ]
               : []),
             { id: 'convert', label: t('تبدیل تصاویر…'), icon: <ImageIcon /> } as MenuItem
           ])
@@ -4409,18 +4417,17 @@ export default function App() {
         <DiffDialog a={diff.a} b={diff.b} result={diff.result} onClose={() => setDiff(null)} />
       )}
 
-      {tagFor && (
-        <TagDialog
-          name={tagFor.name}
-          tags={tagFor.tags}
-          onClose={() => setTagFor(null)}
-          onSave={(fields) => {
-            const target = tagFor
-            setTagFor(null)
-            void api.writeTags(target.path, fields).then(async (r) => {
-              setNote('error' in r ? `نوشتن برچسب نشد — ${r.error}` : 'برچسب‌های صوتی ذخیره شد')
-              await load(active, tabOf(panes![active]))
-            })
+      {tagEdit && (
+        <TagEditor
+          paths={tagEdit.paths}
+          onClose={() => setTagEdit(null)}
+          onSave={async (req) => {
+            const result = await api.audioWrite(req)
+            if (result.errors.length) setNote(`${t('نوشتن برچسب نشد')} — ${result.errors[0]}`)
+            else if (result.warnings?.length)
+              setNote(`${t('برچسب‌های صوتی ذخیره شد')} — ${result.warnings[0]}`)
+            else setNote(t('برچسب‌های صوتی ذخیره شد'))
+            await load(active, tabOf(panes![active]))
           }}
         />
       )}

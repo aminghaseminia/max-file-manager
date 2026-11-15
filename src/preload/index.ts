@@ -124,6 +124,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   tags: (paths: string[]) => ipcRenderer.invoke('fs:tags', paths),
   writeTags: (path: string, fields: unknown) => ipcRenderer.invoke('meta:writeTags', { path, fields }),
+  audioRead: (paths: string[]) => ipcRenderer.invoke('meta:audioRead', paths),
+  audioWrite: (req: unknown) => ipcRenderer.invoke('meta:audioWrite', req),
   saveImageAs: (src: string, dataUrl: string, dest?: string) =>
     ipcRenderer.invoke('image:saveAs', { src, dataUrl, dest }),
   convertImages: (files: string[], opts: unknown) =>

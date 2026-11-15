@@ -671,3 +671,15 @@ export function cleanMarkNames(raw: unknown): Record<string, string> {
   }
   return out
 }
+
+/**
+ * Right-click target for the audio tag editor: a row that is part of the selection means the whole
+ * selection (Explorer's rule), a row outside it means only that row.
+ */
+export function audioTargets(path: string | null, sel: string[]): string[] {
+  const isMp3 = (p: string) => /\.mp3$/i.test(p)
+  const selected = [...new Set((sel ?? []).filter((p): p is string => typeof p === 'string' && isMp3(p)))]
+  if (path && isMp3(path) && !selected.includes(path)) return [path]
+  if (selected.length) return selected
+  return path && isMp3(path) ? [path] : []
+}

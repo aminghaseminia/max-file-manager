@@ -56,6 +56,36 @@ export type Breakdown = {
   children: BreakdownChild[]
 }
 
+export type Id3Fields = {
+  title?: string
+  artist?: string
+  albumArtist?: string
+  album?: string
+  year?: string
+  track?: string
+  trackTotal?: string
+  disc?: string
+  discTotal?: string
+  genre?: string
+  composer?: string
+  comment?: string
+}
+
+export type AudioRead = {
+  files: Record<string, Id3Fields>
+  hasCover: Record<string, boolean>
+  sharedCover: string | null
+  folderCover: string | null
+  skipped: number
+}
+
+export type AudioWriteRequest = {
+  items: { path: string; fields: Id3Fields }[]
+  cover: 'keep' | 'clear' | 'folder' | { path: string }
+}
+
+export type AudioWriteResult = { done: number; errors: string[]; warnings?: string[] }
+
 export type Tags = {
   title?: string
   artist?: string
@@ -450,6 +480,8 @@ export type Api = {
   }
   tags(paths: string[]): Promise<Record<string, Tags>>
   writeTags(path: string, fields: Record<string, string>): Promise<{ ok: true } | { error: string }>
+  audioRead(paths: string[]): Promise<AudioRead>
+  audioWrite(req: AudioWriteRequest): Promise<AudioWriteResult>
   saveImageAs(src: string, dataUrl: string, dest?: string): Promise<{ path: string } | { error: string }>
   convertImages(
     files: string[],

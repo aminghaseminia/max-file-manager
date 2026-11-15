@@ -1,13 +1,21 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { readId3, writeId3File } from './id3.ts'
 
 export type Tags = {
   /** audio (ID3) */
   title?: string
   artist?: string
+  albumArtist?: string
   album?: string
   year?: string
   track?: string
+  disc?: string
+  genre?: string
+  composer?: string
+  comment?: string
+  /** embedded cover MIME only — the bytes never travel through `readTags` */
+  coverMime?: string
   /** image (EXIF) */
   date?: string
   camera?: string
@@ -157,61 +165,18 @@ function readTiff(b: Buffer, base: number): Tags {
 export const isAudioTagged = (p: string) => /\.(mp3|m4a|flac|ogg|opus)$/i.test(p)
 export const isImageTagged = (p: string) => /\.(jpe?g|tiff?|heic)$/i.test(p)
 
-/** Syncsafe 28-bit size used by ID3v2 headers. */
-const syncsafe = (n: number) => Buffer.from([(n >> 21) & 0x7f, (n >> 14) & 0x7f, (n >> 7) & 0x7f, n & 0x7f])
-
-const id3Frame = (id: string, value: string): Buffer => {
-  const body = Buffer.concat([Buffer.from([3]), Buffer.from(value, 'utf8'), Buffer.from([0])])
-  const head = Buffer.alloc(10)
-  head.write(id, 0, 'latin1')
-  head.writeUInt32BE(body.length, 4)
-  return Buffer.concat([head, body])
-}
-
-/**
- * Rewrites the ID3v2 tag of an mp3 with the given text fields (UTF-8, ID3v2.3).
- * An existing tag is replaced; the audio frames after it are copied untouched.
- */
+/** Backwards-compatible entry point; the real merging writer lives in `id3.ts`. */
 export async function writeId3(
   p: string,
   fields: Record<string, string | undefined>
 ): Promise<{ ok: true } | { error: string }> {
-  if (!path.isAbsolute(p)) return { error: 'مسیر نامعتبر' }
-  const buf = await fs.readFile(p).catch(() => null)
-  if (!buf) return { error: 'فایل خوانده نشد' }
-  const ids: Record<string, string> = {
-    title: 'TIT2',
-    artist: 'TPE1',
-    album: 'TALB',
-    year: 'TYER',
-    track: 'TRCK'
-  }
-  const frames: Buffer[] = []
-  for (const [key, id] of Object.entries(ids)) {
-    const v = fields[key]
-    if (typeof v === 'string' && v.trim()) frames.push(id3Frame(id, v.trim().slice(0, 200)))
-  }
-  const body = Buffer.concat(frames)
-  // drop the old tag if there is one
-  let audioStart = 0
-  if (buf.length > 10 && buf.subarray(0, 3).toString('latin1') === 'ID3') {
-    const size = (buf[6] << 21) | (buf[7] << 14) | (buf[8] << 7) | buf[9]
-    audioStart = 10 + size + (buf[5] & 0x10 ? 10 : 0)
-  }
-  const header = Buffer.concat([
-    Buffer.from('ID3', 'latin1'),
-    Buffer.from([3, 0, 0]),
-    syncsafe(body.length)
-  ])
-  const tmp = `${p}.mfm-tmp-${process.pid}`
-  try {
-    await fs.writeFile(tmp, Buffer.concat([header, body, buf.subarray(audioStart)]))
-    await fs.rename(tmp, p)
-    return { ok: true }
-  } catch (e: any) {
-    await fs.rm(tmp, { force: true })
-    return { error: String(e?.message ?? e) }
-  }
+  return writeId3File(p, {
+    title: fields.title,
+    artist: fields.artist,
+    album: fields.album,
+    year: fields.year,
+    track: fields.track
+  })
 }
 
 /** Reads whatever tags the format carries; never throws. */
@@ -224,8 +189,11 @@ export async function readTags(p: string): Promise<Tags> {
   if (!head) return { kind: 'none' }
   let out: Tags = { kind: 'none' }
   if (/^\.(mp3|m4a)$/i.test(ext) || isAudioTagged(p)) {
-    const id3 = parseId3(head)
-    if (id3.kind !== 'none') out = id3
+    const legacy = parseId3(head)
+    if (legacy.kind !== 'none') {
+      const full = readId3(head)
+      out = { kind: 'id3', ...full.fields, ...(full.cover ? { coverMime: full.cover.mime } : {}) }
+    }
   }
   if (isImageTagged(p)) {
     const exif = parseExif(head)
