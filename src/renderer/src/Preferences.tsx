@@ -441,7 +441,7 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
 
           {page === 'display' && (
             <>
-              {row(t('نمای پیش‌فرض'), null, seg(prefs.view, [{ v: 'list', label: t('فهرست') }, { v: 'grid', label: t('شبکه') }], 'view'))}
+              {row(t('نمای پیش‌فرض'), null, seg(prefs.view, [{ v: 'grid', label: t('شبکه') }, { v: 'compact', label: t('فشرده') }, { v: 'list', label: t('فهرست') }], 'view'))}
               {row(
                 t('اندازهٔ کاشی'),
                 t('بندانگشتی و آیکون با کاشی بزرگ می‌شوند'),

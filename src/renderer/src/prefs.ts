@@ -21,7 +21,7 @@ export const DEFAULT_TOOLBAR = [
 ]
 
 export type Lang = 'en' | 'fa'
-export type View = 'list' | 'grid'
+export type View = 'list' | 'grid' | 'compact'
 export type Layout = 'dual' | 'single'
 export type DoubleClick = 'open' | 'gallery' | 'preview'
 export type ColId = 'type' | 'size' | 'date' | 'mode' | 'owner' | 'links' | 'dims' | 'rating'
@@ -377,7 +377,7 @@ export type NamedLayout = {
   sidebar?: 'docked' | 'float'
   sidebarOpen?: boolean
   sidebarWidth?: number
-  view?: 'list' | 'grid'
+  view?: 'list' | 'grid' | 'compact'
   columns?: string[]
   toolbar?: string[]
 }
@@ -396,7 +396,7 @@ function normalLayouts(raw: unknown): Record<string, NamedLayout> {
     if (typeof l.sidebarOpen === 'boolean') keep.sidebarOpen = l.sidebarOpen
     if (typeof l.sidebarWidth === 'number' && Number.isFinite(l.sidebarWidth))
       keep.sidebarWidth = Math.min(600, Math.max(160, Math.round(l.sidebarWidth)))
-    if (l.view === 'list' || l.view === 'grid') keep.view = l.view
+    if (l.view === 'list' || l.view === 'grid' || l.view === 'compact') keep.view = l.view
     if (Array.isArray(l.columns)) keep.columns = l.columns.filter((c) => COLS.has(c))
     if (Array.isArray(l.toolbar)) keep.toolbar = l.toolbar.filter((c) => typeof c === 'string')
     out[name.slice(0, 60)] = keep
@@ -524,7 +524,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     theme: p.theme === 'light' || p.theme === 'system' ? p.theme : 'dark',
     colorTheme: isColorTheme(p.colorTheme) ? p.colorTheme : DEFAULT_COLOR_THEME,
     fontFamily: cleanFontFamily(p.fontFamily),
-    view: p.view === 'grid' ? 'grid' : 'list',
+    view: p.view === 'grid' || p.view === 'compact' ? p.view : 'list',
     foldersFirst: p.foldersFirst !== false,
     showHidden: p.showHidden === true,
     showSymlink: p.showSymlink === true,
@@ -665,7 +665,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
 export function migrateLegacy(s: any): Partial<Prefs> {
   const p: Partial<Prefs> = {}
   if (s?.theme === 'light' || s?.theme === 'dark' || s?.theme === 'system') p.theme = s.theme
-  if (s?.view === 'grid' || s?.view === 'list') p.view = s.view
+  if (s?.view === 'grid' || s?.view === 'list' || s?.view === 'compact') p.view = s.view
   if (typeof s?.hidden === 'boolean') p.showHidden = s.hidden
   if (s?.chrome) {
     p.titlebar = s.chrome.customTitlebar === false ? 'system' : 'app'

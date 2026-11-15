@@ -1098,6 +1098,29 @@ input {
 .row.on {
   background: var(--sel);
 }
+/* compact view: a single icon+name line per cell, packed into as many columns as fit */
+.compact-row {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.compact-row:hover {
+  background: var(--panel-2);
+}
+.compact-row.on {
+  background: var(--sel);
+}
+.compact-row .name {
+  width: 100%;
+  gap: 6px;
+}
+.compact-row .trunc {
+  min-width: 0;
+}
 .name {
   display: flex;
   align-items: center;
@@ -3389,10 +3412,12 @@ html[data-rounded='0'] .app {
   margin-block-start: 2px;
 }
 .row.meta-hidden .name,
+.compact-row.meta-hidden .name,
 .tile.meta-hidden .tile-name {
   opacity: 0.55;
 }
-.row.pinned {
+.row.pinned,
+.compact-row.pinned {
   background: linear-gradient(90deg, transparent, var(--accent-soft));
 }
 .job-skip {

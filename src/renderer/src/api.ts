@@ -130,7 +130,7 @@ export type Listing = {
   ratings?: Record<string, number>
   notes?: Record<string, string>
   format?: {
-    view?: string
+    view?: 'list' | 'grid' | 'compact'
     columns?: string[]
     sortKey?: string
     sortAsc?: boolean
@@ -195,7 +195,7 @@ export type StoredState = {
   hidden?: boolean
   theme?: 'dark' | 'light'
   sort?: { key: string; asc: boolean }
-  view?: 'list' | 'grid'
+  view?: 'list' | 'grid' | 'compact'
   marks?: string[]
   /** custom bookmark titles, keyed by folder path */
   markNames?: Record<string, string>
@@ -220,7 +220,7 @@ export type FolderMeta = {
   ratings?: Record<string, number>
   notes?: Record<string, string>
   format?: {
-    view?: string
+    view?: 'list' | 'grid' | 'compact'
     columns?: string[]
     sortKey?: string
     sortAsc?: boolean

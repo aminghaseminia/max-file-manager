@@ -85,6 +85,7 @@ import {
   ArchiveOpenIcon,
   AudioIcon,
   CodeIcon,
+  CompactIcon,
   DocIcon,
   FileIcon,
   ImageIcon,
@@ -229,6 +230,9 @@ const newPane = (dir: string): PaneState => {
 
 const patch = (panes: PaneState[], i: number, p: Partial<PaneState>): PaneState[] =>
   panes.map((x, j) => (j === i ? { ...x, ...p } : x))
+
+/** Toolbar/keyboard cycle: thumbnails → compact → details, then back. */
+const cycleView = (v: View): View => (v === 'list' ? 'grid' : v === 'grid' ? 'compact' : 'list')
 
 const tabOf = (s: PaneState) => s.tabs[s.ti]
 
@@ -424,7 +428,7 @@ export default function App() {
     if (!prefs.rememberFolderView) return
     // a folder with its own format must follow the click instead of snapping back on the next load
     setPanes((p) => (p && p[active]?.fmt ? patch(p, active, { fmt: { ...p[active].fmt!, view: next } }) : p))
-    // …and it is written at once, so leaving and coming back keeps the thumbnails/details choice.
+    // …and it is written at once, so leaving and coming back keeps the thumbnails/compact/details choice.
     // Virtual listings (search, flat view, archive) have no folder of their own to remember.
     if (pane.virtual || pane.archive) return
     const dir = tabOf(pane)
@@ -775,6 +779,7 @@ export default function App() {
 
   /** A folder format overrides the app default only while that folder is loaded. */
   const viewOf = (i: number): View => (panes?.[i]?.fmt?.view ?? view) as View
+  const nextPaneView = cycleView(viewOf(active))
   const sortOf = (i: number) => {
     const f = panes?.[i]?.fmt
     return { key: (f?.sortKey ?? sort.key) as SortKey, asc: f?.sortAsc ?? sort.asc }
@@ -2957,7 +2962,7 @@ export default function App() {
     const me = panes[active]
     const here = me.sel.length ? paths.indexOf(me.sel[me.sel.length - 1]) : -1
     const m = metrics.current[active] ?? { cols: 1, rows: 20 }
-    const next = navIndex(here, move, paths.length, viewOf(active) === 'grid' ? m.cols : 1, m.rows)
+    const next = navIndex(here, move, paths.length, viewOf(active) !== 'list' ? m.cols : 1, m.rows)
     if (next < 0) return
     const path = paths[next]
     if (extend) {
@@ -3063,7 +3068,7 @@ export default function App() {
           p && patch(p, active, { ti: (p[active].ti + 1) % p[active].tabs.length, sel: [] })
       ),
     addressBar: () => setAddrTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n))),
-    toggleView: () => setView((v) => (v === 'list' ? 'grid' : 'list')),
+    toggleView: () => setView(cycleView(viewOf(active))),
     toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
     terminal: () => {
       void api.openTerminal(tabOf(panes![active])).then((r) => {
@@ -3378,7 +3383,7 @@ export default function App() {
       }
       if (appModifier(ev) && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
         // in a grid the arrows walk the cells; in a list they do what Krusader does: up / open
-        if (viewOf(active) === 'grid') {
+        if (viewOf(active) !== 'list') {
           ev.preventDefault()
           moveSel(ev.key === 'ArrowLeft' ? 'left' : 'right', ev.shiftKey)
           return
@@ -3590,10 +3595,16 @@ export default function App() {
         </button>
         <button
           className="tb"
-          title={viewOf(active) === 'list' ? t('نمای شبکه') : t('نمای فهرست')}
-          onClick={() => setView((v) => (v === 'list' ? 'grid' : 'list'))}
+          title={t(
+            nextPaneView === 'grid'
+              ? 'نمای شبکه'
+              : nextPaneView === 'compact'
+                ? 'نمای فشرده'
+                : 'نمای فهرست'
+          )}
+          onClick={() => setView(nextPaneView)}
         >
-          {viewOf(active) === 'list' ? <GridIcon /> : <ListIcon />}
+          {nextPaneView === 'grid' ? <GridIcon /> : nextPaneView === 'compact' ? <CompactIcon /> : <ListIcon />}
         </button>
         <button className="tb" title={t(t('اندازهٔ پوشه (F9)'))} onClick={() => void computeSizes(active)}>
           <GaugeIcon />
