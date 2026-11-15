@@ -8,6 +8,14 @@ ipcRenderer.on('mcp:ui', (_e, msg) => {
   else uiQueue.push(msg)
 })
 
+// FFmpeg conversion can finish before the panel subscribes; buffer progress/done events.
+let playerListener: ((msg: unknown) => void) | null = null
+const playerQueue: unknown[] = []
+ipcRenderer.on('player:event', (_e, msg) => {
+  if (playerListener) playerListener(msg)
+  else playerQueue.push(msg)
+})
+
 // The whole main-process surface. Nothing else crosses the boundary.
 contextBridge.exposeInMainWorld('api', {
   portal: {
@@ -165,7 +173,20 @@ contextBridge.exposeInMainWorld('api', {
     default: (p: string) => ipcRenderer.invoke('apps:default', p),
     launch: (id: string, p: string) => ipcRenderer.invoke('apps:launch', id, p)
   },
-  preview: (p: string) => ipcRenderer.invoke('fs:preview', p),
+  preview: (p: string, maxKB?: number) => ipcRenderer.invoke('fs:preview', p, maxKB),
+  player: {
+    open: (path: string) => ipcRenderer.invoke('player:open', path),
+    cancel: (id: string) => ipcRenderer.invoke('player:cancel', id),
+    saveFrame: (path: string, at: number) => ipcRenderer.invoke('player:saveFrame', path, at),
+    capabilities: () => ipcRenderer.invoke('player:capabilities'),
+    onEvent: (cb: (msg: unknown) => void) => {
+      playerListener = cb
+      for (const m of playerQueue.splice(0)) cb(m)
+      return () => {
+        if (playerListener === cb) playerListener = null
+      }
+    }
+  },
   hash: (paths: string[], algo: string) => ipcRenderer.invoke('fs:hash', paths, algo),
   // a dropped File only becomes a path here, in preload
   pathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -191,7 +212,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     launchPath: () => ipcRenderer.invoke('app:launchPath'),
     openViewer: (kind: 'gallery' | 'editor', file: string) =>
-      ipcRenderer.invoke('app:openViewer', { kind, path: file })
+      ipcRenderer.invoke('app:openViewer', { kind, path: file }),
+    setWallpaper: (p: string, fillMode?: string) =>
+      ipcRenderer.invoke('app:setWallpaper', p, fillMode)
   },
   undo: { run: () => ipcRenderer.invoke('undo:run'), depth: () => ipcRenderer.invoke('undo:depth') },
   window: {

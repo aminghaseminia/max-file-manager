@@ -6,6 +6,7 @@ import { copyImageContent } from './clipboard'
 import { GalleryInfo } from './GalleryInfo'
 import { WindowButtons } from './WindowButtons'
 import type { Prefs } from './prefs'
+import type { WallpaperFillMode } from '../../shared/wallpaper.ts'
 import { NO_ADJ, adjustFilter, isNeutral, type Adj } from './imageinfo'
 import {
   ChevronLeftIcon,
@@ -387,6 +388,8 @@ export function Gallery({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // a picker menu (e.g. wallpaper fill mode) owns the keyboard while it is open
+      if (document.querySelector('.ctx')) return
       if (e.key === 'Escape') {
         if (cropping) {
           setCropping(false)
@@ -479,6 +482,25 @@ export function Gallery({
     }
   }
   copyRef.current = () => void copyImage()
+
+  /** Hand the file on disk (not the in-memory edit) to Plasma with the chosen fill mode. */
+  const setAsWallpaper = async (fillMode: WallpaperFillMode) => {
+    if (!cur) return
+    try {
+      const r = await api.app.setWallpaper(cur.path, fillMode)
+      onSaved(
+        'error' in r
+          ? t('تنظیم پس‌زمینهٔ میزکار ناموفق بود — {error}', { error: r.error })
+          : t('پس‌زمینهٔ میزکار تنظیم شد')
+      )
+    } catch (e) {
+      onSaved(
+        t('تنظیم پس‌زمینهٔ میزکار ناموفق بود — {error}', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      )
+    }
+  }
 
   const src = edit?.url ?? (cur ? mediaUrl(cur.path) : '')
   const dims = edit
@@ -701,6 +723,7 @@ export function Gallery({
             })
           }
           onScale={(pct) => void applyScale(pct)}
+          onSetWallpaper={(mode) => void setAsWallpaper(mode)}
           onClose={() => onInfoToggle(false)}
         />
       )}

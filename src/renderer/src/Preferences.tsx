@@ -535,6 +535,11 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                 )
               )}
               {row(
+                t('به‌خاطر سپردن نمای هر پوشه'),
+                t('نمای فهرست/بندانگشتی هر پوشه در فایل .mfm.json همان پوشه ذخیره می‌شود؛ با خاموش‌کردنش همهٔ پوشه‌ها نمای پیش‌فرض را نشان می‌دهند'),
+                check(prefs.rememberFolderView, 'rememberFolderView')
+              )}
+              {row(
                 t('نمایش فایل‌های مخفی'),
                 t('پوشه‌هایی که از فهرست پنهان شده‌اند هم با این گزینه دیده می‌شوند'),
                 check(prefs.showHidden, 'showHidden')

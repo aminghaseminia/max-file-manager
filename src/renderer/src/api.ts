@@ -235,6 +235,41 @@ export type Preview = {
   text?: string
   capped?: boolean
 }
+export type PlayerChapter = { start: number; end: number; title: string }
+export type PlayerSubtitle = { label: string; lang: string; vtt: string }
+export type PlayerSource = {
+  /** absolute file on disk; the renderer turns it into an mfm:// URL */
+  path: string
+  mode: 'direct' | 'remux' | 'transcode'
+  duration: number
+  width: number
+  height: number
+  chapters: PlayerChapter[]
+  subtitles: PlayerSubtitle[]
+}
+export type PlayerJobInfo = {
+  id: string
+  mode: 'remux' | 'transcode'
+  progress: number
+  duration: number
+  width: number
+  height: number
+  chapters: PlayerChapter[]
+}
+export type PlayerOpen =
+  | { kind: 'ready'; source: PlayerSource }
+  | { kind: 'preparing'; job: PlayerJobInfo }
+  | { kind: 'unsupported'; error: string }
+export type PlayerEvent =
+  | { id: string; path: string; type: 'progress'; progress: number }
+  | { id: string; path: string; type: 'done'; source: PlayerSource }
+  | { id: string; path: string; type: 'error'; error: string }
+export type PlayerCapabilities = {
+  ffmpeg: boolean
+  ffprobe: boolean
+  encoders: { h264: boolean; aac: boolean; vp9: boolean; opus: boolean }
+  version: string
+}
 export type HashResult = { path: string; hash: string | null }
 export type IconRef = { name: string; path: string }
 export type IconTheme = { name: string; dir: string }
@@ -453,6 +488,17 @@ export type Api = {
     launch(id: string, p: string): Promise<{ ok: true } | { error: string }>
   }
   preview(p: string, maxKB?: number): Promise<Preview | null>
+  /**
+   * The embedded HTML5 player. Unsupported containers/codecs are prepared by system FFmpeg in
+   * main; the renderer only ever receives an absolute file path or a progress job.
+   */
+  player: {
+    open(path: string): Promise<PlayerOpen>
+    cancel(id: string): Promise<boolean>
+    saveFrame(path: string, at: number): Promise<{ path: string } | { error: string }>
+    capabilities(): Promise<PlayerCapabilities>
+    onEvent(cb: (e: PlayerEvent) => void): () => void
+  }
   hash(paths: string[], algo: string): Promise<HashResult[]>
   pathForFile(file: File): string
   jobs: {
@@ -475,6 +521,8 @@ export type Api = {
     launchPath(): Promise<string | null>
     /** open the image viewer or the text editor in its own window */
     openViewer(kind: 'gallery' | 'editor', path: string): Promise<{ ok: true } | { error: string }>
+    /** KDE/Plasma only: make an image the desktop background, optionally with a `-f` fill mode */
+    setWallpaper(path: string, fillMode?: string): Promise<{ ok: true } | { error: string }>
   }
   undo: { run(): Promise<{ done: number; label: string }>; depth(): Promise<number> }
   window: {

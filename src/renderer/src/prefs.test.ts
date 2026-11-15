@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_FONT_FAMILY, DEFAULT_TOOLBAR, DEFAULTS, cleanFontFamily, fontStack, mergePrefs, migrateLegacy } from './prefs.ts'
+import { DEFAULT_FONT_FAMILY, DEFAULT_TOOLBAR, DEFAULTS, cleanFontFamily, folderFormatFor, fontStack, mergePrefs, migrateLegacy } from './prefs.ts'
 import { DEFAULT_SHORTCUTS } from './commands.ts'
 
 test('mergePrefs fills defaults and rejects nonsense', () => {
@@ -221,6 +221,19 @@ test('removable devices: shown by default, can be turned off', () => {
   assert.equal(mergePrefs({}).sidebarDrives, true)
   assert.equal(mergePrefs({ sidebarDrives: false }).sidebarDrives, false)
   assert.equal(mergePrefs({ sidebarDrives: 'no' as never }).sidebarDrives, true)
+})
+
+test('folder view memory: on by default and only stored views are gated', () => {
+  // an old prefs file without the key gets the default, nonsense is not trusted either
+  assert.equal(mergePrefs({}).rememberFolderView, true)
+  assert.equal(mergePrefs({ rememberFolderView: false }).rememberFolderView, false)
+  assert.equal(mergePrefs({ rememberFolderView: 'no' as never }).rememberFolderView, true)
+
+  const fmt = { view: 'grid' as const, sortKey: 'size', sortAsc: true, group: 'type' as const }
+  assert.deepEqual(folderFormatFor(fmt, true), fmt)
+  assert.deepEqual(folderFormatFor(fmt, false), { sortKey: 'size', sortAsc: true, group: 'type' })
+  // the pane's own state is not mutated, so turning the key back on restores its view
+  assert.equal(fmt.view, 'grid')
 })
 
 test('Places tree: expanded folders are absolute paths, deduped and capped', () => {

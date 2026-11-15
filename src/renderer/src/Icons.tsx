@@ -341,6 +341,55 @@ export const PlayIcon = () => (
     <path d="M7 4.5l12 7.5-12 7.5z" />
   </S>
 )
+export const RewindIcon = () => (
+  <S>
+    <path d="M11 6l-6 6 6 6z" />
+    <path d="M19 6l-6 6 6 6z" />
+  </S>
+)
+export const ForwardIcon = () => (
+  <S>
+    <path d="M13 6l6 6-6 6z" />
+    <path d="M5 6l6 6-6 6z" />
+  </S>
+)
+export const VolumeIcon = () => (
+  <S>
+    <path d="M4 9h4l4-3v12l-4-3H4z" />
+    <path d="M16 9.2a4 4 0 010 5.6" />
+    <path d="M18.5 6.8a7.5 7.5 0 010 10.4" />
+  </S>
+)
+export const MuteIcon = () => (
+  <S>
+    <path d="M4 9h4l4-3v12l-4-3H4z" />
+    <path d="M16 9.5l5 5M21 9.5l-5 5" />
+  </S>
+)
+export const FullscreenIcon = () => (
+  <S>
+    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+  </S>
+)
+export const ExitFullscreenIcon = () => (
+  <S>
+    <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+  </S>
+)
+export const LoopIcon = () => (
+  <S>
+    <path d="M4 11V9a3 3 0 013-3h10" />
+    <path d="M14 3l3 3-3 3" />
+    <path d="M20 13v2a3 3 0 01-3 3H7" />
+    <path d="M10 21l-3-3 3-3" />
+  </S>
+)
+export const CameraIcon = () => (
+  <S>
+    <path d="M4 8h3l1.5-2h7L17 8h3v10H4z" />
+    <circle cx="12" cy="13" r="3.2" />
+  </S>
+)
 export const LayersIcon = () => (
   <S>
     <path d="M12 3l9 5-9 5-9-5z" />
@@ -514,6 +563,58 @@ export const RotateIcon = () => (
     <path d="M20 12a8 8 0 1 1-2.4-5.7" />
     <path d="M20 4v4.5h-4.5" />
     <path d="M12 8.5v4l3 2" />
+  </S>
+)
+export const RotateLeftIcon = () => (
+  <S>
+    <path d="M4 12a8 8 0 1 0 2.4-5.7" />
+    <path d="M4 4v4.5h4.5" />
+  </S>
+)
+export const RotateRightIcon = () => (
+  <S>
+    <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+    <path d="M20 4v4.5h-4.5" />
+  </S>
+)
+export const Rotate180Icon = () => (
+  <S>
+    <path d="M4 12a8 8 0 0 1 16 0" />
+    <path d="M17 9l3 3-3 3" />
+    <path d="M20 12a8 8 0 0 1-16 0" />
+    <path d="M7 15l-3-3 3-3" />
+  </S>
+)
+export const FlipHorizontalIcon = () => (
+  <S>
+    <path d="M12 3v18" />
+    <path d="M9 7L4 12l5 5z" />
+    <path d="M15 7l5 5-5 5z" />
+  </S>
+)
+export const FlipVerticalIcon = () => (
+  <S>
+    <path d="M3 12h18" />
+    <path d="M7 9l5-5 5 5z" />
+    <path d="M7 15l5 5 5-5z" />
+  </S>
+)
+export const CropIcon = () => (
+  <S>
+    <path d="M6 3v13a2 2 0 0 0 2 2h13" />
+    <path d="M3 6h13a2 2 0 0 1 2 2v13" />
+  </S>
+)
+export const ResizeIcon = () => (
+  <S>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M8.5 15.5l7-7" />
+    <path d="M10 8.5h5.5V14" />
+  </S>
+)
+export const CheckIcon = () => (
+  <S>
+    <path d="M5 12.5l4.5 4.5L19 6.5" />
   </S>
 )
 export const SplitIcon = () => (

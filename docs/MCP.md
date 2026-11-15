@@ -106,6 +106,7 @@ the same `Entry` shape the UI uses (`name, path, dir, size, mtime, ext, mode, ui
 | `image_convert` | `files[]`, `format`, `maxSide?`, `quality?`, `dest?` | batch |
 | `clipboard_image` | `dir`, `name`, `base64` | save pasted image bytes as a file |
 | `thumbs_clear` | – | empty the thumbnail cache |
+| `wallpaper_set` | `path`, `fillMode?` | KDE Plasma only; `fillMode` is one of `preserveAspectCrop`, `stretch`, `preserveAspectFit`, `tile`, `tileVertically`, `tileHorizontally`, `pad` |
 | `label_set` | `dir`, `name`, `label\|null` | palette ids only |
 | `file_color_set` | `dir`, `name`, `color` | hex, empty clears |
 | `rating_set` | `dir`, `name`, `stars` | `0..5` |
@@ -162,6 +163,11 @@ The folder-tree pane needs no tool of its own: `prefs_set` with `treePane` (`off
 The UI tools go through `mcp:ui` to the window (one-way IPC) because panes, selection, tabs and
 marks live in renderer state. `command` with a `pane` first focuses that pane, then runs the
 command through the same `RUN` table a click uses.
+
+The embedded video player (`player:open/cancel/saveFrame/capabilities` and the `player:event`
+stream) deliberately gets no MCP tool: playback, seeking and cinema mode are renderer/window state,
+and FFmpeg preparation is started only by that visible player. Agents use `preview` or
+`open_preview` for the same file; `read_text`/`properties` still cover file inspection.
 
 ## Storage
 
