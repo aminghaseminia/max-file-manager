@@ -25,6 +25,11 @@ test('preview: text, binary, image, directory', async () => {
   await fs.writeFile(img, Buffer.alloc(10))
   assert.equal((await preview(img)).kind, 'image')
 
+  // .ts is TypeScript in a source tree, not an MPEG transport stream
+  const code = path.join(root, 'd.ts')
+  await fs.writeFile(code, 'export const x = 1\n')
+  assert.equal((await preview(code)).kind, 'text')
+
   assert.equal((await preview(root)).kind, 'dir')
 })
 

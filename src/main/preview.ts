@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { isVideoFile } from './player-core.ts'
 
 export type PreviewKind = 'dir' | 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'office' | 'binary'
 export type Preview = {
@@ -13,7 +14,6 @@ export type Preview = {
 
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico'])
 const AUDIO = new Set(['mp3', 'flac', 'wav', 'ogg', 'm4a', 'opus'])
-const VIDEO = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi'])
 const OFFICE = new Set(['docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp'])
 
 const XML_TEXT = /<[^>]+>/g
@@ -199,7 +199,7 @@ export async function preview(p: string, maxKB = 200): Promise<Preview> {
   if (ext === 'pdf') return { kind: 'pdf', ...base }
   if (OFFICE.has(ext)) return officePreview(p, base, ext)
   if (AUDIO.has(ext)) return { kind: 'audio', ...base }
-  if (VIDEO.has(ext)) return { kind: 'video', ...base }
+  if (isVideoFile(p)) return { kind: 'video', ...base }
 
   const fh = await fs.open(p, 'r').catch(() => null)
   if (!fh) return { kind: 'binary', ...base }

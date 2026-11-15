@@ -13,7 +13,16 @@ import {
   screen,
   shell
 } from 'electron'
-import { constants as fsConstants, existsSync, readFileSync, writeFileSync, watch as fsWatch, promises as fs } from 'node:fs'
+import {
+  createReadStream,
+  constants as fsConstants,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  watch as fsWatch,
+  promises as fs
+} from 'node:fs'
+import { Readable } from 'node:stream'
 import path from 'node:path'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
@@ -25,6 +34,15 @@ import { hashMany } from './hash.ts'
 import { iconSetPaths, iconsIn, themeDirs } from './icons.ts'
 import { readNativeFolderLook } from './folderlook.ts'
 import { preview } from './preview.ts'
+import { parseByteRange } from './player-core.ts'
+import {
+  cancelPlayerJob,
+  ffmpegCapabilities,
+  initPlayer,
+  openPlayerFile,
+  saveVideoFrame,
+  stopPlayerJobs
+} from './player.ts'
 import {
   LABELS,
   readMeta,
@@ -57,6 +75,7 @@ import {
 } from './apps.ts'
 import { appIconFile } from './appicons.ts'
 import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
+import { setDesktopWallpaper } from './wallpaper.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
 import { clearThumbs, thumbFor } from './thumbs.ts'
@@ -677,6 +696,7 @@ function createWindow(): BrowserWindow {
 }
 
 app.on('will-quit', () => {
+  stopPlayerJobs()
   globalShortcut.unregisterAll()
   stopWinETakeover()
   for (const w of childWindows) if (!w.isDestroyed()) w.destroy()
@@ -782,14 +802,39 @@ function openStandalone(kind: 'gallery' | 'editor', file: string): { ok: true } 
 }
 
 app.whenReady().then(async () => {
+  void initPlayer()
   protocol.handle('mfm', async (req) => {
     const p = mediaPathFromUrl(req.url)
     if (!path.isAbsolute(p)) return new Response('bad path', { status: 400 })
-    const res = await net.fetch(pathToFileURL(p).toString())
-    // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
-    const headers = new Headers(res.headers)
-    headers.set('Access-Control-Allow-Origin', '*')
-    return new Response(res.body, { status: res.status, headers })
+    const st = await fs.stat(p).catch(() => null)
+    if (!st?.isFile()) return new Response('not found', { status: 404 })
+    // Seeking in <video> is HTTP byte-range based. `net.fetch(file://)` reads the whole file,
+    // so serve it here with the headers Chromium needs and a real bounded stream.
+    const headers = new Headers({
+      'Content-Type': mimeForPath(p),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'no-cache',
+      // without CORS the renderer can display the image but a canvas stays tainted and cannot be saved
+      'Access-Control-Allow-Origin': '*'
+    })
+    const range = parseByteRange(req.headers.get('range'), st.size)
+    const head = req.method === 'HEAD'
+    if (range) {
+      headers.set('Content-Range', `bytes ${range.start}-${range.end}/${st.size}`)
+      headers.set('Content-Length', String(range.end - range.start + 1))
+      if (head) return new Response(null, { status: 206, headers })
+      const stream = createReadStream(p, { start: range.start, end: range.end })
+      return new Response(Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>, {
+        status: 206,
+        headers
+      })
+    }
+    headers.set('Content-Length', String(st.size))
+    if (head) return new Response(null, { status: 200, headers })
+    return new Response(Readable.toWeb(createReadStream(p)) as unknown as ReadableStream<Uint8Array>, {
+      status: 200,
+      headers
+    })
   })
 
   protocol.handle('thumb', async (req) => {
@@ -990,6 +1035,9 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle('app:terminal', (_e, dir: string) => openTerminal(dir ?? ''))
   ipcMain.handle('app:reveal', (_e, p: string) => revealFile(p ?? ''))
+  ipcMain.handle('app:setWallpaper', (_e, p: string, fillMode?: string) =>
+    setDesktopWallpaper(String(p ?? ''), fillMode === undefined ? undefined : String(fillMode))
+  )
   ipcMain.on('app:dragOut', (e, files: string[]) => {
     void startFileDrag(e.sender, files ?? []).then((r) => {
       // a drag that cannot start must not fail silently: the user sees the row do nothing
@@ -1363,6 +1411,11 @@ app.whenReady().then(async () => {
         return openWithDefault(needAbs(args.path))
       case 'reveal':
         return revealFile(needAbs(args.path))
+      case 'wallpaper_set':
+        return setDesktopWallpaper(
+          needAbs(args.path),
+          args.fillMode === undefined ? undefined : String(args.fillMode)
+        )
       case 'terminal':
         return openTerminal(needAbs(args.dir))
       case 'apps_launch':
@@ -1591,6 +1644,16 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:preview', (_e, p: string, maxKB?: number) =>
     path.isAbsolute(p) ? preview(p, maxKB) : null
   )
+  ipcMain.handle('player:open', (e, p: string) =>
+    path.isAbsolute(p)
+      ? openPlayerFile(p, e.sender)
+      : { kind: 'unsupported', error: 'invalid path' }
+  )
+  ipcMain.handle('player:cancel', (_e, id: string) => cancelPlayerJob(String(id ?? '')))
+  ipcMain.handle('player:saveFrame', (_e, p: string, at: number) =>
+    path.isAbsolute(p) ? saveVideoFrame(p, Number(at)) : { error: 'invalid path' }
+  )
+  ipcMain.handle('player:capabilities', () => ffmpegCapabilities())
   ipcMain.handle('fs:hash', (_e, paths: string[], algo: string) =>
     hashMany((paths ?? []).filter((p) => path.isAbsolute(p)), algo || 'sha256')
   )

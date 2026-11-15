@@ -15,6 +15,7 @@ import {
   type GroupKey,
   modeString,
   isImage,
+  isVideo,
   mediaUrl,
   thumbUrl,
   orderEntries,
@@ -36,6 +37,7 @@ import {
   MoveIcon,
   PaletteIcon,
   PinIcon,
+  PlayIcon,
   PlusIcon,
   RefreshIcon,
   RenameIcon,
@@ -1107,7 +1109,8 @@ export function Pane(props: Props) {
                       const idx = b.startIdx + local
                       const r = Math.floor(local / cols)
                       const c = local % cols
-                      const pic = !e.dir && isImage(e.ext) && e.size < 8_000_000
+                      const video = !e.dir && isVideo(e.ext)
+                      const pic = !e.dir && ((isImage(e.ext) && e.size < 8_000_000) || video)
                       const metaParts = props.gridMeta.map((col) => cell(col, e)).filter(Boolean)
                       return (
                         <div
@@ -1136,12 +1139,32 @@ export function Pane(props: Props) {
                             style={{ width: TILE.thumb, height: TILE.thumb }}
                           >
                             {pic ? (
-                              <img
-                                src={isImageName(e.name) ? thumbUrl(e.path, 256, `${Math.round(e.mtime)}-${e.size}`) : mediaUrl(e.path)}
-                                alt=""
-                                loading="lazy"
-                                draggable={false}
-                              />
+                              <>
+                                {video && <EntryIcon entry={e} size={TILE.glyph} iconSet={props.iconSet} />}
+                                <img
+                                  className={video ? 'video-shot' : ''}
+                                  src={
+                                    video || isImageName(e.name)
+                                      ? thumbUrl(e.path, 256, `${Math.round(e.mtime)}-${e.size}`)
+                                      : mediaUrl(e.path)
+                                  }
+                                  alt=""
+                                  loading="lazy"
+                                  draggable={false}
+                                  onError={
+                                    video
+                                      ? (ev) => {
+                                          ev.currentTarget.style.display = 'none'
+                                        }
+                                      : undefined
+                                  }
+                                />
+                                {video && (
+                                  <span className="video-badge" aria-hidden="true">
+                                    <PlayIcon />
+                                  </span>
+                                )}
+                              </>
                             ) : (
                               <EntryIcon entry={e} size={TILE.glyph} iconSet={props.iconSet} />
                             )}

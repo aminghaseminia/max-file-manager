@@ -18,12 +18,20 @@ import { RenameDialog } from './RenameDialog'
 import { BreakdownDialog } from './BreakdownDialog'
 import { ConvertDialog, RatingDialog, TagDialog, convertInRenderer } from './RatingDialog'
 import { rowsOf } from '../../shared/export.ts'
+import {
+  WALLPAPER_FILL_LABELS,
+  WALLPAPER_FILL_MODES,
+  isWallpaperExt,
+  isWallpaperFillMode,
+  type WallpaperFillMode
+} from '../../shared/wallpaper.ts'
 import { PresetsDialog } from './PresetsDialog'
 import { Preferences } from './Preferences'
 import {
   COLUMNS,
   DEFAULTS,
   colLabel,
+  folderFormatFor,
   fontStack,
   mergePrefs,
   migrateLegacy,
@@ -56,6 +64,7 @@ import {
   isArchiveName,
   isIgnoredName,
   isImage,
+  isVideo,
   joinPath,
   matchCustomCommand,
   mediaUrl,
@@ -407,6 +416,9 @@ export default function App() {
     updatePrefs({ view: next })
     const pane = panes?.[active]
     if (!pane) return
+    // With «remember each folder's view» off the click still changes every pane (through prefs.view),
+    // but no folder format is touched and nothing is written to `.mfm.json`.
+    if (!prefs.rememberFolderView) return
     // a folder with its own format must follow the click instead of snapping back on the next load
     setPanes((p) => (p && p[active]?.fmt ? patch(p, active, { fmt: { ...p[active].fmt!, view: next } }) : p))
     // …and it is written at once, so leaving and coming back keeps the thumbnails/details choice.
@@ -424,7 +436,10 @@ export default function App() {
   const setGroupFor = (i: number, group: GroupKey) => {
     const pane = panes?.[i]
     if (!pane) return
-    const fmt: FolderView = { ...(pane.fmt ?? {}), group }
+    const fmt: FolderView = folderFormatFor(
+      { ...(pane.fmt ?? {}), group },
+      prefs.rememberFolderView
+    )
     setPanes((p) => p && patch(p, i, { fmt }))
     updatePrefs({ groupBy: group })
     if (!pane.virtual && !pane.archive) void api.setFormat(tabOf(pane), fmt).catch(() => undefined)
@@ -482,7 +497,10 @@ export default function App() {
     setSort(next)
     const pane = panes?.[i]
     if (!pane) return
-    const fmt: FolderView = { ...(pane.fmt ?? {}), sortKey: next.key, sortAsc: next.asc }
+    const fmt: FolderView = folderFormatFor(
+      { ...(pane.fmt ?? {}), sortKey: next.key, sortAsc: next.asc },
+      prefs.rememberFolderView
+    )
     setPanes((p) => p && patch(p, i, { fmt }))
     // remember this folder's sort in its own .mfm.json, not just for this session
     if (!pane.virtual) void api.setFormat(tabOf(pane), fmt).catch(() => undefined)
@@ -506,6 +524,15 @@ export default function App() {
     // Bookmarks are shared with the XDG file dialog; a change made there must show up here too.
     return api.state.onMarks((list) => setMarks(list))
   }, [])
+
+  // Turning folder-view memory off applies at once: no open pane keeps a folder's stored view.
+  useEffect(() => {
+    if (prefs.rememberFolderView) return
+    setPanes(
+      (p) =>
+        p?.map((pane) => (pane.fmt ? { ...pane, fmt: folderFormatFor(pane.fmt, false) } : pane)) ?? p
+    )
+  }, [prefs.rememberFolderView])
 
   useEffect(() => {
     // a standalone viewer/editor window changed a preference: adopt it instead of overwriting it
@@ -987,7 +1014,9 @@ export default function App() {
     try {
       const listing = await api.list(dir, hidden, prefs.columns.includes('dims'))
       if (loadSeq.current[i] !== seq) return
-      const fmt = (listing.format as FolderView | null) ?? null
+      // A stored view is only honored while the user wants folder views remembered.
+      const stored = (listing.format as FolderView | null) ?? null
+      const fmt = stored ? folderFormatFor(stored, prefs.rememberFolderView) : null
       const entries = listing.entries.filter(
         (e) => e.forceShow || !isIgnoredName(e.name, prefs.ignoreFiles)
       )
@@ -1414,6 +1443,18 @@ export default function App() {
     setEditor(p)
   }
 
+  /** F4 and the context menu: images belong in the gallery, everything else in the editor. */
+  const editOrGallery = (i: number, p: string) => {
+    const e = entryOf(i, p)
+    if (!e || e.dir) {
+      setNote(t('چیزی انتخاب نشده'))
+      return
+    }
+    if (isImage(e.ext)) openGallery(i, p)
+    else if (isVideo(e.ext)) openPreview(p)
+    else openEditor(p)
+  }
+
   /**
    * With the editor docked, changing the file in the browsing pane means «show this one»: the
    * Editor saves its old buffer on the path change and loads the new file in place.
@@ -1733,9 +1774,13 @@ export default function App() {
   }
 
   const togglePreview = () => {
-    // opening the panel with something already selected must show it, not an empty pane
-    if (!previewOn) setPreviewPath((cur) => cur ?? panes?.[active]?.sel[0] ?? null)
-    setPreviewOn((o) => !o)
+    if (previewOn) {
+      setPreviewOn(false)
+      return
+    }
+    // F3 always shows the *current* selection; a path left over from a previous preview is stale.
+    setPreviewPath(panes?.[active]?.sel[0] ?? null)
+    setPreviewOn(true)
   }
 
   const reopenStack = useRef<{ pane: number; path: string }[]>([])
@@ -2010,6 +2055,30 @@ export default function App() {
     const me = panes[active]
     const path = menu.path
     const tabIdx = menu.tab
+    /** One note pipeline for every fill-mode child. */
+    const applyWallpaper = (target: string, fillMode: WallpaperFillMode): void => {
+      void api.app
+        .setWallpaper(target, fillMode)
+        .then((r) =>
+          setNote(
+            'error' in r
+              ? t('تنظیم پس‌زمینهٔ میزکار ناموفق بود — {error}', { error: r.error })
+              : t('پس‌زمینهٔ میزکار تنظیم شد')
+          )
+        )
+        .catch((e: unknown) =>
+          setNote(
+            t('تنظیم پس‌زمینهٔ میزکار ناموفق بود — {error}', {
+              error: e instanceof Error ? e.message : String(e)
+            })
+          )
+        )
+    }
+    if (id.startsWith('setWallpaper:')) {
+      const mode = id.slice('setWallpaper:'.length)
+      if (path && isWallpaperFillMode(mode)) applyWallpaper(path, mode)
+      return
+    }
     if (id.startsWith('tabColor:')) {
       if (tabIdx != null) {
         const tab = me.tabs[tabIdx]
@@ -2211,12 +2280,15 @@ export default function App() {
         break
       case 'saveFormat': {
         const current = sortOf(active)
-        const fmt: FolderView = {
-          view: viewOf(active),
-          columns: columnsOf(active),
-          sortKey: current.key,
-          sortAsc: current.asc
-        }
+        const fmt: FolderView = folderFormatFor(
+          {
+            view: viewOf(active),
+            columns: columnsOf(active),
+            sortKey: current.key,
+            sortAsc: current.asc
+          },
+          prefs.rememberFolderView
+        )
         void api
           .setFormat(tabOf(me), fmt)
           .then(() => setPanes((p) => p && patch(p, active, { fmt })))
@@ -2269,7 +2341,7 @@ export default function App() {
         break
       }
       case 'edit': {
-        if (path && !entryOf(active, path)?.dir) openEditor(path)
+        if (path) editOrGallery(active, path)
         break
       }
       case 'pinFile': {
@@ -2312,9 +2384,6 @@ export default function App() {
           setPreviewPath(path)
           setPreviewOn(true)
         }
-        break
-      case 'previewOther':
-        previewInOther(active)
         break
       case 'gallery':
         openGallery(active, path ?? undefined)
@@ -2551,7 +2620,6 @@ export default function App() {
         : []),
       openWithItem,
       { id: 'preview', label: t('پیش‌نمایش'), icon: <PreviewIcon /> },
-      { id: 'previewOther', label: t('پیش‌نمایش در پنجرهٔ مقابل'), key: 'F3', icon: <PreviewIcon /> },
       { id: 'properties', label: t('ویژگی‌ها…'), key: 'Alt+Enter', icon: <InfoIcon /> },
       ...(entry?.dir
         ? [
@@ -2566,6 +2634,20 @@ export default function App() {
               label: t('گالری تصاویر'),
               key: 'Space',
               icon: <GridIcon />
+            } as MenuItem
+          ]
+        : []),
+      ...(entry && !entry.dir && isWallpaperExt(entry.ext) && api.platform === 'linux'
+        ? [
+            {
+              id: 'setWallpaper',
+              label: t('تنظیم به‌عنوان پس‌زمینهٔ میزکار'),
+              icon: <ImageIcon />,
+              /* The row itself is the submenu trigger: every click picks a placement mode. */
+              children: WALLPAPER_FILL_MODES.map((mode) => ({
+                id: `setWallpaper:${mode}`,
+                label: t(WALLPAPER_FILL_LABELS[mode])
+              }))
             } as MenuItem
           ]
         : []),
@@ -2664,7 +2746,7 @@ export default function App() {
     ]
 
     const detailItems: MenuItem[] = [
-      { id: 'edit', label: t('ویرایش متن'), key: 'F4', icon: <RenameIcon /> },
+      { id: 'edit', label: t('ویرایش یا گالری'), key: 'F4', icon: <RenameIcon /> },
       { id: 'label', label: t('برچسب رنگی…'), icon: <PaletteIcon /> },
       { id: 'rate', label: t('امتیاز و توضیح…'), icon: <StarIcon /> },
       ...(/\.(mp3|m4a)$/i.test(path)
@@ -2818,24 +2900,6 @@ export default function App() {
     setGallery({ images, start: images.some((x) => x.path === start) ? start : images[0].path })
   }
 
-  /** F3: show the selection as a viewer in the *other* pane; pressing again returns its folder. */
-  const previewInOther = (i: number) => {
-    if (!panes) return
-    const path = panes[i].sel[0] ?? panes[i].preview?.entry.path
-    if (!path) {
-      setNote(t('یک فایل انتخاب کن'))
-      return
-    }
-    const entry = entryOf(i, path) ?? panes[i].preview?.entry
-    if (!entry) return
-    const target = 1 - i
-    if (panes[target].preview?.entry.path === entry.path) {
-      setPanes((p) => p && patch(p, target, { preview: null }))
-      return
-    }
-    setPanes((p) => p && patch(p, target, { preview: { entry, from: i } }))
-  }
-
   const navPreviewImage = (target: number, delta: number) => {
     const pv = panes?.[target].preview
     if (!pv) return
@@ -2964,7 +3028,7 @@ export default function App() {
     paste: () => void pasteClipboard(tabOf(panes![active])),
     edit: () => {
       const p = panes![active].sel[0]
-      if (p) openEditor(p)
+      if (p) editOrGallery(active, p)
       else setNote(t('چیزی انتخاب نشده'))
     },
     rename: () => openRename(active),
@@ -3041,13 +3105,12 @@ export default function App() {
     presets: () => setPresetsOpen(true),
     saveFormat: () => {
       const dir = tabOf(panes![active])
+      const fmt: FolderView = folderFormatFor(
+        { view, columns: prefs.columns, sortKey: sort.key, sortAsc: sort.asc },
+        prefs.rememberFolderView
+      )
       void api
-        .setFormat(dir, {
-          view,
-          columns: prefs.columns,
-          sortKey: sort.key,
-          sortAsc: sort.asc
-        })
+        .setFormat(dir, fmt)
         .then(() => setNote(t('قالب این پوشه ذخیره شد')))
     },
     look: () => void openFolderLook(active),
@@ -3441,12 +3504,13 @@ export default function App() {
       onNote={setNote}
       onSaved={() => void load(active, tabOf(panes![active]))}
     />
-  ) : previewOn ? (
+  ) : previewOn && !gallery && !editorMax && !settingsOpen ? (
     <PreviewPanel
       entry={entryOf(active, previewPath) ?? null}
       maxKB={prefs.previewMaxKB}
       onOpen={(p) => openExternal(p)}
       onClose={() => setPreviewOn(false)}
+      onNote={setNote}
     />
   ) : null
 
@@ -3502,7 +3566,7 @@ export default function App() {
         </button>
         <button
           className={'tb' + (previewOn ? ' on' : '')}
-          title={t(t('پنل پیش‌نمایش'))}
+          title={t(t('پنل پیش‌نمایش (F3)'))}
           onClick={togglePreview}
         >
           <PreviewIcon />

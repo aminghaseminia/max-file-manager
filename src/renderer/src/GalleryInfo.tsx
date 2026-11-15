@@ -4,10 +4,27 @@ import { api, type Entry, type FileProperties } from './api'
 import { fa, fmtDate, fmtSize } from './format'
 import type { Tags } from './api'
 import {
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
+  CropIcon,
+  FlipHorizontalIcon,
+  FlipVerticalIcon,
+  ImageIcon,
+  ResizeIcon,
+  Rotate180Icon,
+  RotateLeftIcon,
+  RotateRightIcon,
+  UndoIcon,
   XIcon
 } from './Icons'
+import { ContextMenu } from './ContextMenu'
+import {
+  WALLPAPER_FILL_LABELS,
+  WALLPAPER_FILL_MODES,
+  isWallpaperFillMode,
+  type WallpaperFillMode
+} from '../../shared/wallpaper.ts'
 import {
   NO_ADJ,
   aspectText,
@@ -37,6 +54,8 @@ type Props = {
   onCrop(): void
   onResize(): void
   onScale(pct: number): void
+  /** KDE/Plasma only: the file itself becomes the desktop background with the chosen `-f` mode */
+  onSetWallpaper(mode: WallpaperFillMode): void
   onClose(): void
 }
 
@@ -87,6 +106,7 @@ export function GalleryInfo({
   onCrop,
   onResize,
   onScale,
+  onSetWallpaper,
   onClose
 }: Props) {
   const [props, setProps] = useState<FileProperties | null>(null)
@@ -99,6 +119,8 @@ export function GalleryInfo({
     exif: true,
     edit: true
   })
+  /** where the fill-mode picker opens, in viewport coordinates */
+  const [wallpaperAt, setWallpaperAt] = useState<{ x: number; y: number } | null>(null)
   const analysis = useRef(0)
 
   useEffect(() => {
@@ -249,26 +271,43 @@ export function GalleryInfo({
         <Section title={t('ویرایش')} open={!!open.edit} onToggle={() => toggle('edit')}>
           <div className="ginfo-tools">
             <button className="btn ghost mini" onClick={() => onRotate(-90)}>
+              <RotateLeftIcon />
               {t('چرخش به چپ')}
             </button>
             <button className="btn ghost mini" onClick={() => onRotate(90)}>
+              <RotateRightIcon />
               {t('چرخش به راست')}
             </button>
             <button className="btn ghost mini" onClick={() => onRotate(180)}>
+              <Rotate180Icon />
               {t('چرخش ۱۸۰ درجه')}
             </button>
             <button className="btn ghost mini" onClick={() => onFlip('y')}>
+              <FlipHorizontalIcon />
               {t('آینهٔ افقی')}
             </button>
             <button className="btn ghost mini" onClick={() => onFlip('x')}>
+              <FlipVerticalIcon />
               {t('آینهٔ عمودی')}
             </button>
             <button className="btn ghost mini" onClick={onCrop}>
+              <CropIcon />
               {t('برش')}
             </button>
             <button className="btn ghost mini" onClick={onResize}>
+              <ResizeIcon />
               {t('تغییر اندازه')}
             </button>
+            {api.platform === 'linux' && (
+              <button
+                className="btn ghost mini wallpaper-pick"
+                title={t('تنظیم به‌عنوان پس‌زمینهٔ میزکار')}
+                onClick={(e) => setWallpaperAt({ x: e.clientX, y: e.clientY })}
+              >
+                <ImageIcon />
+                {t('تنظیم به‌عنوان پس‌زمینهٔ میزکار')}
+              </button>
+            )}
           </div>
 
           <div className="ginfo-sub">{t('مقیاس (٪ از اندازهٔ فعلی)')}</div>
@@ -298,9 +337,11 @@ export function GalleryInfo({
           ))}
           <div className="ginfo-actions">
             <button className="btn mini" disabled={isNeutral(adjust)} onClick={onApplyAdjust}>
+              <CheckIcon />
               {t('اعمال تنظیمات')}
             </button>
             <button className="btn ghost mini" onClick={onResetAdjust}>
+              <UndoIcon />
               {t('بازنشانی')}
             </button>
           </div>
@@ -309,6 +350,22 @@ export function GalleryInfo({
           </div>
         </Section>
       </div>
+
+      {wallpaperAt && (
+        <ContextMenu
+          x={wallpaperAt.x}
+          y={wallpaperAt.y}
+          items={WALLPAPER_FILL_MODES.map((mode) => ({
+            id: mode,
+            label: t(WALLPAPER_FILL_LABELS[mode])
+          }))}
+          onPick={(id) => {
+            if (isWallpaperFillMode(id)) onSetWallpaper(id)
+            setWallpaperAt(null)
+          }}
+          onClose={() => setWallpaperAt(null)}
+        />
+      )}
     </aside>
   )
 }

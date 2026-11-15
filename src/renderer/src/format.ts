@@ -255,7 +255,8 @@ export type Kind = 'dir' | 'image' | 'video' | 'audio' | 'archive' | 'text' | 'd
 const KIND: Record<string, Kind> = {
   png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', svg: 'image',
   bmp: 'image', avif: 'image', ico: 'image',
-  mp4: 'video', mkv: 'video', mov: 'video', webm: 'video', avi: 'video',
+  mp4: 'video', m4v: 'video', mkv: 'video', mov: 'video', webm: 'video', avi: 'video',
+  wmv: 'video', flv: 'video', ogv: 'video', m2ts: 'video', mpg: 'video', mpeg: 'video', '3gp': 'video',
   mp3: 'audio', flac: 'audio', wav: 'audio', ogg: 'audio', m4a: 'audio', opus: 'audio',
   zip: 'archive', tar: 'archive', gz: 'archive', xz: 'archive', '7z': 'archive',
   rar: 'archive', bz2: 'archive', zst: 'archive',
@@ -288,6 +289,7 @@ export function typeLabel(e: Entry): string {
 export const kindLabel = (k: Kind): string => t(LABEL[k])
 
 export const isImage = (ext: string): boolean => KIND[ext] === 'image'
+export const isVideo = (ext: string): boolean => KIND[ext] === 'video'
 
 /** Files the built-in editor is the right default app for; no extension counts as text. */
 const EDITOR_EXT = new Set(['txt', 'text', 'log', 'md', 'markdown', 'mdx', 'rst'])

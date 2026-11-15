@@ -61,7 +61,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'cutFiles', label: 'برش فایل', key: 'Ctrl+X', group: 'file' },
   { id: 'paste', label: 'چسباندن فایل', key: 'Ctrl+V', group: 'file' },
   { id: 'move', label: 'انتقال به مقصد', key: 'F6', group: 'transfer' },
-  { id: 'edit', label: 'ویرایش متن', key: 'F4', group: 'file' },
+  { id: 'edit', label: 'ویرایش یا گالری', key: 'F4', group: 'file' },
   { id: 'rename', label: 'تغییر نام', key: 'F2', group: 'file' },
   { id: 'batchRename', label: 'تغییر نام گروهی', key: 'Shift+F2', group: 'file' },
   { id: 'mkdir', label: 'پوشهٔ نو', key: 'F7', group: 'file' },

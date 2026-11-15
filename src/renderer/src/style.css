@@ -1186,6 +1186,28 @@ input {
   height: 100%;
   object-fit: cover;
 }
+/* the video frame sits above its fallback icon; a failed ffmpeg thumbnail leaves the icon */
+.thumb .video-shot {
+  position: absolute;
+  inset: 0;
+}
+.thumb .video-badge {
+  position: absolute;
+  inset-inline-end: 4px;
+  inset-block-end: 4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  pointer-events: none;
+}
+.thumb .video-badge svg {
+  width: 11px;
+  height: 11px;
+}
 .thumb.flat img {
   object-fit: contain;
 }
@@ -2812,6 +2834,10 @@ html[data-rounded='0'] .app {
   align-items: stretch;
   justify-content: flex-start;
   overflow: hidden;
+}
+.preview-empty .vp-spin {
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
 }
 .preview-empty {
   display: flex;
@@ -5139,10 +5165,24 @@ button.bd-row:hover {
   margin-bottom: 6px;
 }
 .ginfo-tools .btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 4px;
   padding: 4px 6px;
   font-size: 10.5px;
   white-space: nowrap;
+}
+.ginfo-tools .btn.wallpaper-pick {
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+.ginfo-tools .btn svg,
+.ginfo-actions .btn svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
 }
 .ginfo-sub {
   color: var(--dim);
@@ -5177,6 +5217,11 @@ button.bd-row:hover {
   display: flex;
   gap: 6px;
   margin-top: 7px;
+}
+.ginfo-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 @media (max-width: 820px) {
   .gallery-side {
@@ -5273,4 +5318,288 @@ button.bd-row:hover {
   font: inherit;
   font-size: 11.5px;
   outline: none;
+}
+
+/* ---------- embedded video player ---------- */
+.preview-body.video {
+  padding: 0;
+  overflow: hidden;
+}
+.preview-prep {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px;
+  color: var(--text);
+  text-align: center;
+}
+.preview-prep-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.preview-prep progress {
+  width: min(280px, 100%);
+  height: 6px;
+  accent-color: var(--accent);
+}
+.vp {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+  outline: none;
+}
+.vp:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.vp-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.vp.cinema {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  -webkit-app-region: no-drag;
+}
+.vp.cinema .vp-video {
+  width: 100%;
+  height: 100%;
+}
+html.vp-cinema,
+html.vp-cinema body {
+  overflow: hidden;
+}
+.vp-bar {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 28px 10px 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.vp.controls .vp-bar,
+.vp:hover .vp-bar,
+.vp:focus-within .vp-bar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.vp-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+}
+.vp-btn {
+  flex: none;
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vp-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.vp-btn.on {
+  color: var(--accent);
+}
+.vp-time {
+  flex: none;
+  color: rgba(255, 255, 255, 0.82);
+  font: 11px/1 'Vazir Code', ui-monospace, monospace;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+.vp-speed {
+  flex: none;
+  height: 24px;
+  padding: 0 2px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 10.5px;
+}
+.vp-vol {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.vp-vol input {
+  width: 54px;
+  accent-color: var(--accent);
+}
+.vp-seek-line {
+  position: relative;
+  height: 16px;
+  margin: 0 2px 2px;
+}
+.vp-seek-buffer,
+.vp-seek-played {
+  position: absolute;
+  top: 6px;
+  inset-inline-start: 0;
+  height: 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.vp-seek-buffer {
+  width: var(--vp-buf, 0%);
+  background: rgba(255, 255, 255, 0.3);
+}
+.vp-seek-played {
+  width: var(--vp-play, 0%);
+  background: var(--accent);
+}
+.vp-seek {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.vp-seek::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+.vp-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+.vp-chapter {
+  position: absolute;
+  top: 4px;
+  width: 2px;
+  height: 8px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.72);
+  pointer-events: none;
+}
+.vp-bigplay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 64px;
+  height: 64px;
+  margin: auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  cursor: pointer;
+}
+.vp-bigplay:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+.vp-bigplay svg {
+  width: 24px;
+  height: 24px;
+}
+.vp-spin {
+  width: 26px;
+  height: 26px;
+  display: inline-block;
+  border: 3px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: vp-spin 0.8s linear infinite;
+}
+.vp .vp-spin {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+@keyframes vp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.vp-error {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.76);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+.vp-cine-head {
+  display: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 4;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: linear-gradient(rgba(0, 0, 0, 0.72), transparent);
+  color: #fff;
+  font-size: 12.5px;
+}
+.vp.cinema .vp-cine-head {
+  display: flex;
+}
+.vp.cinema .vp-bar {
+  padding-bottom: 18px;
+}
+.vp.compact .vp-time,
+.vp.compact .vp-speed,
+.vp.compact .vp-camera,
+.vp.compact .vp-vol input {
+  display: none;
+}
+.vp.compact .vp-row {
+  gap: 2px;
+}
+.vp.compact .vp-btn {
+  width: 26px;
+}
+.vp-cine-head .tb {
+  color: #fff;
+}
+.vp-video::cue {
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  font-family: var(--ui-font);
 }

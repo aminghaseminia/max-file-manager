@@ -21,6 +21,31 @@ test('a nonsense language falls back to English', () => {
   assert.equal(getLang(), 'en')
 })
 
+test('the wallpaper label is translated', () => {
+  setLang('en')
+  assert.equal(t('تنظیم به‌عنوان پس‌زمینهٔ میزکار'), 'Set as desktop background')
+  setLang('fa')
+  assert.equal(t('تنظیم به‌عنوان پس‌زمینهٔ میزکار'), 'تنظیم به‌عنوان پس‌زمینهٔ میزکار')
+  setLang('en')
+})
+
+test('all seven wallpaper fill labels are translated', () => {
+  const labels: [string, string][] = [
+    ['پرکردن کادر (برش لبه‌ها)', 'Fill the frame (crop the edges)'],
+    ['کشیده تا پر کند', 'Stretch to fill'],
+    ['کامل با حفظ نسبت', 'Fit while keeping the ratio'],
+    ['کاشی', 'Tile'],
+    ['کاشی عمودی', 'Tile vertically'],
+    ['کاشی افقی', 'Tile horizontally'],
+    ['وسط‌چین با حاشیه', 'Centered with padding']
+  ]
+  setLang('en')
+  for (const [fa, en] of labels) assert.equal(t(fa), en, fa)
+  setLang('fa')
+  for (const [fa] of labels) assert.equal(t(fa), fa, fa)
+  setLang('en')
+})
+
 test('subscribers fire only when the language actually changes', () => {
   let calls = 0
   const off = subscribeLang(() => calls++)

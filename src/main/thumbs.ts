@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { isVideoFile } from './player-core.ts'
+import { videoFrame } from './ffmpeg.ts'
 
 /** Thumbnails are cached on disk keyed by path + mtime + size, so a second visit is instant. */
 const MAX_FILES = 4000
@@ -17,8 +19,16 @@ function cacheDir(): string {
   return dir
 }
 
-export function thumbKey(p: string, mtime: number, size: number, side: number): string {
-  return createHash('sha1').update(`${p}|${mtime}|${size}|${side}`).digest('hex') + '.png'
+export function thumbKey(
+  p: string,
+  mtime: number,
+  size: number,
+  side: number,
+  kind: 'image' | 'video' = 'image'
+): string {
+  // keep the existing key for images: adding a prefix only for videos avoids a mass cache miss
+  const seed = kind === 'video' ? `video|${p}|${mtime}|${size}|${side}` : `${p}|${mtime}|${size}|${side}`
+  return createHash('sha1').update(seed).digest('hex') + '.png'
 }
 
 async function prune(): Promise<void> {
@@ -85,8 +95,9 @@ export async function thumbFor(p: string, side = 256): Promise<string | null> {
   const st = await fs.stat(p).catch(() => null)
   if (!st || st.isDirectory() || st.size === 0) return null
   const capped = Math.min(MAX_SIDE, Math.max(32, side))
+  const video = isVideoFile(p)
   const d = cacheDir()
-  const file = path.join(d, thumbKey(p, st.mtimeMs, st.size, capped))
+  const file = path.join(d, thumbKey(p, st.mtimeMs, st.size, capped, video ? 'video' : 'image'))
   const hit = await fs.stat(file).catch(() => null)
   if (hit) {
     // touch so the LRU keeps what is actually used
@@ -94,6 +105,21 @@ export async function thumbFor(p: string, side = 256): Promise<string | null> {
     await fs.utimes(file, now, now).catch(() => {})
     return file
   }
+  if (video) {
+    await fs.mkdir(d, { recursive: true }).catch(() => undefined)
+    const tmp = `${file}.${process.pid}.png`
+    const ok = await withSlot(() => videoFrame(p, tmp, capped))
+    if (ok) {
+      await fs.rename(tmp, file).catch(() => undefined)
+      if (await fs.stat(file).catch(() => null)) {
+        if (++writes % 50 === 0) void prune()
+        return file
+      }
+    }
+    await fs.rm(tmp, { force: true }).catch(() => undefined)
+    return null
+  }
+
   if (process.platform === 'darwin') {
     await fs.mkdir(d, { recursive: true }).catch(() => undefined)
     const tmp = `${file}.${process.pid}.png`

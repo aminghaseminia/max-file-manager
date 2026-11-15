@@ -149,6 +149,8 @@ export type Prefs = {
   galleryInfo: boolean
   /** default grouping for folders that have no format of their own */
   groupBy: 'none' | 'name' | 'type' | 'size' | 'date' | 'ext'
+  /** remember each folder's list/grid choice in that folder's own `.mfm.json` (default on) */
+  rememberFolderView: boolean
   /** file names hidden from every listing (glob allowed); metadata files by default */
   ignoreFiles: string[]
   /** user commands: name → shell line, `{path}` and `{dir}` are substituted */
@@ -333,6 +335,7 @@ export const DEFAULTS: Prefs = {
   treeAutoFocus: true,
   galleryInfo: true,
   groupBy: 'none',
+  rememberFolderView: true,
   ignoreFiles: DEFAULT_IGNORE_FILES,
   scripts: {},
   transferSkipExisting: false,
@@ -355,6 +358,18 @@ export const DEFAULTS: Prefs = {
   customCommands: [],
   iconDirs: [],
   iconTheme: ''
+}
+
+/**
+ * The per-folder format as the app may honor it. With `rememberFolderView` off the stored `view`
+ * is dropped, so the global default (`prefs.view`) wins on load — and a later sort/group save can
+ * never write an old view back into `.mfm.json`.
+ */
+export function folderFormatFor<T extends { view?: unknown }>(fmt: T, rememberFolderView: boolean): T {
+  if (rememberFolderView) return fmt
+  const next = { ...fmt }
+  delete next.view
+  return next
 }
 
 export type NamedLayout = {
@@ -616,6 +631,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     )
       ? (p.groupBy as Prefs['groupBy'])
       : 'none',
+    rememberFolderView: p.rememberFolderView !== false,
     ignoreFiles: migratedIgnoreFiles(p.ignoreFiles),
     scripts: normalScripts(p.scripts),
     transferSkipExisting: p.transferSkipExisting === true,

@@ -22,7 +22,7 @@ Grid view with real thumbnails (256px cache, served over `thumb://`):
 
 ## Previews and editors
 
-The preview opens in the opposite pane (`F3`) or as a side panel; a rendered Markdown preview with line numbers for text, an image, audio, video, PDF through Chromium's own viewer, Office text by reading `docx/xlsx/pptx` zip+XML, and HTML in a sandboxed frame with scripts stripped:
+The preview opens in the opposite pane (`F3`) or as a side panel; a rendered Markdown preview with line numbers for text, an image, audio, a completely embedded video player, PDF through Chromium's own viewer, Office text by reading `docx/xlsx/pptx` zip+XML, and HTML in a sandboxed frame with scripts stripped. The video player has custom controls, keyboard shortcuts, cinema mode, external SRT/VTT subtitles, frame capture and byte-range seeking; system FFmpeg prepares MKV/AVI/other codecs and generates video thumbnails, while Chromium's built-in decoders handle MP4/WebM directly:
 
 ![preview](docs/screenshot-preview.png)
 
@@ -88,7 +88,7 @@ Modes: `off` (default), `read` or `write`. Design notes: [docs/MCP.md](docs/MCP.
 ## Keyboard
 
 - `F5` copy to the other pane · `F6` move · `F7` new folder · `Ctrl+N` new file template · `F2` rename (batch when several are selected)
-- `F8` trash · `Shift+F8` delete permanently · `F9` folder size · `F3` preview · `F4` editor · `Ctrl+Z` undo
+- `F8` trash · `Shift+F8` delete permanently · `F9` folder size · `F3` preview · `F4` editor/gallery/player · `Ctrl+Z` undo
 - `Alt+←` / `Alt+→` back / forward · `Backspace` up · `Tab` switch active pane · `Ctrl+L` inline address bar · just start typing to filter
 - `Ctrl+K` global search (or double-tap `Shift`) · `Ctrl+Shift+Y` sync · `Ctrl+Shift+F` flat view · `Ctrl+H` hidden files · `Ctrl+D` bookmark
 - `Space` gallery · `Esc` clear selection and close overlays · every one of these is rebindable in Preferences → Shortcuts
@@ -136,6 +136,9 @@ src/main/launch-path.ts  the folder/file handed over by the desktop or a second 
 src/main/thumbs.ts    256px thumbnail cache with LRU pruning
 src/main/sync.ts      folder comparison (mtime / ctime / hash, ignore patterns)
 src/main/preview.ts   text, image, audio, video, PDF and Office preview with size caps
+src/main/player.ts    embedded player jobs, FFmpeg cache, subtitles and frame capture
+src/main/player-core.ts  playback/remux/transcode decisions, Range and SRT→VTT (pure, tested)
+src/renderer/src/VideoPlayer.tsx  custom embedded HTML5 player (controls, cinema, keyboard)
 src/main/editor.ts    atomic save for the editor
 src/main/image.ts     image save (copy or overwrite) for the gallery editor
 src/main/metadata.ts  ID3 and EXIF readers
