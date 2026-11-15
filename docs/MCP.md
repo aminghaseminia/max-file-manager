@@ -135,7 +135,7 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `settings_import` | `path?`, `apply?` | load a JSON file and apply its preferences |
 | `open` | `path` | default application |
 | `reveal` | `path` | system file manager |
-| `terminal` | `dir` | desktop terminal |
+| `terminal` | `dir`, `shell?` | desktop terminal; `shell` is `powershell`/`cmd` on Windows or an installed emulator id |
 | `apps_launch` | `id`, `path` | chosen `.desktop` |
 | `app_set_default` | `path`, `app` | make that app the system handler for the file type (`xdg-mime`); `.desktop` path or exact name. Linux only — Windows/macOS reject programmatic association changes |
 | `set_default_manager` | – | register this app as the default |

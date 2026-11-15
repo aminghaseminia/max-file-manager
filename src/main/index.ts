@@ -74,7 +74,8 @@ import {
   type DesktopApp
 } from './apps.ts'
 import { appIconFile } from './appicons.ts'
-import { openTerminal, revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
+import { revealFile, runCustomCommand, startFileDrag } from './desktop.ts'
+import { autoTerminal, listTerminals, openTerminal } from './terminals.ts'
 import { setDesktopWallpaper } from './wallpaper.ts'
 import { readTags, writeId3 } from './metadata.ts'
 import { execFile } from 'node:child_process'
@@ -1355,10 +1356,15 @@ app.whenReady().then(async () => {
     if (isRemotePath(a?.path ?? '')) return { error: 'a remote file cannot be opened by a local command' }
     return runCustomCommand(String(a?.command ?? ''), String(a?.path ?? ''))
   })
-  ipcMain.handle('app:terminal', (_e, dir: string) => {
+  ipcMain.handle('app:terminal', (_e, dir: string, shell?: string) => {
     if (isRemotePath(dir ?? '')) return { error: 'a remote folder has no local terminal' }
-    return openTerminal(dir ?? '')
+    return openTerminal(dir ?? '', String(shell ?? '') || 'auto')
   })
+  // the settings row offers only what this machine actually has (PowerShell vs cmd, installed emulators)
+  ipcMain.handle('app:terminalOptions', () => ({
+    auto: autoTerminal(),
+    options: listTerminals()
+  }))
   ipcMain.handle('app:reveal', async (_e, p: string) => {
     if (!isRemotePath(p)) return revealFile(p ?? '')
     try {
@@ -1825,7 +1831,7 @@ app.whenReady().then(async () => {
         )
       case 'terminal':
         if (isRemotePath(args.dir ?? '')) throw new Error('a remote folder has no local terminal')
-        return openTerminal(needAbs(args.dir))
+        return openTerminal(needAbs(args.dir), args.shell === undefined ? 'auto' : String(args.shell))
       case 'apps_launch':
         return launchApp(needAbs(args.id), await localForMcp(needPath(args.path)))
       case 'app_set_default': {

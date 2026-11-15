@@ -51,6 +51,7 @@ import { SyncDialog } from './SyncDialog'
 import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
+import { BookmarkBar } from './BookmarkBar'
 import { profileUri } from '../../shared/remote-profile.ts'
 import { COMMANDS, type CommandId } from './commands'
 import { appModifier, matchAccel } from './keys'
@@ -2308,7 +2309,7 @@ export default function App() {
         // a right-click on a folder opens the terminal in that folder; a file means its own
         // folder (flat/search results can live outside the tab), never the archive's fake path
         const target = terminalDir(path, entryOf(active, path)?.dir === true, me.archive ?? null, tabOf(me))
-        void api.openTerminal(target).then((r) => {
+        void api.openTerminal(target, prefs.terminal).then((r) => {
           if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
         })
         break
@@ -3141,7 +3142,7 @@ export default function App() {
     toggleLayout: () => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' }),
     terminal: () => {
       if (remoteGuard(tabOf(panes![active]))) return
-      void api.openTerminal(tabOf(panes![active])).then((r) => {
+      void api.openTerminal(tabOf(panes![active]), prefs.terminal).then((r) => {
         if ('error' in r) setNote(`ترمینال باز نشد — ${r.error}`)
       })
     },
@@ -3197,7 +3198,8 @@ export default function App() {
       if (p) setPropsFor(p)
     },
     prefs: () => setSettingsOpen(true),
-    remote: () => setRemoteOpen(true)
+    remote: () => setRemoteOpen(true),
+    bookmarkBar: () => updatePrefs({ bookmarkBar: prefs.bookmarkBar === false })
   }
 
   /**
@@ -3745,6 +3747,21 @@ export default function App() {
             if (id === 'newItem') openNewMenu(anchor)
             else RUN[id]?.()
           }}
+        />
+      )}
+
+      {!drivesPageOpen && prefs.bookmarkBar && (
+        <BookmarkBar
+          marks={marks}
+          markNames={markNames}
+          activePath={tabOf(panes![active])}
+          icons={markIcons}
+          iconSet={iconSetFor()}
+          hereBookmarked={marks.includes(bookmarkTarget(active))}
+          onToggleHere={() => toggleMark(active)}
+          onNav={(path) => go(active, path)}
+          onMenu={(path, x, y) => setMarkRowMenu({ path, x, y })}
+          onDropFolders={(paths) => void addMarks(paths)}
         />
       )}
 

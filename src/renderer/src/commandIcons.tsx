@@ -82,5 +82,6 @@ export const CMD_ICON: Record<CommandId, JSX.Element> = {
   compress: <ArchiveOpenIcon />,
   extract: <ArchiveIcon />,
   prefs: <SettingsIcon />,
-  remote: <ServerIcon />
+  remote: <ServerIcon />,
+  bookmarkBar: <StarIcon />
 }

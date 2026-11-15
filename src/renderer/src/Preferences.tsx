@@ -176,6 +176,24 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
     }
   }, [page])
 
+  // «Open in terminal» offers only what this machine can actually start
+  const [termOpts, setTermOpts] = useState<{ auto: string; options: { id: string; label: string; detail: string }[] }>({
+    auto: '',
+    options: []
+  })
+  useEffect(() => {
+    let live = true
+    void api
+      .terminalOptions()
+      .then((o) => {
+        if (live) setTermOpts(o)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
+
   const indexAge = (ts: number): string => {
     if (!ts) return t('هنوز ایندکس نشده')
     const mins = Math.round((Date.now() - ts) / 60000)
@@ -842,6 +860,11 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                 )
               )}
               {row(
+                t('نوار نشان‌ها'),
+                t('نشان‌های سایدبار به‌صورت یک نوار دکمه‌ای زیر نوار ابزار هم نمایش داده شوند'),
+                check(prefs.bookmarkBar, 'bookmarkBar')
+              )}
+              {row(
                 t('پنهان‌کردن نوار تب با یک تب'),
                 t('وقتی پنل فقط یک تب دارد، نوار بالای فهرست حذف می‌شود؛ در دوپنجره اگر یک طرف چند تب داشته باشد، نوار هر دو طرف می‌ماند'),
                 check(prefs.hideSingleTab, 'hideSingleTab')
@@ -1343,6 +1366,33 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
 
           {page === 'launch' && (
             <>
+              {termOpts.options.length > 0 &&
+                row(
+                  t('ترمینال «باز کردن در ترمینال»'),
+                  termOpts.options.length > 1
+                    ? t('روی این سیستم بیش از یک ترمینال/پوسته نصب است؛ همین‌جا انتخاب کن')
+                    : t('تنها ترمینال نصب‌شده روی این سیستم'),
+                  termOpts.options.length > 1 ? (
+                    <select
+                      className="pref-input"
+                      value={prefs.terminal}
+                      onChange={(e) => onChange({ terminal: e.target.value })}
+                    >
+                      <option value="auto">
+                        {`${t('خودکار')} (${termOpts.auto || t('پیش‌فرض سیستم')})`}
+                      </option>
+                      {termOpts.options.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="hint" dir="ltr">
+                      {termOpts.options[0].label}
+                    </span>
+                  )
+                )}
               {row(
                 t('کلید سراسری باز کردن'),
                 api.platform === 'win32'

@@ -383,7 +383,9 @@ export type Api = {
     dir?: string
   ): Promise<{ ok: true; output: string } | { error: string }>
   runCustomCommand(command: string, path: string): Promise<{ ok: true } | { error: string }>
-  openTerminal(dir: string): Promise<{ ok: true } | { error: string }>
+  openTerminal(dir: string, shell?: string): Promise<{ ok: true } | { error: string }>
+  /** terminal programs this machine can start (Windows shells, installed emulators) */
+  terminalOptions(): Promise<{ auto: string; options: { id: string; label: string; detail: string }[] }>
   reveal(path: string): Promise<{ ok: true } | { error: string }>
   isDefaultFileManager(): Promise<boolean>
   setDefaultFileManager(): Promise<{ ok: boolean; error?: string }>

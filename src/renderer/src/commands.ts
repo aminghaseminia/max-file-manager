@@ -50,6 +50,7 @@ export type CommandId =
   | 'extract'
   | 'prefs'
   | 'remote'
+  | 'bookmarkBar'
 
 export type CommandGroup = 'transfer' | 'file' | 'view' | 'tab' | 'window'
 
@@ -101,7 +102,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'look', label: 'آیکون پوشه', key: '', group: 'view' },
   { id: 'properties', label: 'ویژگی‌ها', key: 'Alt+Enter', group: 'file' },
   { id: 'prefs', label: 'تنظیمات', key: 'Ctrl+,', group: 'window' },
-  { id: 'remote', label: 'اتصال‌های دور', key: '', group: 'window' }
+  { id: 'remote', label: 'اتصال‌های دور', key: '', group: 'window' },
+  { id: 'bookmarkBar', label: 'نوار نشان‌ها', key: 'Ctrl+Shift+B', group: 'view' }
 ]
 
 export const GROUP_ORDER: CommandGroup[] = ['transfer', 'file', 'view', 'tab', 'window']

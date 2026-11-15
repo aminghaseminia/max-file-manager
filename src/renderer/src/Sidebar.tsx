@@ -2,59 +2,12 @@ import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DirRef, type Drive, type RemoteProfile } from './api'
 import { baseName, fa } from './format'
-import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, releaseDragOut } from './drag'
+import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, pathsOf, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
 import { ChevronDownIcon, ChevronLeftIcon, CloudIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, PlusIcon, ServerIcon, StarIcon, UsbIcon, XIcon } from './Icons'
 import { profileUri } from '../../shared/remote-profile.ts'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
-
-/** `file://` URI → path, the shape external file managers put on the drag. */
-const fileUrlToPath = (uri: string): string => {
-  try {
-    const url = new URL(uri)
-    if (url.protocol !== 'file:') return ''
-    let p = decodeURIComponent(url.pathname)
-    if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
-    return p
-  } catch {
-    return ''
-  }
-}
-
-/** Our own payload, or the `Files`/`uri-list` an external file manager sends. */
-const pathsOf = (dt: DataTransfer): string[] => {
-  const raw = dt.getData('application/x-mfm') || dt.getData('application/x-mfm-mark')
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed)) {
-        const list = parsed.filter((p): p is string => typeof p === 'string')
-        if (list.length) return list
-      }
-    } catch {
-      // fall through to the in-memory copy of our own drag
-    }
-  }
-  // a Wayland drop can lose the custom data; a real file list (a native drag from anywhere,
-  // including our own rows) is the most truthful answer while it exists
-  if (dt.files.length) {
-    return [...dt.files].map((f) => api.pathForFile(f)).filter(Boolean)
-  }
-  const internal = lastDragPaths().length ? lastDragPaths() : dragOutPaths()
-  if (internal.length) return internal
-  const text = dt.getData('text/uri-list') || dt.getData('text/plain')
-  if (text) {
-    const list = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith('#'))
-      .map((l) => (l.startsWith('file://') ? fileUrlToPath(l) : l))
-      .filter(Boolean)
-    if (list.length) return list
-  }
-  return []
-}
 
 type Props = {
   labels: LabelCount[]

@@ -108,6 +108,8 @@ export type Prefs = {
   toolbar: string[]
   /** toolbar button look: icon only, icon with its label, or the label alone */
   toolbarMode: 'icon' | 'icon-text' | 'text'
+  /** show the bookmark bar under the command bar (the sidebar's bookmarks as a strip) */
+  bookmarkBar: boolean
   // tabs
   newTabPos: 'end' | 'next'
   middleClickClosesTab: boolean
@@ -187,6 +189,8 @@ export type Prefs = {
   defaultApps: Record<string, { id: string; name: string }>
   /** custom background commands with %f substitution for file extensions or folders */
   customCommands: CustomCommand[]
+  /** «Open in terminal» program: 'auto' (platform default) or an id from the terminal list */
+  terminal: string
   // icon packs (folder look)
   iconDirs: string[]
   iconTheme: string
@@ -311,6 +315,7 @@ export const DEFAULTS: Prefs = {
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
+  bookmarkBar: true,
   newTabPos: 'next',
   middleClickClosesTab: true,
   hideSingleTab: true,
@@ -356,6 +361,7 @@ export const DEFAULTS: Prefs = {
   startFolder: '',
   defaultApps: {},
   customCommands: [],
+  terminal: 'auto',
   iconDirs: [],
   iconTheme: ''
 }
@@ -510,6 +516,17 @@ function cleanCustomCommands(raw: unknown): CustomCommand[] {
     .filter((x) => x.label && x.pattern && x.command)
 }
 
+/**
+ * A terminal id is a shell name (`powershell`, `cmd`) or an emulator name (`konsole`); anything
+ * else on disk falls back to `auto`, which is the platform default.
+ */
+const cleanTerminalId = (raw: unknown): string => {
+  if (typeof raw !== 'string') return 'auto'
+  const id = raw.trim()
+  if (!id || id === 'auto') return 'auto'
+  return /^[A-Za-z0-9._-]{1,40}$/.test(id) ? id : 'auto'
+}
+
 /** Coerces whatever is on disk into a valid Prefs object — a bad value must never crash a boot. */
 export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) | null | undefined): Prefs {
   const p = { ...DEFAULTS, ...(raw ?? {}) }
@@ -585,6 +602,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
       p.toolbarMode === 'icon' || p.toolbarMode === 'text' ? p.toolbarMode : 'icon-text',
+    bookmarkBar: p.bookmarkBar !== false,
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,
     hideSingleTab: p.hideSingleTab !== false,
@@ -656,6 +674,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     startFolder: typeof p.startFolder === 'string' ? p.startFolder : '',
     defaultApps: cleanDefaultApps(p.defaultApps),
     customCommands: cleanCustomCommands(p.customCommands),
+    terminal: cleanTerminalId(p.terminal),
     iconDirs: Array.isArray(p.iconDirs) ? p.iconDirs.filter((d) => typeof d === 'string' && d) : [],
     iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : ''
   }

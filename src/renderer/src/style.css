@@ -3320,6 +3320,73 @@ html[data-rounded='0'] .app {
   pointer-events: none;
 }
 
+/* ---------- bookmark bar ---------- */
+/* The same bookmarks as the sidebar, as one strip under the command bar. It is a matte row like
+   .cmdbar, never transparent: the frameless window would show the desktop through a gap. */
+.bmbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bmbar::-webkit-scrollbar {
+  height: 0;
+}
+.bmbar.drop {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-2));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.bmb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 190px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bmb:hover {
+  background: var(--sel);
+  color: var(--text);
+}
+.bmb.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text);
+}
+.bmb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bmb.star {
+  padding: 3px 6px;
+  color: var(--dim);
+}
+.bmb.star.on {
+  color: var(--accent);
+}
+/* the empty hint shrinks away instead of pushing the star around */
+.bm-empty {
+  flex: none;
+  padding-inline-start: 4px;
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---------- shortcut editor ---------- */
 .pref-group {
   margin: 12px 0 4px;

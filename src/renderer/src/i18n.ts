@@ -1166,6 +1166,20 @@ const EN: Record<string, string> = {
   'پخش این ویدئو با موتور داخلی ممکن نشد':
     'The built-in player could not play this video',
 
+  // terminal choice and the bookmark bar
+  'ترمینال «باز کردن در ترمینال»': '“Open in terminal” program',
+  'روی این سیستم بیش از یک ترمینال/پوسته نصب است؛ همین‌جا انتخاب کن':
+    'More than one terminal/shell is installed; pick the one to start',
+  'تنها ترمینال نصب‌شده روی این سیستم': 'The only terminal installed on this system',
+  'خودکار': 'Automatic',
+  'نوار نشان‌ها': 'Bookmark bar',
+  'نشان‌های سایدبار به‌صورت یک نوار دکمه‌ای زیر نوار ابزار هم نمایش داده شوند':
+    'Show the sidebar’s bookmarks as a row of buttons under the toolbar',
+  'نشان‌کردن پوشهٔ جاری': 'Bookmark the current folder',
+  'برداشتن نشان پوشهٔ جاری': 'Remove the current folder’s bookmark',
+  'پوشه‌ای را نشان کن یا روی این نوار رها کن':
+    'Bookmark a folder, or drop one on this bar',
+
   // remote connections (FTP/FTPS/S3)
   'اتصال‌های دور': 'Remote connections',
   'دور': 'Remote',
