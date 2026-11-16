@@ -274,7 +274,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 
 ## تست و تحویل
 
-- **قبل از هر build/install از تغییرات تازه، ممیزی امنیتی واجب است**: اول `git fetch upstream` و دیف را بخوان؛ اگر اسکریپت نصب/بعد-نصب تازه (در مخزن یا هر وابستگی)، وابستگی از خارج `registry.npmjs.org` یا بدون `integrity`، `eval`/`new Function`/`vm`، کد مینیفای/مبهم، درخواست شبکه‌ای تازه، `child_process` تازه (به‌ویژه `sh -c` غیر‌لیترال)، شل‌شدن CSP/`contextIsolation`/`nodeIntegration`، سطح تازه‌ای در `preload`، ماندگاری تازه (LaunchAgent/login item/cron) یا ابزار MCP ممتاز دیدی، **متوقف شو و گزارش بده** — نساز و نصب نکن. فقط بعد از پاک‌بودن ممیزی `npm run typecheck` + تست + `dist:*` + نصب. جزئیات چک‌لیست در بخش «Updating from upstream».
+- **قبل از هر build/install از تغییرات تازه، ممیزی امنیتی واجب است**: اول `git fetch origin` و دیف را بخوان؛ اگر اسکریپت نصب/بعد-نصب تازه (در مخزن یا هر وابستگی)، وابستگی از خارج `registry.npmjs.org` یا بدون `integrity`، `eval`/`new Function`/`vm`، کد مینیفای/مبهم، درخواست شبکه‌ای تازه، `child_process` تازه (به‌ویژه `sh -c` غیر‌لیترال)، شل‌شدن CSP/`contextIsolation`/`nodeIntegration`، سطح تازه‌ای در `preload`، ماندگاری تازه (LaunchAgent/login item/cron) یا ابزار MCP ممتاز دیدی، **متوقف شو و گزارش بده** — نساز و نصب نکن. فقط بعد از پاک‌بودن ممیزی `npm run typecheck` + تست + `dist:*` + نصب. جزئیات چک‌لیست در بخش «Updating from the remote».
 - منطق خالص (فرمت، مرتب‌سازی، مسیر) تست واحد دارد؛ UI را با `SMOKE_SHOT` و چشم خودت ببین.
 - اجرای کامل سوییت کار من (مالک) است؛ تو تست را بنویس و همان تست مربوطه را اجرا کن.
 - قبل از تحویل: `npm run typecheck` + `node --test` + یک اسکرین‌شات تازه.
@@ -314,17 +314,17 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 - **پیش از هر اجرای `SMOKE_SHOT`/`SMOKE_JS` پروسهٔ قبلی را ببند**: قفل تک‌نمونه اجرای تازه را بی‌صدا رد می‌کند و آدم خیال می‌کند بیلد خراب است. با `pgrep -f "dist/electron \." | xargs -r kill -9` (نه `pkill -f` که خودش را هم می‌کشد). دقت کن `npx electron .` آرگومان را به **مسیر مطلق** تبدیل می‌کند، پس الگوی `dist/electron \.` آن را نمی‌گیرد؛ از `pgrep -f "[e]lectron/dist/electron"` استفاده کن.
 - **`pkill -f` و `pgrep -f` در همان خطی که الگو را دارد، خودش را می‌کشند** (exit -15 یا -137). با PID بکش یا الگوی regex را براکت‌دار بنویس (`[e]lectron/...`).
 
-## Updating from upstream (this macOS fork)
+## Updating from the remote
 
-`origin` is `aminghaseminia/max-file-manager`; `upstream` is `majidasgari/max-file-manager`.
-**A pull is code execution.** Audit the incoming diff for backdoors and malicious code **before** any build or install — never build first and check afterwards. The only reason this fork exists separately is so incoming code can be treated as untrusted until it has been read.
+`origin` is `majidasgari/max-file-manager` — the only remote. The old `aminghaseminia` fork is no longer configured.
+**A pull is code execution.** Audit the incoming diff for backdoors and malicious code **before** any build or install — never build first and check afterwards; incoming code is treated as untrusted until it has been read.
 
 ### 1. Fetch, then look before merging
 
 ```bash
-git fetch upstream
-git log --oneline HEAD..upstream/main      # what is coming
-git diff --stat HEAD..upstream/main
+git fetch origin
+git log --oneline HEAD..origin/main      # what is coming
+git diff --stat HEAD..origin/main
 ```
 
 If the log is empty there is nothing to audit and nothing to rebuild — stop and say so.
@@ -334,8 +334,8 @@ If the log is empty there is nothing to audit and nothing to rebuild — stop an
 Read the config and dependency surface first, then the source:
 
 ```bash
-git diff HEAD..upstream/main -- package.json package-lock.json electron-builder.yml .github scripts bin
-git diff HEAD..upstream/main -- src
+git diff HEAD..origin/main -- package.json package-lock.json electron-builder.yml .github scripts bin
+git diff HEAD..origin/main -- src
 ```
 
 **Blockers — stop, report, do not build:**
@@ -363,7 +363,7 @@ npx asar list "release/mac-arm64/Max File Manager.app/Contents/Resources/app.asa
 ### 3. Merge, then gate
 
 ```bash
-git merge --ff-only upstream/main
+git merge --ff-only origin/main
 npm ci
 npm run typecheck
 npm test
@@ -389,7 +389,7 @@ The build is ad-hoc signed and not notarized (`identity: '-'` in `electron-build
 
 State the commits pulled, the audit outcome for every blocker above, the test result, and the version actually installed.
 
-## Windows specifics that are local to this fork
+## Windows specifics that are local to this working copy
 
 - **Win+E با `globalShortcut` گرفته نمی‌شود.** ویندوز Win+E را داخل explorer.exe حل می‌کند و `globalShortcut.register('Super+E')` صریحاً `false` برمی‌گرداند. راهِ Directory Opus — و راهِ اینجا — یک هوک سطح‌پایین صفحه‌کلید است: `src/main/wine-hook/WinEHook.cs` را `scripts/build-wine-hook.mjs` با `csc.exe` داخل .NET Framework به `out/main/WinEHook.exe` بیلد می‌کند (در `npm run build`، بهترین‌تلاش؛ روی لینوکس/مک skip می‌شود) و `electron-builder.yml` آن را فقط در بلوک `win.extraResources` بیرون از asar می‌گذارد. `src/main/wine-hook.ts` آن را با `--target <app.exe> --parent <pid>` اجرا می‌کند: هوک کلید را می‌بلعد و برنامه را باز می‌کند (تک‌نمونه پنجرهٔ موجود را جلو می‌آورد)، mutex `Local\MaxFileManagerWinEHook` جلوی دو نسخه را می‌گیرد و با مرگ والد خودش می‌میرد. نتیجه: Win+E تا وقتی برنامه در حال اجراست کار می‌کند (مثل dopusrt) و `prefs.winE` (تنظیمات → راه‌اندازی، فقط ویندوز) مالک عمر آن است؛ اگر `prefs.hotkey` برابر «Super+E» باشد روی ویندوز عمداً ثبت نمی‌شود تا با هوک تعارض نکند.
 - **کلیپ‌بورد فایل روی ویندوز PowerShell مخفی است، نه python.** `fileclip.ts` روی ویندوز `CF_HDROP` + `Preferred DropEffect` را با یک اسکریپت PowerShell می‌سازد؛ `windowsHide: true` اجباری است — بدون آن هر Ctrl+X یک پنجرهٔ کنسول نشان می‌داد (`-WindowStyle Hidden` تنها هم کافی نیست، چون کنسول قبل از اعمالش ساخته می‌شود). مسیر لینوکس/ویلند همان helper قبلی می‌ماند.
@@ -409,7 +409,7 @@ State the commits pulled, the audit outcome for every blocker above, the test re
 - **پنجرهٔ بازشده با Win+E باید با زور جلو بیاید**: ویندوز فوکوس را به فرایندی که خودش شروع نشده نمی‌دهد، پس `show()+focus()` پنجره را پشت می‌گذاشت. `forceForeground` روی ویندوز `setAlwaysOnTop(true)` → `moveTop()` → `focus()` → برگرداندن always-on-top را انجام می‌دهد و در `ready-to-show`، second-instance، سینی و `showWindow` استفاده می‌شود.
 - **پورتال XDG فقط لینوکس است**: دیالوگ‌های باز/ذخیرهٔ ویندوز از comdlg32 می‌آیند و جایگزین‌شدنی نیستند، پس ردیف پورتال با `api.platform === 'linux'` رندر می‌شود (`api.platform` از preload می‌آید)؛ «مدیر فایل پیش‌فرض سیستم» روی ویندوز هم هست (با دکمهٔ بازگرداندن).
 
-## macOS specifics that are local to this fork
+## macOS specifics that are local to this working copy
 
 - **میان‌برهای سیستم مک نباید خورده شوند**: `matchAccel` در `keys.ts` عمداً `Cmd` را با `Ctrl` یکی می‌گیرد (برنامه با Ctrl نوشته شده و روی مک باید با ⌘ هم کار کند)، ولی **هر دو با هم نه** — `appModifier(ev)` یعنی «دقیقاً یکی از ctrl/meta». بدون این قید، `⌃⌘F` (تمام‌صفحهٔ مک) با فرمان `Ctrl+F` (فیلتر نام) جور می‌شد و `preventDefault` می‌خورد. همین‌طور کلیدهای ناوبری (فلش/PgUp/PgDn/Home/End) فقط با `appModifier` جابه‌جا می‌کنند تا `⌃↑/↓/←/→` (Mission Control و Spaces) و `⌘↑/↓` به سیستم برسند؛ و `Alt+←/→` در فیلد متنی اجرا نشود چون `⌥←/→` جابه‌جایی کلمه‌به‌کلمه است.
 - **منوی مک دستی ساخته می‌شود و منوی Edit ندارد**: منوی پیش‌فرض Electron یک Edit menu با acceleratorهای `⌘C/⌘X/⌘V/⌘A/⌘Z` نصب می‌کند که **قبل از رندرر** تطبیق داده می‌شود؛ نتیجه اینکه این کلیدها در فهرست فایل هیچ کاری نمی‌کردند و فرمان‌های خود برنامه هم به آن‌ها نمی‌رسید. `installMacMenu()` فقط `appMenu` (Quit/Hide) و `windowMenu` (Minimize/Zoom) را می‌گذارد؛ ویرایش متن در inputها با binding داخلی خود کرومیوم کار می‌کند و در `App.onKey` با `typing` (شامل `isContentEditable`) رد می‌شود.
