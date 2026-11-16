@@ -49,7 +49,6 @@ import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { RemoteDialog } from './RemoteDialog'
 import { SyncWorkspace } from './SyncWorkspace'
-import { SyncPill } from './SyncPill'
 import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
@@ -4097,26 +4096,18 @@ export default function App() {
             )
 
           if (isDualBoth && i === 0) {
-            const pair = pairKey(tabOf(panes[0]), tabOf(panes[1]))
             return (
               <Fragment key={i}>
                 {renderedPane}
-                <div key="dual-split" className="split-wrap">
-                  <div
-                    className="vsplit"
-                    role="separator"
-                    aria-orientation="vertical"
-                    title={t('تغییر عرض دو پنجره')}
-                    onPointerDown={startDualResize}
-                    onDoubleClick={() => updatePrefs({ dualSplit: 0.5 })}
-                  />
-                  <SyncPill
-                    mode={prefs.syncPairDirs[pair] ?? 'ltr'}
-                    leftName={baseName(tabOf(panes[0]))}
-                    rightName={baseName(tabOf(panes[1]))}
-                    onPick={(m) => openSync(m)}
-                  />
-                </div>
+                <div
+                  key="dual-split"
+                  className="vsplit"
+                  role="separator"
+                  aria-orientation="vertical"
+                  title={t('تغییر عرض دو پنجره')}
+                  onPointerDown={startDualResize}
+                  onDoubleClick={() => updatePrefs({ dualSplit: 0.5 })}
+                />
               </Fragment>
             )
           }
@@ -4456,7 +4447,7 @@ export default function App() {
           right={syncOpen.right}
           initialMode={syncDir}
           compareBy={syncJob?.compareBy ?? 'mtime'}
-          ignore={(syncJob?.ignore ?? []).join(', ')}
+          ignoreRules={syncJob?.ignoreRules ?? []}
           deleteExtra={syncJob?.deleteExtra === true}
           jobs={prefs.syncJobs}
           onClose={() => setSyncOpen(null)}

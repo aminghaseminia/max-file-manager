@@ -40,6 +40,12 @@ The walk skips `.mfm.json` and `.mfm-versions`, never follows a symbolic link, d
 empty folders (files below them create the parents), and stops at 20 000 rows or the wall-clock
 budget. A truncated result is reported as `capped`, never as a complete list.
 
+Ignore rules are applied *during* the walk, before a row exists: a matched file or folder is
+invisible to the comparison and therefore can never be removed by “delete extra files”. Four rule
+kinds exist: `glob` (`*.log`, `node_modules`), `regex` (tested against the relative path and the
+base name), `path` (an exact relative path, including its whole subtree) and `size` (`gt`/`lt`).
+Size rules only see files — a folder's recursive size is not known without a second walk.
+
 ## One-way
 
 `ltr` (left → right) and `rtl` (right → left) trust one side:
@@ -145,7 +151,7 @@ argv).
 
 ## Jobs and schedules
 
-A job is a saved pair + direction + comparison + ignore list + delete flag + schedule. It lives in
+A job is a saved pair + direction + comparison + ignore rules + delete flag + schedule. It lives in
 `prefs.syncJobs` (`src/shared/sync.ts` validates it; an invalid entry is dropped and never breaks
 boot). The main process reads the same prefs blob, so a job is not duplicated in a second store.
 
@@ -165,14 +171,23 @@ least one exists); the progress of the active run also appears in the jobs bar.
 
 ## UI
 
-- The **direction pill** sits on the 6 px pane divider. It appears at 55 % opacity and becomes
-  fully opaque on hover; the three buttons are left → right, two-way, right → left. Clicking one
-  stores the choice for the pair (`prefs.syncPairDirs`) and opens the workspace in that direction.
-  `onPointerDown` is stopped so a click never starts the column-resize drag.
-- The **workspace** is a full-window dialog (not the old small dialog). It has a compare-by
-  selector, ignore list, direction, delete-extra, differences-only, the action buttons, summary
-  chips, a virtualised row table (only the visible rows exist in the DOM), a conflicts tab, a
-  history tab with restore, and a jobs tab with the schedule form.
+- The pane divider is only a divider; it no longer carries a direction pill. The three direction
+  buttons live in the workspace headline, between the left and right folder cards, so the arrow
+  always points from the source card to the destination card (the icons mirror in an RTL UI).
+  Clicking one stores the choice for the pair (`prefs.syncPairDirs`).
+- The **workspace** is a full-window dialog split down the middle: each side has its own folder
+  card, item count, role (source/destination/both) and its own encryption settings. Settings that
+  belong to the pair (compare-by, delete-extra, rsync, ignore rules) sit in the shared bar below.
+- The **rows tab** has a status filter, a header master checkbox (check/uncheck every visible
+  actionable row), the virtualised table (only visible rows exist in the DOM), summary chips and
+  the compare/dry-run/run buttons.
+- The **conflicts tab** shows, for every conflict, both sides with type/size/date, which side is
+  newer and by how much, and the size difference before the three resolution buttons.
+- The **ignore tab** manages glob/regex/path/size rules, can turn the current selection into exact
+  path rules, and re-compares automatically. rsync stays available only while every rule is a glob.
+- The **jobs tab** uses controls, not formatted text: an interval switch + stepper + unit, toggle
+  switches for start/mount/change triggers, cron presets and an advanced field, and an enable
+  switch on every saved job.
 - The old flat 500-row dialog was replaced; the old `SyncDialog.tsx` is gone.
 
 ## MCP

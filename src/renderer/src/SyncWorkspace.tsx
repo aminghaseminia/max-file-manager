@@ -4,6 +4,7 @@ import {
   api,
   type RsyncOptions,
   type SyncEncryption,
+  type SyncIgnoreRule,
   type SyncJob,
   type SyncMode,
   type SyncPlan,
@@ -20,6 +21,7 @@ import {
   CheckIcon,
   CopyIcon,
   EyeIcon,
+  MinusIcon,
   PauseIcon,
   PlayIcon,
   PlusIcon,
@@ -29,15 +31,25 @@ import {
 } from './Icons'
 import { isRemotePath } from '../../shared/remote-path.ts'
 import { newSyncJobId } from '../../shared/sync.ts'
+import {
+  conflictFacts,
+  filterSyncRows,
+  globRules,
+  relativeSpan,
+  ruleKey,
+  STATUS_FILTERS,
+  type Span,
+  type StatusFilter
+} from './sync-view.ts'
 
-type Tab = 'rows' | 'conflicts' | 'history' | 'jobs' | 'versions'
+type Tab = 'rows' | 'conflicts' | 'ignore' | 'history' | 'jobs' | 'versions'
 
 type Props = {
   left: string
   right: string
   initialMode: SyncMode
   compareBy: 'mtime' | 'hash'
-  ignore: string
+  ignoreRules: SyncIgnoreRule[]
   deleteExtra: boolean
   jobs: SyncJob[]
   onClose(): void
@@ -69,9 +81,104 @@ const CONFLICT_LABEL: Record<string, string> = {
   typeDiff: 'در یک طرف فایل، در طرف دیگر پوشه'
 }
 
-const MODE_LABEL: Record<string, string> = { ltr: 'چپ → راست', rtl: 'راست → چپ', both: 'دوطرفه' }
-
 const ROW_H = 28
+
+const SIZE_MULT: Record<'B' | 'KB' | 'MB' | 'GB', number> = {
+  B: 1,
+  KB: 1024,
+  MB: 1024 ** 2,
+  GB: 1024 ** 3
+}
+
+const ruleKindLabel = (r: SyncIgnoreRule): string =>
+  r.kind === 'glob'
+    ? t('الگو (glob)')
+    : r.kind === 'regex'
+      ? 'Regex'
+      : r.kind === 'path'
+        ? t('مسیر')
+        : t('حجم')
+
+const ruleText = (r: SyncIgnoreRule): string =>
+  r.kind === 'size' ? `${r.op === 'gt' ? '>' : '<'} ${fmtSize(r.bytes, false)}` : r.value
+
+const jobFor = (jobs: SyncJob[], left: string, right: string): SyncJob | undefined =>
+  jobs.find((j) => j.left === left && j.right === right)
+const currentEvery = (jobs: SyncJob[], left: string, right: string): number =>
+  jobFor(jobs, left, right)?.schedule.everyMinutes ?? 0
+const currentCron = (jobs: SyncJob[], left: string, right: string): string =>
+  jobFor(jobs, left, right)?.schedule.cron ?? ''
+
+/** The three-state checkbox in the table head; `indeterminate` has no HTML attribute. */
+function SelectAll({
+  checked,
+  indeterminate,
+  disabled,
+  onChange
+}: {
+  checked: boolean
+  indeterminate: boolean
+  disabled: boolean
+  onChange(): void
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate && !checked
+  }, [indeterminate, checked])
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={onChange}
+      aria-label={t('انتخاب همه')}
+    />
+  )
+}
+
+function Toggle({ on, onChange, label }: { on: boolean; onChange(on: boolean): void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={'toggle' + (on ? ' on' : '')}
+      onClick={() => onChange(!on)}
+    >
+      <span className="knob" />
+      <span>{label}</span>
+    </button>
+  )
+}
+
+function Stepper({
+  value,
+  min,
+  max,
+  onStep,
+  format
+}: {
+  value: number
+  min: number
+  max: number
+  onStep(delta: number): void
+  format?(n: number): string
+}) {
+  return (
+    <span className="stepper">
+      <button className="tb" disabled={value <= min} onClick={() => onStep(-1)} aria-label={t('کمتر')}>
+        <MinusIcon />
+      </button>
+      <span className="stepper-value" dir="ltr">
+        {format ? format(value) : fa(value)}
+      </span>
+      <button className="tb" disabled={value >= max} onClick={() => onStep(1)} aria-label={t('بیشتر')}>
+        <PlusIcon size={11} />
+      </button>
+    </span>
+  )
+}
 
 type EncState = { mode: 'off' | 'passphrase' | 'keypair'; secretId: string; recipient: string }
 const toEncState = (e?: SyncEncryption): EncState =>
@@ -85,7 +192,23 @@ const fromEncState = (s: EncState): SyncEncryption | undefined =>
 
 const labelOfState = (state: string): string => t(STATE_LABEL[state] ?? state)
 const labelOfConflict = (kind: string | undefined): string => t(CONFLICT_LABEL[kind ?? ''] ?? kind ?? '')
-const labelOfMode = (mode: string): string => t(MODE_LABEL[mode] ?? mode)
+
+/**
+ * A direction rendered as words and an icon, not as a text arrow: bidi keeps a `→` character
+ * pointing right in an RTL paragraph, which is exactly the wrong visual direction there.
+ */
+function ModeLabel({ mode }: { mode: SyncMode }) {
+  if (mode === 'both') return <>{t('دوطرفه')}</>
+  const rtl = document.documentElement.dir === 'rtl'
+  const pointsRight = (mode === 'ltr') !== rtl
+  return (
+    <span className="mode-label">
+      <span>{t('چپ')}</span>
+      {pointsRight ? <ArrowRightIcon size={10} /> : <ArrowLeftIcon size={10} />}
+      <span>{t('راست')}</span>
+    </span>
+  )
+}
 
 function toneOf(state: string): string {
   if (state === 'conflict') return 'warn'
@@ -95,30 +218,16 @@ function toneOf(state: string): string {
   return 'warn'
 }
 
-const ignoreList = (text: string): string[] =>
-  text
-    .split(/[,\s]+/)
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .slice(0, 50)
-
-function conflictCount(plan: SyncPlan | null): number {
-  return plan ? plan.conflicts.length : 0
-}
-
 /** A virtualised comparison table; only the visible rows exist in the DOM. */
 function Rows({
   rows,
   selected,
-  onToggle,
-  onlyDiff
+  onToggle
 }: {
   rows: SyncRow[]
   selected: Set<string>
   onToggle(rel: string): void
-  onlyDiff: boolean
 }) {
-  const shown = useMemo(() => (onlyDiff ? rows.filter((r) => r.state !== 'same') : rows), [rows, onlyDiff])
   const box = useRef<HTMLDivElement | null>(null)
   const [scroll, setScroll] = useState(0)
   const [height, setHeight] = useState(420)
@@ -130,11 +239,11 @@ function Rows({
     setHeight(el.clientHeight)
   }
   const start = Math.max(0, Math.floor(scroll / ROW_H) - 6)
-  const end = Math.min(shown.length, start + Math.ceil(height / ROW_H) + 10)
+  const end = Math.min(rows.length, start + Math.ceil(height / ROW_H) + 10)
   return (
     <div className="sync-rows" ref={measure} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
-      <div style={{ height: shown.length * ROW_H, position: 'relative' }}>
-        {shown.slice(start, end).map((r, i) => {
+      <div style={{ height: rows.length * ROW_H, position: 'relative' }}>
+        {rows.slice(start, end).map((r, i) => {
           const at = start + i
           const size = (s?: { size: number; dir: boolean }): string =>
             s ? (s.dir ? t('پوشه') : fmtSize(s.size, false)) : '—'
@@ -163,7 +272,7 @@ function Rows({
           )
         })}
       </div>
-      {!shown.length && <div className="sync-empty dim">{t('ردیفی نیست')}</div>}
+      {!rows.length && <div className="sync-empty dim">{t('ردیفی نیست')}</div>}
     </div>
   )
 }
@@ -173,7 +282,7 @@ export function SyncWorkspace({
   right,
   initialMode,
   compareBy: initialCompareBy,
-  ignore: initialIgnore,
+  ignoreRules: initialIgnoreRules,
   deleteExtra: initialDeleteExtra,
   jobs,
   onClose,
@@ -189,14 +298,16 @@ export function SyncWorkspace({
     onModeChange?.(next)
   }
   const [compareBy, setCompareBy] = useState<'mtime' | 'hash'>(initialCompareBy)
-  const [ignoreText, setIgnoreText] = useState(initialIgnore)
+  const [rules, setRules] = useState<SyncIgnoreRule[]>(initialIgnoreRules)
   const [deleteExtra, setDeleteExtra] = useState(initialDeleteExtra)
   const [rows, setRows] = useState<SyncRow[]>([])
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [capped, setCapped] = useState(false)
+  const [leftCount, setLeftCount] = useState(0)
+  const [rightCount, setRightCount] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [resolutions, setResolutions] = useState<Record<string, 'left' | 'right' | 'skip'>>({})
-  const [onlyDiff, setOnlyDiff] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [tab, setTab] = useState<Tab>('rows')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -206,13 +317,28 @@ export function SyncWorkspace({
   const [history, setHistory] = useState<SyncRunSummary[]>([])
   const [restoreId, setRestoreId] = useState<string | null>(null)
   const [jobName, setJobName] = useState(`${baseName(left)} → ${baseName(right)}`)
-  const [every, setEvery] = useState('')
-  const [cron, setCron] = useState('')
+  const initEvery = currentEvery(jobs, left, right)
+  const [intervalOn, setIntervalOn] = useState(initEvery > 0)
+  const [everyUnit, setEveryUnit] = useState<'min' | 'hour'>(initEvery > 0 && initEvery % 60 === 0 ? 'hour' : 'min')
+  const [everyAmount, setEveryAmount] = useState(() =>
+    initEvery <= 0 ? 30 : initEvery % 60 === 0 ? initEvery / 60 : initEvery
+  )
+  const [cron, setCron] = useState(currentCron(jobs, left, right))
   const [onStart, setOnStart] = useState(false)
   const [onMount, setOnMount] = useState(false)
   const [onChange, setOnChange] = useState(false)
+  const [ruleKind, setRuleKind] = useState<'glob' | 'regex' | 'path' | 'size'>('glob')
+  const [ruleValue, setRuleValue] = useState('')
+  const [sizeOp, setSizeOp] = useState<'gt' | 'lt'>('gt')
+  const [sizeAmount, setSizeAmount] = useState('10')
+  const [sizeUnit, setSizeUnit] = useState<'B' | 'KB' | 'MB' | 'GB'>('MB')
 
-  const ignored = useMemo(() => ignoreList(ignoreText), [ignoreText])
+  const ignored = useMemo(() => globRules(rules), [rules])
+  const visibleRows = useMemo(() => filterSyncRows(rows, statusFilter), [rows, statusFilter])
+  const selectableRows = visibleRows.filter((r) => r.state !== 'same')
+  const allSelected = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.rel))
+  const someSelected = selectableRows.some((r) => selected.has(r.rel))
+  const rtl = document.documentElement.dir === 'rtl'
   const count = (state: string): number => rows.filter((r) => r.state === state).length
   const conflicts = plan?.conflicts ?? []
   const unresolved = conflicts.filter((c) => !resolutions[c.rel] || resolutions[c.rel] === 'skip')
@@ -239,19 +365,25 @@ export function SyncWorkspace({
   const versionsAllowed = mode !== 'both' && !isRemotePath(versionsDest)
   const encrypted = encLeftState.mode !== 'off' || encRightState.mode !== 'off'
   const effectiveCompareBy: 'mtime' | 'hash' = encrypted ? 'hash' : compareBy
+  // rsync can only express glob excludes; regex/size rules need the native engine
+  const rsyncRulesOk = rules.every((r) => r.kind === 'glob')
   const rsyncAllowed =
-    useRsync && mode !== 'both' && !encrypted && !isRemotePath(left) && !isRemotePath(right)
+    useRsync && rsyncRulesOk && mode !== 'both' && !encrypted && !isRemotePath(left) && !isRemotePath(right)
 
   useEffect(() => {
     if (!currentJob) return
     setJobName(currentJob.name)
-    setEvery(currentJob.schedule.everyMinutes ? String(currentJob.schedule.everyMinutes) : '')
+    const mins = currentJob.schedule.everyMinutes ?? 0
+    setIntervalOn(mins > 0)
+    setEveryUnit(mins > 0 && mins % 60 === 0 ? 'hour' : 'min')
+    setEveryAmount(mins <= 0 ? 30 : mins % 60 === 0 ? mins / 60 : mins)
     setCron(currentJob.schedule.cron ?? '')
     setOnStart(currentJob.schedule.onStart === true)
     setOnMount(currentJob.schedule.onMount === true)
     setOnChange(currentJob.schedule.onChange === true)
     setUseRsync(currentJob.useRsync === true)
     setRsyncOpts(currentJob.rsync ?? {})
+    setRules(currentJob.ignoreRules ?? [])
     setEncLeftState(toEncState(currentJob.encLeft))
     setEncRightState(toEncState(currentJob.encRight))
     setVersionsOn(Boolean(currentJob.versions))
@@ -414,84 +546,93 @@ export function SyncWorkspace({
     setRevealed((v) => ({ ...v, [side]: value }))
   }
 
+  /** Per-side settings live in that side's own column, never in the shared bar. */
   const encRow = (side: 'left' | 'right'): ReactElement => {
     const state = encOf(side)
     return (
-      <div className="sync-enc-row" key={side}>
-        <span className="sync-enc-side">{side === 'left' ? t('چپ') : t('راست')}</span>
-        <select
-          value={state.mode}
-          onChange={(e) => changeEncMode(side, e.target.value as EncState['mode'])}
-          aria-label={t('حالت رمزنگاری')}
-        >
-          <option value="off">{t('خاموش')}</option>
-          <option value="passphrase">{t('پسورد')}</option>
-          <option value="keypair">{t('جفت‌کلید')}</option>
-        </select>
-        {state.mode === 'passphrase' && (
-          <>
-            <input
-              type="password"
-              className="ignore-input"
-              dir="ltr"
-              placeholder={t('پسورد')}
-              value={secretText[side]}
-              onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
-            />
-            <button className="tb" onClick={() => void saveSecret(side)}>
-              {secretReady[side] ? t('تغییر') : t('ذخیره')}
-            </button>
-            {secretReady[side] && <span className="chip add">{t('ذخیره‌شده')}</span>}
-          </>
-        )}
-        {state.mode === 'keypair' && (
-          <>
-            <input
-              className="ignore-input"
-              dir="ltr"
-              placeholder="age1…"
-              title={t('کلید عمومی (recipient)')}
-              value={state.recipient}
-              onChange={(e) => setEncOf(side, { ...state, recipient: e.target.value })}
-            />
-            <input
-              type="password"
-              className="ignore-input"
-              dir="ltr"
-              placeholder="AGE-SECRET-KEY-1…"
-              title={t('کلید خصوصی (identity)')}
-              value={secretText[side]}
-              onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
-            />
-            <button className="tb" onClick={() => void saveSecret(side)}>
-              {t('ذخیره کلید')}
-            </button>
-            <button className="tb" onClick={() => void generateKey(side)}>
-              {t('ساخت جفت‌کلید')}
-            </button>
-            <button className="tb" onClick={() => void revealKey(side)} title={t('نمایش کلید برای بکاپ')}>
-              <EyeIcon size={12} />
-            </button>
-            {secretReady[side] && <span className="chip add">{t('کلید ذخیره شد')}</span>}
-          </>
-        )}
-        {revealed[side] && (
-          <div className="sync-key-box">
-            <div className="dim">
-              {t('این کلید خصوصی را جای امن نگه دار؛ بدون آن فایل‌های رمزشده باز نمی‌شوند')}
+      <div className="sync-side-enc" key={side}>
+        <div className="sync-side-enc-title">
+          <span>{t('رمزنگاری')}</span>
+          <span className={'chip ' + (state.mode === 'off' ? '' : secretReady[side] ? 'add' : 'warn')}>
+            {state.mode === 'off' ? t('خاموش') : secretReady[side] ? t('آماده') : t('کلید ناقص')}
+          </span>
+        </div>
+        <div className="sync-enc-row">
+          <select
+            value={state.mode}
+            onChange={(e) => changeEncMode(side, e.target.value as EncState['mode'])}
+            aria-label={t('حالت رمزنگاری')}
+          >
+            <option value="off">{t('خاموش')}</option>
+            <option value="passphrase">{t('پسورد')}</option>
+            <option value="keypair">{t('جفت‌کلید')}</option>
+          </select>
+          {state.mode === 'passphrase' && (
+            <>
+              <input
+                type="password"
+                className="ignore-input"
+                dir="ltr"
+                placeholder={t('پسورد')}
+                value={secretText[side]}
+                onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
+              />
+              <button className="tb" onClick={() => void saveSecret(side)}>
+                {secretReady[side] ? t('تغییر') : t('ذخیره')}
+              </button>
+            </>
+          )}
+          {state.mode === 'keypair' && (
+            <>
+              <input
+                className="ignore-input"
+                dir="ltr"
+                placeholder="age1…"
+                title={t('کلید عمومی (recipient)')}
+                value={state.recipient}
+                onChange={(e) => setEncOf(side, { ...state, recipient: e.target.value })}
+              />
+              <input
+                type="password"
+                className="ignore-input"
+                dir="ltr"
+                placeholder="AGE-SECRET-KEY-1…"
+                title={t('کلید خصوصی (identity)')}
+                value={secretText[side]}
+                onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
+              />
+              <button className="tb" onClick={() => void saveSecret(side)}>
+                {t('ذخیره کلید')}
+              </button>
+              <button className="tb" onClick={() => void generateKey(side)}>
+                {t('ساخت جفت‌کلید')}
+              </button>
+              <button className="tb" onClick={() => void revealKey(side)} title={t('نمایش کلید برای بکاپ')}>
+                <EyeIcon size={12} />
+              </button>
+            </>
+          )}
+          {state.mode === 'off' && state.secretId && secretReady[side] && (
+            <span className="chip add">{t('ذخیره‌شده')}</span>
+          )}
+          {revealed[side] && (
+            <div className="sync-key-box">
+              <div className="dim">
+                {t('این کلید خصوصی را جای امن نگه دار؛ بدون آن فایل‌های رمزشده باز نمی‌شوند')}
+              </div>
+              <textarea dir="ltr" readOnly value={revealed[side]} />
+              <button
+                className="tb"
+                onClick={() => {
+                  void navigator.clipboard.writeText(revealed[side])
+                  setMessage(t('کپی شد'))
+                }}
+              >
+                <CopyIcon size={11} /> {t('کپی')}
+              </button>
             </div>
-            <textarea dir="ltr" readOnly value={revealed[side]} />
-            <button
-              className="tb"
-              onClick={() => {
-                void navigator.clipboard.writeText(revealed[side])
-                setMessage(t('کپی شد'))
-              }}
-            >
-              <CopyIcon size={11} /> {t('کپی')}
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     )
   }
@@ -576,6 +717,7 @@ export function SyncWorkspace({
         mode,
         compareBy: effectiveCompareBy,
         ignore: ignored,
+        ignoreRules: rules,
         deleteExtra,
         useRsync: rsyncAllowed,
         rsync: rsyncOpts,
@@ -585,10 +727,12 @@ export function SyncWorkspace({
       setRows(r.rows)
       setPlan(r.plan)
       setCapped(r.cmp.capped)
+      setLeftCount(r.cmp.leftCount)
+      setRightCount(r.cmp.rightCount)
       setSelected(new Set(r.rows.filter((x) => x.state !== 'same').map((x) => x.rel)))
       setResolutions({})
       setTab((current) =>
-        current === 'history' || current === 'jobs' || current === 'versions'
+        current === 'history' || current === 'jobs' || current === 'versions' || current === 'ignore'
           ? current
           : r.plan.conflicts.length
             ? 'conflicts'
@@ -605,7 +749,7 @@ export function SyncWorkspace({
   useEffect(() => {
     void doCompare()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left, right, mode, compareBy, useRsync, encrypted])
+  }, [left, right, mode, compareBy, useRsync, encrypted, rules])
 
   const execute = async (dryRun: boolean, confirmed = false): Promise<void> => {
     if (!plan) return
@@ -629,6 +773,7 @@ export function SyncWorkspace({
         mode,
         compareBy: effectiveCompareBy,
         ignore: ignored,
+        ignoreRules: rules,
         deleteExtra,
         encLeft: fromEncState(encLeftState),
         encRight: fromEncState(encRightState),
@@ -691,6 +836,114 @@ export function SyncWorkspace({
     })
   }
 
+  /** Select/unselect every visible row that can be acted on (the header checkbox). */
+  const toggleAll = (): void => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      const every = selectableRows.length > 0 && selectableRows.every((r) => next.has(r.rel))
+      for (const r of selectableRows) {
+        if (every) next.delete(r.rel)
+        else next.add(r.rel)
+      }
+      return next
+    })
+  }
+
+  const stepEvery = (delta: number): void =>
+    setEveryAmount((a) => {
+      const max = everyUnit === 'hour' ? 168 : 10080
+      return Math.min(max, Math.max(1, a + delta))
+    })
+
+  const changeEveryUnit = (unit: 'min' | 'hour'): void => {
+    if (unit === everyUnit) return
+    setEveryAmount((a) => (unit === 'hour' ? Math.max(1, Math.round(a / 60)) : Math.min(10080, a * 60)))
+    setEveryUnit(unit)
+  }
+
+  const addRule = (): void => {
+    let rule: SyncIgnoreRule
+    if (ruleKind === 'size') {
+      const n = Number(sizeAmount)
+      if (!Number.isFinite(n) || n < 0) {
+        setError(t('حجم معتبر نیست'))
+        return
+      }
+      rule = { kind: 'size', op: sizeOp, bytes: Math.round(n * SIZE_MULT[sizeUnit]) }
+    } else {
+      const v = ruleValue.trim()
+      if (!v) {
+        setError(t('مقدار قاعده را بنویس'))
+        return
+      }
+      if (ruleKind === 'regex') {
+        try {
+          new RegExp(v)
+        } catch {
+          setError(t('عبارت باقاعده معتبر نیست'))
+          return
+        }
+        rule = { kind: 'regex', value: v }
+      } else if (ruleKind === 'path') {
+        const p = v.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+        if (!p || p.startsWith('/') || p.split('/').includes('..')) {
+          setError(t('مسیر باید نسبی و بدون .. باشد'))
+          return
+        }
+        rule = { kind: 'path', value: p }
+      } else {
+        rule = { kind: 'glob', value: v }
+      }
+    }
+    if (rules.some((r) => ruleKey(r) === ruleKey(rule!))) {
+      setMessage(t('این قاعده از قبل هست'))
+      return
+    }
+    if (rules.length >= 100) {
+      setError(t('حداکثر ۱۰۰ قاعده'))
+      return
+    }
+    setRules([...rules, rule])
+    setRuleValue('')
+    setError('')
+  }
+
+  /** Turn the current row selection into exact-path rules in one click. */
+  const addSelectedRules = (): void => {
+    const have = new Set(rules.map(ruleKey))
+    const fresh = [...selected]
+      .filter((rel) => !have.has('path:' + rel))
+      .slice(0, Math.max(0, 100 - rules.length))
+      .map((rel) => ({ kind: 'path' as const, value: rel }))
+    if (!fresh.length) {
+      setMessage(t('مسیر تازه‌ای در انتخاب نیست'))
+      return
+    }
+    setRules([...rules, ...fresh])
+    setMessage(t('{n} مسیر به نادیده‌گرفتن اضافه شد', { n: fa(fresh.length) }))
+  }
+
+  const spanText = (span: Span): string => {
+    const n = fa(span.value)
+    if (span.value === 1) {
+      if (span.unit === 'second') return t('{n} second', { n })
+      if (span.unit === 'minute') return t('{n} minute', { n })
+      if (span.unit === 'hour') return t('{n} hour', { n })
+      if (span.unit === 'day') return t('{n} day', { n })
+      if (span.unit === 'month') return t('{n} month', { n })
+      return t('{n} year', { n })
+    }
+    if (span.unit === 'second') return t('{n} ثانیه', { n })
+    if (span.unit === 'minute') return t('{n} دقیقه', { n })
+    if (span.unit === 'hour') return t('{n} ساعت', { n })
+    if (span.unit === 'day') return t('{n} روز', { n })
+    if (span.unit === 'month') return t('{n} ماه', { n })
+    return t('{n} سال', { n })
+  }
+
+  const statusLabel = (f: StatusFilter): string =>
+    f === 'all' ? t('همه وضعیت‌ها') : f === 'diff' ? t('فقط تفاوت‌ها') : labelOfState(f)
+
   const saveJob = (): void => {
     if (
       encrypted &&
@@ -723,15 +976,18 @@ export function SyncWorkspace({
       direction: mode,
       compareBy,
       ignore: ignored,
+      ignoreRules: rules,
       deleteExtra,
       useRsync: rsyncAllowed,
       ...(rsyncAllowed ? { rsync: rsyncOpts } : {}),
       ...(fromEncState(encLeftState) ? { encLeft: fromEncState(encLeftState) } : {}),
       ...(fromEncState(encRightState) ? { encRight: fromEncState(encRightState) } : {}),
       ...(versionsConfig() ? { versions: versionsConfig() } : {}),
-      enabled: true,
+      enabled: currentJob?.enabled !== false,
       schedule: {
-        ...(every.trim() ? { everyMinutes: Number(every) || undefined } : {}),
+        ...(intervalOn
+          ? { everyMinutes: Math.min(10080, Math.max(1, Math.round(everyAmount)) * (everyUnit === 'hour' ? 60 : 1)) }
+          : {}),
         ...(cron.trim() ? { cron: cron.trim() } : {}),
         onStart,
         onMount,
@@ -770,6 +1026,36 @@ export function SyncWorkspace({
 
   const pct = progress && progress.files ? Math.min(100, Math.round((progress.filesDone / progress.files) * 100)) : 0
 
+  /** The headline card for one pane: name, path, its role in this direction and a row count. */
+  const sideCard = (side: 'left' | 'right'): ReactElement => {
+    const path = side === 'left' ? left : right
+    const n = side === 'left' ? leftCount : rightCount
+    const source = mode !== 'both' && (side === 'left') === (mode === 'ltr')
+    return (
+      <div className={'sync-side-card ' + side}>
+        <div className="sync-side-top">
+          <span className="sync-side-tag">{side === 'left' ? t('چپ') : t('راست')}</span>
+          <b className="sync-side-name" dir="auto" title={path}>
+            {baseName(path) || path}
+          </b>
+          <span className={'chip ' + (mode === 'both' ? '' : source ? 'add' : 'del')}>
+            {mode === 'both' ? t('هر دو') : source ? t('مبدأ') : t('مقصد')}
+          </span>
+          <span className="spacer" />
+          {n > 0 && <span className="sync-side-count">{t('{n} مورد', { n: fa(n) })}</span>}
+        </div>
+        <div
+          className="sync-side-path"
+          dir="ltr"
+          title={path}
+          style={{ textAlign: side === 'left' ? (rtl ? 'right' : 'left') : rtl ? 'left' : 'right' }}
+        >
+          {path}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog sync-workspace" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={t('همگام‌سازی دو پوشه')}>
@@ -781,17 +1067,67 @@ export function SyncWorkspace({
           </button>
         </div>
 
-        <div className="sync-paths">
-          <span dir="auto" title={left}>
-            {left}
-          </span>
-          <span className="dim">↔</span>
-          <span dir="auto" title={right}>
-            {right}
-          </span>
+        <div className="sync-pair">
+          {sideCard('left')}
+          <div className="sync-dir">
+            <div className="sync-dir-btns" role="group" aria-label={t('جهت همگام‌سازی')}>
+              <button
+                className={'tb' + (mode === 'ltr' ? ' on' : '')}
+                title={`${t('از چپ به راست')}: ${baseName(left)} → ${baseName(right)}`}
+                aria-label={t('از چپ به راست')}
+                onClick={() => pickMode('ltr')}
+              >
+                {rtl ? <ArrowLeftIcon size={13} /> : <ArrowRightIcon size={13} />}
+              </button>
+              <button
+                className={'tb' + (mode === 'both' ? ' on' : '')}
+                title={t('همگام‌سازی دوطرفه')}
+                aria-label={t('دوطرفه')}
+                onClick={() => pickMode('both')}
+              >
+                <SwapIcon size={13} />
+              </button>
+              <button
+                className={'tb' + (mode === 'rtl' ? ' on' : '')}
+                title={`${t('از راست به چپ')}: ${baseName(right)} → ${baseName(left)}`}
+                aria-label={t('از راست به چپ')}
+                onClick={() => pickMode('rtl')}
+              >
+                {rtl ? <ArrowRightIcon size={13} /> : <ArrowLeftIcon size={13} />}
+              </button>
+            </div>
+            <span className="sync-dir-label"><ModeLabel mode={mode} /></span>
+          </div>
+          {sideCard('right')}
         </div>
 
-        <div className="sync-controls">
+        <div className="sync-sides">
+          <section className="sync-side-panel">
+            <div className="sync-side-head">
+              <span className="sync-side-tag">{t('چپ')}</span>
+              <b dir="auto" title={left}>
+                {baseName(left) || left}
+              </b>
+              <span className="spacer" />
+              <span className="dim">{t('تنظیمات این طرف')}</span>
+            </div>
+            {encRow('left')}
+          </section>
+          <div className="sync-sides-line" />
+          <section className="sync-side-panel">
+            <div className="sync-side-head">
+              <span className="sync-side-tag">{t('راست')}</span>
+              <b dir="auto" title={right}>
+                {baseName(right) || right}
+              </b>
+              <span className="spacer" />
+              <span className="dim">{t('تنظیمات این طرف')}</span>
+            </div>
+            {encRow('right')}
+          </section>
+        </div>
+
+        <div className="sync-common">
           <div className="seg" title={t('معیار مقایسه')}>
             <button
               className={encrypted ? '' : compareBy === 'mtime' ? 'on' : ''}
@@ -808,43 +1144,6 @@ export function SyncWorkspace({
             </button>
           </div>
           <label className="check-label">
-            <span>{t('نادیده گرفتن:')}</span>
-            <input
-              className="ignore-input"
-              dir="ltr"
-              placeholder="*.log, node_modules"
-              value={ignoreText}
-              onChange={(e) => setIgnoreText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !busy && void doCompare()}
-            />
-          </label>
-          <div className="seg" title={t('جهت همگام‌سازی')}>
-            <button
-              className={mode === 'ltr' ? 'on' : ''}
-              title={`${baseName(left)} → ${baseName(right)}`}
-              aria-label={t('از چپ به راست')}
-              onClick={() => pickMode('ltr')}
-            >
-              <ArrowRightIcon size={11} />
-            </button>
-            <button
-              className={mode === 'rtl' ? 'on' : ''}
-              title={`${baseName(right)} → ${baseName(left)}`}
-              aria-label={t('از راست به چپ')}
-              onClick={() => pickMode('rtl')}
-            >
-              <ArrowLeftIcon size={11} />
-            </button>
-            <button
-              className={mode === 'both' ? 'on' : ''}
-              title={t('همگام‌سازی دوطرفه')}
-              aria-label={t('دوطرفه')}
-              onClick={() => pickMode('both')}
-            >
-              <SwapIcon size={11} />
-            </button>
-          </div>
-          <label className="check-label">
             <input type="checkbox" checked={deleteExtra} onChange={(e) => setDeleteExtra(e.target.checked)} />
             <span>{t('حذف فایل‌های اضافی')}</span>
           </label>
@@ -853,15 +1152,17 @@ export function SyncWorkspace({
             title={
               mode === 'both'
                 ? t('rsync فقط یک‌طرفه است')
-                : isRemotePath(left) || isRemotePath(right)
-                  ? t('rsync فقط برای دو پوشهٔ لوکال است')
-                  : t('موتور rsync (حذف‌ها به .mfm-trash مقصد می‌روند)')
+                : !rsyncRulesOk
+                  ? t('rsync فقط قاعده‌های glob را می‌شناسد')
+                  : isRemotePath(left) || isRemotePath(right)
+                    ? t('rsync فقط برای دو پوشهٔ لوکال است')
+                    : t('موتور rsync (حذف‌ها به .mfm-trash مقصد می‌روند)')
             }
           >
             <input
               type="checkbox"
               checked={useRsync}
-              disabled={mode === 'both' || isRemotePath(left) || isRemotePath(right)}
+              disabled={!rsyncRulesOk || mode === 'both' || isRemotePath(left) || isRemotePath(right)}
               onChange={(e) => setUseRsync(e.target.checked)}
             />
             <span>{t('rsync')}</span>
@@ -951,24 +1252,19 @@ export function SyncWorkspace({
               </label>
             </details>
           )}
-          <label className="check-label">
-            <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
-            <span>{t('فقط تفاوت‌ها')}</span>
-          </label>
-          <details className="sync-enc">
-            <summary>
-              {t('رمزنگاری هر طرف')}
-              {encrypted && <span className="chip warn">{t('هش اجباری')}</span>}
-            </summary>
-            {encRow('left')}
-            {encRow('right')}
-            <div className="dim sync-enc-note">
-              {t('رمزنگاری محتوا با age است؛ نام فایل‌ها روشن می‌ماند و طرف رمزشده با هش مقایسه می‌شود.')}
-              {encLeftState.mode === 'passphrase' || encRightState.mode === 'passphrase'
-                ? ' ' + t('حالت پسورد برای درخت بزرگ کند است؛ جفت‌کلید سریع‌تر است.')
-                : ''}
-            </div>
-          </details>
+          <button
+            className={'chip ' + (rules.length ? 'add' : '')}
+            title={t('مدیریت قواعد نادیده‌گرفتن')}
+            onClick={() => setTab('ignore')}
+          >
+            {rules.length ? t('{n} قاعدهٔ نادیده‌گرفتن', { n: fa(rules.length) }) : t('قاعدهٔ نادیده‌گرفتن')}
+          </button>
+          {encrypted && <span className="chip warn">{t('هش اجباری')}</span>}
+        </div>
+        <div className="dim sync-enc-note">
+          {t('رمزنگاری محتوا با age است؛ نام فایل‌ها روشن می‌ماند و طرف رمزشده با هش مقایسه می‌شود.')}
+          {(encLeftState.mode === 'passphrase' || encRightState.mode === 'passphrase') &&
+            ' ' + t('حالت پسورد برای درخت بزرگ کند است؛ جفت‌کلید سریع‌تر است.')}
         </div>
 
         <div className="sync-summary">
@@ -1000,33 +1296,37 @@ export function SyncWorkspace({
         </div>
 
         <div className="sync-tabs">
-          {(['rows', 'conflicts', 'history', 'jobs', 'versions'] as Tab[]).map((id) => (
+          {(['rows', 'conflicts', 'ignore', 'history', 'jobs', 'versions'] as Tab[]).map((id) => (
             <button key={id} className={'sync-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
               {id === 'rows'
                 ? t('ردیف‌ها')
                 : id === 'conflicts'
                   ? t('تعارض‌ها ({n})', { n: fa(unresolved.length) })
-                  : id === 'history'
-                    ? t('تاریخچه')
-                    : id === 'jobs'
-                      ? t('کارها')
-                      : t('نسخه‌ها')}
+                  : id === 'ignore'
+                    ? t('نادیده‌گرفتن')
+                    : id === 'history'
+                      ? t('تاریخچه')
+                      : id === 'jobs'
+                        ? t('کارها')
+                        : t('نسخه‌ها')}
             </button>
           ))}
           <span className="spacer" />
-          {tab === 'rows' && rows.length > 0 && (
-            <>
-              <button
-                className="tb"
-                title={t('انتخاب همه')}
-                onClick={() => setSelected(new Set(rows.filter((r) => r.state !== 'same').map((r) => r.rel)))}
+          {tab === 'rows' && (
+            <label className="sync-filter" title={t('صافی وضعیت')}>
+              <span className="dim">{t('وضعیت')}</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                aria-label={t('صافی وضعیت')}
               >
-                <CheckIcon size={12} />
-              </button>
-              <button className="tb" title={t('هیچ‌کدام')} onClick={() => setSelected(new Set())}>
-                <XIcon size={12} />
-              </button>
-            </>
+                {STATUS_FILTERS.map((f) => (
+                  <option key={f} value={f}>
+                    {statusLabel(f)}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
 
@@ -1034,65 +1334,195 @@ export function SyncWorkspace({
           {tab === 'rows' && (
             <>
               <div className="sync-list-head">
-                <span className="sync-check" />
+                <span className="sync-check">
+                  <SelectAll
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    disabled={!selectableRows.length}
+                    onChange={toggleAll}
+                  />
+                </span>
                 <span className="sync-side">{t('چپ')}</span>
                 <span className="sync-head-state">{t('وضعیت')}</span>
                 <span className="sync-rel">{t('مسیر')}</span>
                 <span className="sync-side">{t('راست')}</span>
               </div>
-              <Rows rows={rows} selected={selected} onToggle={toggle} onlyDiff={onlyDiff} />
+              <Rows rows={visibleRows} selected={selected} onToggle={toggle} />
             </>
           )}
 
           {tab === 'conflicts' && (
             <div className="sync-conflicts">
               {!conflicts.length && <div className="dim">{t('تعارضی نیست')}</div>}
-              {conflicts.map((c) => (
-                <div className="sync-conflict" key={c.rel}>
-                  <div className="sync-conflict-head">
-                    <span className="chip warn">{labelOfConflict(c.conflict)}</span>
-                    <span className="sync-rel" dir="auto">
-                      {c.rel}
+              {conflicts.map((c) => {
+                const f = conflictFacts(c)
+                return (
+                    <div className="sync-conflict" key={c.rel}>
+                      <div className="sync-conflict-head">
+                        <span className="chip warn">{labelOfConflict(c.conflict)}</span>
+                        <span className="sync-rel" dir="auto">
+                          {c.rel}
+                        </span>
+                      </div>
+                      <div className="sync-conflict-sides">
+                        {(['left', 'right'] as const).map((side) => {
+                          const x = side === 'left' ? c.left : c.right
+                          return (
+                            <div className={'sync-conflict-side' + (f.newer === side ? ' newer' : '')} key={side}>
+                              <div className="sync-conflict-side-head">
+                                <b>{side === 'left' ? t('چپ') : t('راست')}</b>
+                                {x ? (
+                                  <span className="chip">{x.dir ? t('پوشه') : t('فایل')}</span>
+                                ) : (
+                                  <span className="chip del">{t('وجود ندارد')}</span>
+                                )}
+                                {f.newer === side && <span className="chip add">{t('جدیدتر')}</span>}
+                              </div>
+                              {x && (
+                                <div className="sync-conflict-meta dim">
+                                  <span>{fmtSize(x.size, x.dir)}</span>
+                                  <span dir="ltr">{fmtDate(x.mtime)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="sync-conflict-facts">
+                        {f.newer && (
+                          <span className="chip add">
+                            {t('{side} {span} جدیدتر است', {
+                              side: f.newer === 'left' ? t('چپ') : t('راست'),
+                              span: spanText(relativeSpan(f.newerByMs))
+                            })}
+                          </span>
+                        )}
+                        {f.sizeDelta !== null && f.sizeDelta !== 0 && (
+                          <span className="chip warn">
+                            {t('اختلاف اندازه: {d}', {
+                              d: (f.sizeDelta > 0 ? '+' : '−') + fmtSize(Math.abs(f.sizeDelta), false)
+                            })}
+                          </span>
+                        )}
+                        {f.sizeDelta === 0 && <span className="chip">{t('اندازه یکسان است')}</span>}
+                      </div>
+                      {c.conflict === 'typeDiff' ? (
+                        <div className="dim">
+                          {t('یک طرف فایل است و طرف دیگر پوشه؛ این را باید دستی در فایل‌منیجر حل کنی و بعد دوباره مقایسه کنی')}
+                        </div>
+                      ) : (
+                        <div className="seg">
+                          <button
+                            className={resolutions[c.rel] === 'left' ? 'on' : ''}
+                            onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'left' }))}
+                          >
+                            {t('چپ درست است')}
+                          </button>
+                          <button
+                            className={resolutions[c.rel] === 'right' ? 'on' : ''}
+                            onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'right' }))}
+                          >
+                            {t('راست درست است')}
+                          </button>
+                          <button
+                            className={resolutions[c.rel] === 'skip' ? 'on' : ''}
+                            onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'skip' }))}
+                          >
+                            {t('رد کن')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                )
+              })}
+            </div>
+          )}
+
+          {tab === 'ignore' && (
+            <div className="sync-ignore">
+              <div className="sync-ignore-form">
+                <select
+                  value={ruleKind}
+                  onChange={(e) => setRuleKind(e.target.value as 'glob' | 'regex' | 'path' | 'size')}
+                  aria-label={t('نوع قاعده')}
+                >
+                  <option value="glob">{t('الگو (glob)')}</option>
+                  <option value="regex">Regex</option>
+                  <option value="path">{t('مسیر دقیق')}</option>
+                  <option value="size">{t('حجم')}</option>
+                </select>
+                {ruleKind === 'size' ? (
+                  <>
+                    <select
+                      value={sizeOp}
+                      onChange={(e) => setSizeOp(e.target.value as 'gt' | 'lt')}
+                      aria-label={t('بزرگ‌تر یا کوچک‌تر')}
+                    >
+                      <option value="gt">{t('بزرگ‌تر از')}</option>
+                      <option value="lt">{t('کوچک‌تر از')}</option>
+                    </select>
+                    <input
+                      className="ignore-input sync-size-amount"
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={sizeAmount}
+                      onChange={(e) => setSizeAmount(e.target.value)}
+                      aria-label={t('حجم')}
+                    />
+                    <select
+                      value={sizeUnit}
+                      onChange={(e) => setSizeUnit(e.target.value as 'B' | 'KB' | 'MB' | 'GB')}
+                      aria-label={t('یکای حجم')}
+                    >
+                      <option value="B">B</option>
+                      <option value="KB">KB</option>
+                      <option value="MB">MB</option>
+                      <option value="GB">GB</option>
+                    </select>
+                  </>
+                ) : (
+                  <input
+                    className="ignore-input sync-rule-input"
+                    dir="ltr"
+                    value={ruleValue}
+                    placeholder={
+                      ruleKind === 'glob' ? '*.log, node_modules' : ruleKind === 'regex' ? '^build/|\.tmp$' : 'docs/private'
+                    }
+                    onChange={(e) => setRuleValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addRule()}
+                  />
+                )}
+                <button className="btn ghost" onClick={addRule}>
+                  <PlusIcon size={11} /> {t('افزودن')}
+                </button>
+                {selected.size > 0 && (
+                  <button className="btn ghost" onClick={addSelectedRules}>
+                    <PlusIcon size={11} /> {t('افزودن {n} مسیر انتخاب‌شده', { n: fa(selected.size) })}
+                  </button>
+                )}
+              </div>
+              <div className="dim sync-ignore-note">
+                {t('فایل‌های نادیده‌گرفته‌شده در مقایسه دیده نمی‌شوند و «حذف فایل‌های اضافی» هرگز آن‌ها را حذف نمی‌کند.')}
+              </div>
+              <div className="sync-ignore-list">
+                {!rules.length && <div className="dim">{t('قاعده‌ای تعریف نشده')}</div>}
+                {rules.map((r) => (
+                  <div className="sync-ignore-row" key={ruleKey(r)}>
+                    <span className="chip">{ruleKindLabel(r)}</span>
+                    <span className="sync-ignore-value" dir="ltr">
+                      {ruleText(r)}
                     </span>
+                    <span className="spacer" />
+                    <button
+                      className="tb"
+                      title={t('حذف قاعده')}
+                      onClick={() => setRules(rules.filter((x) => ruleKey(x) !== ruleKey(r)))}
+                    >
+                      <TrashIcon size={12} />
+                    </button>
                   </div>
-                  <div className="sync-conflict-sides">
-                    <div>
-                      <b>{t('چپ')}</b>{' '}
-                      <span className="dim">{c.left ? fmtDate(c.left.mtime) + ' · ' + fmtSize(c.left.size, c.left.dir) : '—'}</span>
-                    </div>
-                    <div>
-                      <b>{t('راست')}</b>{' '}
-                      <span className="dim">{c.right ? fmtDate(c.right.mtime) + ' · ' + fmtSize(c.right.size, c.right.dir) : '—'}</span>
-                    </div>
-                  </div>
-                  {c.conflict === 'typeDiff' ? (
-                    <div className="dim">
-                      {t('یک طرف فایل است و طرف دیگر پوشه؛ این را باید دستی در فایل‌منیجر حل کنی و بعد دوباره مقایسه کنی')}
-                    </div>
-                  ) : (
-                    <div className="seg">
-                      <button
-                        className={resolutions[c.rel] === 'left' ? 'on' : ''}
-                        onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'left' }))}
-                      >
-                        {t('چپ درست است')}
-                      </button>
-                      <button
-                        className={resolutions[c.rel] === 'right' ? 'on' : ''}
-                        onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'right' }))}
-                      >
-                        {t('راست درست است')}
-                      </button>
-                      <button
-                        className={resolutions[c.rel] === 'skip' ? 'on' : ''}
-                        onClick={() => setResolutions((r) => ({ ...r, [c.rel]: 'skip' }))}
-                      >
-                        {t('رد کن')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
@@ -1104,7 +1534,7 @@ export function SyncWorkspace({
                   <span className="dim" dir="ltr">
                     {fmtDate(r.startedAt)}
                   </span>
-                  <span className="chip">{labelOfMode(r.mode)}</span>
+                  <span className="chip"><ModeLabel mode={r.mode} /></span>
                   <span className="dim">
                     {t('{c} کپی · {d} حذف · {k} تعارض', {
                       c: fa(r.copied),
@@ -1138,22 +1568,49 @@ export function SyncWorkspace({
           {tab === 'jobs' && (
             <div className="sync-jobs">
               <div className="sync-job-form">
-                <label className="check-label">
+                <label className="sync-field sync-job-name-field">
                   <span>{t('نام')}</span>
                   <input value={jobName} onChange={(e) => setJobName(e.target.value)} />
                 </label>
-                <label className="check-label">
-                  <span>{t('هر چند دقیقه')}</span>
-                  <input
-                    className="ignore-input"
-                    dir="ltr"
-                    placeholder="0"
-                    value={every}
-                    onChange={(e) => setEvery(e.target.value)}
-                  />
-                </label>
-                <label className="check-label">
-                  <span>cron</span>
+                <div className="sync-field">
+                  <Toggle on={intervalOn} onChange={setIntervalOn} label={t('تکرار خودکار')} />
+                  {intervalOn && (
+                    <>
+                      <span>{t('هر')}</span>
+                      <Stepper
+                        value={everyAmount}
+                        min={1}
+                        max={everyUnit === 'hour' ? 168 : 10080}
+                        onStep={stepEvery}
+                      />
+                      <select value={everyUnit} onChange={(e) => changeEveryUnit(e.target.value as 'min' | 'hour')}>
+                        <option value="min">{t('دقیقه')}</option>
+                        <option value="hour">{t('ساعت')}</option>
+                      </select>
+                    </>
+                  )}
+                </div>
+                <div className="sync-triggers">
+                  <Toggle on={onStart} onChange={setOnStart} label={t('در شروع برنامه')} />
+                  <Toggle on={onMount} onChange={setOnMount} label={t('روی اتصال درایو')} />
+                  <Toggle on={onChange} onChange={setOnChange} label={t('روی تغییر فایل (لوکال)')} />
+                </div>
+                <details className="sync-cron">
+                  <summary>{cron ? `Cron: ${cron}` : t('زمان‌بندی Cron')}</summary>
+                  <div className="sync-cron-presets">
+                    <button className="btn ghost" onClick={() => setCron('*/15 * * * *')}>
+                      {t('هر ۱۵ دقیقه')}
+                    </button>
+                    <button className="btn ghost" onClick={() => setCron('0 * * * *')}>
+                      {t('هر ساعت')}
+                    </button>
+                    <button className="btn ghost" onClick={() => setCron('0 3 * * *')}>
+                      {t('هر روز ۳ بامداد')}
+                    </button>
+                    <button className="btn ghost" onClick={() => setCron('')}>
+                      {t('خاموش')}
+                    </button>
+                  </div>
                   <input
                     className="ignore-input"
                     dir="ltr"
@@ -1161,19 +1618,7 @@ export function SyncWorkspace({
                     value={cron}
                     onChange={(e) => setCron(e.target.value)}
                   />
-                </label>
-                <label className="check-label">
-                  <input type="checkbox" checked={onStart} onChange={(e) => setOnStart(e.target.checked)} />
-                  <span>{t('در شروع برنامه')}</span>
-                </label>
-                <label className="check-label">
-                  <input type="checkbox" checked={onMount} onChange={(e) => setOnMount(e.target.checked)} />
-                  <span>{t('روی اتصال درایو')}</span>
-                </label>
-                <label className="check-label">
-                  <input type="checkbox" checked={onChange} onChange={(e) => setOnChange(e.target.checked)} />
-                  <span>{t('روی تغییر فایل (لوکال)')}</span>
-                </label>
+                </details>
                 <button className="btn" onClick={saveJob}>
                   <PlusIcon size={11} /> {currentJob ? t('ذخیرهٔ تغییرات') : t('ذخیره به‌عنوان کار')}
                 </button>
@@ -1181,14 +1626,33 @@ export function SyncWorkspace({
               <div className="sync-job-list">
                 {!jobs.length && <div className="dim">{t('کاری ساخته نشده')}</div>}
                 {jobs.map((j) => (
-                  <div className="sync-job" key={j.id}>
+                  <div className={'sync-job' + (j.enabled ? '' : ' off')} key={j.id}>
+                    <button
+                      role="switch"
+                      aria-checked={j.enabled}
+                      className={'switch' + (j.enabled ? ' on' : '')}
+                      title={j.enabled ? t('فعال') : t('غیرفعال')}
+                      onClick={() =>
+                        onSaveJobs(jobs.map((x) => (x.id === j.id ? { ...x, enabled: !x.enabled } : x)))
+                      }
+                    >
+                      <span className="knob" />
+                    </button>
                     <span className="sync-job-name" dir="auto">
                       {j.name}
                     </span>
-                    <span className="chip">{labelOfMode(j.direction)}</span>
+                    <span className="chip"><ModeLabel mode={j.direction} /></span>
                     <span className="dim" dir="auto">
                       {j.left} ↔ {j.right}
                     </span>
+                    {j.schedule.everyMinutes ? (
+                      <span className="chip">{t('هر {n} دقیقه', { n: fa(j.schedule.everyMinutes) })}</span>
+                    ) : null}
+                    {j.schedule.cron ? (
+                      <span className="chip" title={j.schedule.cron}>
+                        Cron
+                      </span>
+                    ) : null}
                     <span className="spacer" />
                     <button className="tb" title={t('باز کردن')} onClick={() => onOpenJob(j)}>
                       <PlayIcon size={12} />
@@ -1225,15 +1689,17 @@ export function SyncWorkspace({
                 )}
                 {versionsOn && versionsAllowed && (
                   <>
-                    <label className="check-label">
+                    <span className="check-label">
                       <span>{t('تعداد نسخه')}</span>
-                      <input
-                        className="ignore-input"
-                        dir="ltr"
-                        value={versionsKeep}
-                        onChange={(e) => setVersionsKeep(e.target.value)}
+                      <Stepper
+                        value={Math.min(100, Math.max(1, Number(versionsKeep) || 5))}
+                        min={1}
+                        max={100}
+                        onStep={(d) =>
+                          setVersionsKeep(String(Math.min(100, Math.max(1, (Number(versionsKeep) || 5) + d))))
+                        }
                       />
-                    </label>
+                    </span>
                     <label className="check-label">
                       <span>{t('مخزن')}</span>
                       <input
