@@ -36,7 +36,6 @@ Terminal=false
 Categories=System;FileManager;Utility;
 MimeType=inode/directory;x-scheme-handler/file;application/x-gnome-saved-search;
 Keywords=files;manager;explorer;
-StartupNotify=true
 StartupWMClass=Max File Manager
 EOF
 chmod 644 "$DESKTOP_FILE"
