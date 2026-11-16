@@ -82,6 +82,25 @@ export type SyncEncryption = {
   recipient?: string
 }
 
+/** A restic snapshot as the Versions tab shows it. */
+export type SyncSnapshot = {
+  id: string
+  shortId: string
+  time: string
+  tags: string[]
+  paths: string[]
+  bytes: number
+  files: number
+}
+
+/** restic snapshot history for a local destination. The password is a secret id, not data. */
+export type SyncVersions = {
+  keep: number
+  /** absolute local repository; empty means <destination>/.mfm-restic */
+  repo?: string
+  secretId: string
+}
+
 export type SyncSchedule = {
   /** run once, shortly after the app starts */
   onStart?: boolean
@@ -114,6 +133,7 @@ export type SyncJob = {
   rsync?: RsyncOptions
   encLeft?: SyncEncryption
   encRight?: SyncEncryption
+  versions?: SyncVersions
 }
 
 export type SyncRunState = 'running' | 'done' | 'cancelled' | 'error'
@@ -211,7 +231,13 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
   const name = text(j.name, 80) || id
   const encLeft = cleanEncryption(j.encLeft)
   const encRight = cleanEncryption(j.encRight)
-  if (encLeft === null || encRight === null) return null
+  const versions = cleanVersions(j.versions)
+  if (encLeft === null || encRight === null || versions === null) return null
+  // restic history is one-way and local; a job that could never take a snapshot is rejected
+  if (versions) {
+    const dest = direction === 'rtl' ? left : right
+    if (direction === 'both' || isRemotePath(dest)) return null
+  }
   const localOnly = !isRemotePath(left) && !isRemotePath(right)
   // rsync cannot encrypt/decrypt; a job with an encrypted side always uses the native engine
   const useRsync = localOnly && j.useRsync === true && !encLeft && !encRight
@@ -229,7 +255,8 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
     useRsync,
     ...(useRsync ? { rsync: cleanRsyncOptions(j.rsync) } : {}),
     ...(encLeft ? { encLeft } : {}),
-    ...(encRight ? { encRight } : {})
+    ...(encRight ? { encRight } : {}),
+    ...(versions ? { versions } : {})
   }
 }
 
@@ -237,6 +264,23 @@ const SECRET_ID = /^[a-z0-9][a-z0-9-]{7,63}$/
 const RECIPIENT = /^age1[0-9a-z]{20,}$/i
 
 /** Invalid encryption config must reject the job, not silently run it in plaintext. */
+/** Invalid version config must reject the job; silently running without the promised history is worse. */
+export function cleanVersions(raw: unknown): SyncVersions | undefined | null {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'object') return null
+  const v = raw as Record<string, unknown>
+  const secretId = typeof v.secretId === 'string' ? v.secretId.trim() : ''
+  if (!SECRET_ID.test(secretId)) return null
+  const keep = Number(v.keep)
+  const repo = typeof v.repo === 'string' ? v.repo.trim() : ''
+  if (repo && (!isSyncPath(repo) || isRemotePath(repo))) return null
+  return {
+    keep: Number.isFinite(keep) && keep >= 1 ? Math.min(100, Math.round(keep)) : 5,
+    ...(repo ? { repo } : {}),
+    secretId
+  }
+}
+
 export function cleanEncryption(raw: unknown): SyncEncryption | undefined | null {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw !== 'object') return null

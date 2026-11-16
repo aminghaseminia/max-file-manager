@@ -9,7 +9,9 @@ import {
   type SyncPlan,
   type SyncProgress,
   type SyncRow,
-  type SyncRunSummary
+  type SyncRunSummary,
+  type SyncSnapshot,
+  type SyncVersions
 } from './api'
 import { baseName, fa, fmtDate, fmtSize } from './format'
 import {
@@ -28,7 +30,7 @@ import {
 import { isRemotePath } from '../../shared/remote-path.ts'
 import { newSyncJobId } from '../../shared/sync.ts'
 
-type Tab = 'rows' | 'conflicts' | 'history' | 'jobs'
+type Tab = 'rows' | 'conflicts' | 'history' | 'jobs' | 'versions'
 
 type Props = {
   left: string
@@ -43,6 +45,8 @@ type Props = {
   onOpenJob(job: SyncJob): void
   /** remember the chosen direction for this pair, so the pill and the next open agree */
   onModeChange?(mode: SyncMode): void
+  /** open a restored temp tree in one of the panes */
+  onOpenPath?(path: string, side: 'left' | 'right'): void
   onFinished?(): void
 }
 
@@ -176,6 +180,7 @@ export function SyncWorkspace({
   onSaveJobs,
   onOpenJob,
   onModeChange,
+  onOpenPath,
   onFinished
 }: Props) {
   const [mode, setMode] = useState<SyncMode>(initialMode)
@@ -219,6 +224,19 @@ export function SyncWorkspace({
   const [secretText, setSecretText] = useState({ left: '', right: '' })
   const [secretReady, setSecretReady] = useState({ left: false, right: false })
   const [revealed, setRevealed] = useState({ left: '', right: '' })
+  const [versionsOn, setVersionsOn] = useState(Boolean(currentJob?.versions))
+  const [versionsKeep, setVersionsKeep] = useState(String(currentJob?.versions?.keep ?? 5))
+  const [versionsRepo, setVersionsRepo] = useState(currentJob?.versions?.repo ?? '')
+  const [versionsSecretId, setVersionsSecretId] = useState(currentJob?.versions?.secretId ?? '')
+  const [versionsPassword, setVersionsPassword] = useState('')
+  const [versionsReady, setVersionsReady] = useState(false)
+  const [resticOk, setResticOk] = useState<boolean | null>(null)
+  const [snapshots, setSnapshots] = useState<SyncSnapshot[] | null>(null)
+  const [snapshotRepo, setSnapshotRepo] = useState('')
+  const [versionsError, setVersionsError] = useState('')
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const versionsDest = mode === 'rtl' ? left : right
+  const versionsAllowed = mode !== 'both' && !isRemotePath(versionsDest)
   const encrypted = encLeftState.mode !== 'off' || encRightState.mode !== 'off'
   const effectiveCompareBy: 'mtime' | 'hash' = encrypted ? 'hash' : compareBy
   const rsyncAllowed =
@@ -236,6 +254,10 @@ export function SyncWorkspace({
     setRsyncOpts(currentJob.rsync ?? {})
     setEncLeftState(toEncState(currentJob.encLeft))
     setEncRightState(toEncState(currentJob.encRight))
+    setVersionsOn(Boolean(currentJob.versions))
+    setVersionsKeep(String(currentJob.versions?.keep ?? 5))
+    setVersionsRepo(currentJob.versions?.repo ?? '')
+    setVersionsSecretId(currentJob.versions?.secretId ?? '')
     // only a different job repopulates the form; typing must not be overwritten
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentJob?.id])
@@ -247,6 +269,24 @@ export function SyncWorkspace({
       setHistory([])
     }
   }
+
+  useEffect(() => {
+    void api.sync.versionsAvailable().then(setResticOk).catch(() => setResticOk(false))
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    if (!versionsSecretId) {
+      setVersionsReady(false)
+      return
+    }
+    void api.sync.secretHas(versionsSecretId).then((v) => {
+      if (alive) setVersionsReady(v)
+    }).catch(() => setVersionsReady(false))
+    return () => {
+      alive = false
+    }
+  }, [versionsSecretId])
 
   useEffect(() => {
     let alive = true
@@ -456,6 +496,74 @@ export function SyncWorkspace({
     )
   }
 
+  const versionsConfig = (): SyncVersions | undefined =>
+    versionsOn && versionsSecretId
+      ? {
+          keep: Math.min(100, Math.max(1, Math.round(Number(versionsKeep) || 5))),
+          ...(versionsRepo.trim() ? { repo: versionsRepo.trim() } : {}),
+          secretId: versionsSecretId
+        }
+      : undefined
+
+  const toggleVersions = (on: boolean): void => {
+    setVersionsOn(on)
+    if (on && !versionsSecretId) setVersionsSecretId(crypto.randomUUID())
+    setSnapshots(null)
+    setVersionsError('')
+  }
+
+  const saveVersionsPassword = async (): Promise<void> => {
+    if (!versionsPassword.trim()) {
+      setVersionsError(t('رمز مخزن را بنویس'))
+      return
+    }
+    const res = await api.sync.secretSet(versionsSecretId, versionsPassword)
+    if ('error' in res) {
+      setVersionsError(res.error)
+      return
+    }
+    setVersionsReady(true)
+    setVersionsPassword('')
+    setMessage(
+      res.sessionOnly ? t('کلید فقط تا پایان این نشست نگه داشته می‌شود') : t('رمز مخزن ذخیره شد')
+    )
+  }
+
+  const loadSnapshots = async (): Promise<void> => {
+    if (!versionsSecretId || !versionsAllowed) return
+    setVersionsError('')
+    try {
+      const r = await api.sync.versions({
+        left,
+        right,
+        mode,
+        repo: versionsRepo.trim() || undefined,
+        secretId: versionsSecretId
+      })
+      setResticOk(r.available)
+      setSnapshotRepo(r.repo)
+      setSnapshots(r.snapshots)
+      if (r.error) setVersionsError(r.error)
+    } catch (e) {
+      setVersionsError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const restoreSnapshot = async (id: string): Promise<void> => {
+    if (!snapshotRepo) return
+    setRestoring(id)
+    setVersionsError('')
+    try {
+      const dir = await api.sync.versionsRestore(snapshotRepo, versionsSecretId, id)
+      onOpenPath?.(dir, mode === 'rtl' ? 'right' : 'left')
+      onClose()
+    } catch (e) {
+      setVersionsError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRestoring(null)
+    }
+  }
+
   const doCompare = async (): Promise<void> => {
     setBusy(true)
     setError('')
@@ -479,7 +587,13 @@ export function SyncWorkspace({
       setCapped(r.cmp.capped)
       setSelected(new Set(r.rows.filter((x) => x.state !== 'same').map((x) => x.rel)))
       setResolutions({})
-      setTab(r.plan.conflicts.length ? 'conflicts' : 'rows')
+      setTab((current) =>
+        current === 'history' || current === 'jobs' || current === 'versions'
+          ? current
+          : r.plan.conflicts.length
+            ? 'conflicts'
+            : 'rows'
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -518,6 +632,7 @@ export function SyncWorkspace({
         deleteExtra,
         encLeft: fromEncState(encLeftState),
         encRight: fromEncState(encRightState),
+        versions: versionsConfig(),
         selected: [...selected],
         resolutions,
         dryRun,
@@ -585,6 +700,20 @@ export function SyncWorkspace({
       setError(t('اول پسورد/کلید هر طرف را ذخیره کن'))
       return
     }
+    if (versionsOn) {
+      if (!versionsAllowed) {
+        setError(t('نسخه‌ها فقط برای مقصد لوکال و اجرای یک‌طرفه‌اند'))
+        return
+      }
+      if (resticOk === false) {
+        setError(t('restic نصب نیست'))
+        return
+      }
+      if (!versionsReady) {
+        setError(t('اول رمز مخزن را ذخیره کن'))
+        return
+      }
+    }
     const id = currentJob?.id ?? newSyncJobId(jobs.map((j) => j.id))
     const job: SyncJob = {
       id,
@@ -599,6 +728,7 @@ export function SyncWorkspace({
       ...(rsyncAllowed ? { rsync: rsyncOpts } : {}),
       ...(fromEncState(encLeftState) ? { encLeft: fromEncState(encLeftState) } : {}),
       ...(fromEncState(encRightState) ? { encRight: fromEncState(encRightState) } : {}),
+      ...(versionsConfig() ? { versions: versionsConfig() } : {}),
       enabled: true,
       schedule: {
         ...(every.trim() ? { everyMinutes: Number(every) || undefined } : {}),
@@ -632,6 +762,11 @@ export function SyncWorkspace({
       setRestoreId(null)
     }
   }
+
+  useEffect(() => {
+    if (versionsOn && versionsReady && versionsAllowed) void loadSnapshots()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.length, versionsReady, versionsOn, versionsAllowed])
 
   const pct = progress && progress.files ? Math.min(100, Math.round((progress.filesDone / progress.files) * 100)) : 0
 
@@ -865,7 +1000,7 @@ export function SyncWorkspace({
         </div>
 
         <div className="sync-tabs">
-          {(['rows', 'conflicts', 'history', 'jobs'] as Tab[]).map((id) => (
+          {(['rows', 'conflicts', 'history', 'jobs', 'versions'] as Tab[]).map((id) => (
             <button key={id} className={'sync-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
               {id === 'rows'
                 ? t('ردیف‌ها')
@@ -873,7 +1008,9 @@ export function SyncWorkspace({
                   ? t('تعارض‌ها ({n})', { n: fa(unresolved.length) })
                   : id === 'history'
                     ? t('تاریخچه')
-                    : t('کارها')}
+                    : id === 'jobs'
+                      ? t('کارها')
+                      : t('نسخه‌ها')}
             </button>
           ))}
           <span className="spacer" />
@@ -1070,7 +1207,95 @@ export function SyncWorkspace({
           )}
         </div>
 
-        {plan && tab !== 'history' && tab !== 'jobs' && (
+          {tab === 'versions' && (
+            <div className="sync-versions">
+              <div className="sync-versions-config">
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={versionsOn}
+                    disabled={!versionsAllowed || resticOk === false}
+                    onChange={(e) => toggleVersions(e.target.checked)}
+                  />
+                  <span>{t('نگه‌داشتن نسخه‌ها با restic')}</span>
+                </label>
+                {resticOk === false && <span className="chip warn">{t('restic نصب نیست')}</span>}
+                {!versionsAllowed && (
+                  <span className="dim">{t('نسخه‌ها فقط برای مقصد لوکال و اجرای یک‌طرفه‌اند')}</span>
+                )}
+                {versionsOn && versionsAllowed && (
+                  <>
+                    <label className="check-label">
+                      <span>{t('تعداد نسخه')}</span>
+                      <input
+                        className="ignore-input"
+                        dir="ltr"
+                        value={versionsKeep}
+                        onChange={(e) => setVersionsKeep(e.target.value)}
+                      />
+                    </label>
+                    <label className="check-label">
+                      <span>{t('مخزن')}</span>
+                      <input
+                        className="ignore-input"
+                        dir="ltr"
+                        placeholder={t('پیش‌فرض: .mfm-restic در مقصد')}
+                        value={versionsRepo}
+                        onChange={(e) => setVersionsRepo(e.target.value)}
+                      />
+                    </label>
+                    <label className="check-label">
+                      <span>{t('رمز مخزن')}</span>
+                      <input
+                        type="password"
+                        className="ignore-input"
+                        dir="ltr"
+                        value={versionsPassword}
+                        onChange={(e) => setVersionsPassword(e.target.value)}
+                      />
+                    </label>
+                    <button className="tb" onClick={() => void saveVersionsPassword()}>
+                      {versionsReady ? t('تغییر رمز') : t('ذخیره رمز')}
+                    </button>
+                    {versionsReady && <span className="chip add">{t('رمز ذخیره شد')}</span>}
+                    <button className="tb" disabled={!versionsReady} onClick={() => void loadSnapshots()}>
+                      {t('نوسازی نسخه‌ها')}
+                    </button>
+                  </>
+                )}
+              </div>
+              {versionsError && <div className="sync-message err">{versionsError}</div>}
+              {versionsOn && versionsAllowed && snapshots && (
+                <div className="sync-snapshot-list">
+                  {!snapshots.length && <div className="dim">{t('نسخه‌ای نیست')}</div>}
+                  {snapshots.map((snap) => (
+                    <div className="sync-snapshot" key={snap.id}>
+                      <span className="dim" dir="ltr">
+                        {fmtDate(Date.parse(snap.time))}
+                      </span>
+                      <span className="dim" dir="ltr">
+                        {snap.shortId}
+                      </span>
+                      <span className="dim">
+                        {fmtSize(snap.bytes, false)} · {t('{n} فایل', { n: fa(snap.files) })}
+                      </span>
+                      <span className="spacer" />
+                      <button
+                        className="tb"
+                        title={t('بازگردانی به پوشهٔ موقت')}
+                        disabled={restoring === snap.id}
+                        onClick={() => void restoreSnapshot(snap.id)}
+                      >
+                        {t('بازگردانی نسخه')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+        {plan && tab !== 'history' && tab !== 'jobs' && tab !== 'versions' && (
           <div className="sync-plan">
             <span className="dim">
               {t('طرح: {c} کپی · {d} حذف · {s} رد‌شده', {

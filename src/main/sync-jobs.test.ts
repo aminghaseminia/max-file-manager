@@ -4,6 +4,7 @@ import {
   cleanCron,
   cleanPairDirs,
   cleanSyncJob,
+  cleanVersions,
   cleanSyncJobs,
   isSyncPath,
   newSyncJobId,
@@ -98,4 +99,46 @@ test('cleanPairDirs: only known modes and string keys survive', () => {
     '/c\u0000/d': 'ltr'
   })
   assert.deepEqual(cleanPairDirs(null), {})
+})
+
+test('cleanVersions: local absolute repo, clamped keep, valid secret id only', () => {
+  const secretId = '11111111-2222-3333-4444-555555555555'
+  assert.deepEqual(cleanVersions({ keep: 5, secretId }), { keep: 5, secretId })
+  assert.deepEqual(cleanVersions({ keep: 200, secretId, repo: '/tmp/repo' }), {
+    keep: 100,
+    repo: '/tmp/repo',
+    secretId
+  })
+  assert.equal(cleanVersions({ keep: 0, secretId })?.keep, 5)
+  assert.equal(cleanVersions({ keep: 5, secretId: 'short' }), null)
+  assert.equal(cleanVersions({ keep: 5, secretId, repo: 'relative/repo' }), null)
+  assert.equal(cleanVersions({ keep: 5, secretId, repo: 'sftp://host/repo' }), null)
+  assert.equal(cleanVersions(null), undefined)
+  assert.equal(cleanVersions('junk'), null)
+})
+
+test('a job with a valid versions config survives; a broken one rejects the job', () => {
+  const secretId = '11111111-2222-3333-4444-555555555555'
+  const good = cleanSyncJob({ ...base, versions: { keep: 5, secretId } })
+  assert.equal(good?.versions?.keep, 5)
+  assert.equal(cleanSyncJob({ ...base, versions: { keep: 5, secretId: 'x' } }), null)
+})
+
+
+test('versions reject a two-way job and a remote destination instead of failing at run time', () => {
+  const secretId = '11111111-2222-3333-4444-555555555555'
+  assert.equal(cleanSyncJob({ ...base, direction: 'both', versions: { keep: 5, secretId } }), null)
+  assert.equal(
+    cleanSyncJob({ ...base, right: 'sftp://host/srv', versions: { keep: 5, secretId } }),
+    null
+  )
+  assert.ok(
+    cleanSyncJob({
+      ...base,
+      direction: 'rtl',
+      left: '/tmp/b',
+      right: 'sftp://host/srv',
+      versions: { keep: 5, secretId }
+    })
+  )
 })

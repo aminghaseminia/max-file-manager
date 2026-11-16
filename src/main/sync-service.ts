@@ -7,6 +7,7 @@
  * trash; a remote deletion is permanent and needs `confirmRemoteDelete`.
  */
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 import type { RemoteFs } from './remote-core.ts'
 import { readStore, writeStore } from './store.ts'
 import type {
@@ -17,8 +18,10 @@ import type {
   SyncMode,
   SyncPlan,
   SyncProgress,
+  SyncVersions,
   SyncRow,
-  SyncRunSummary
+  SyncRunSummary,
+  SyncSnapshot
 } from '../shared/sync.ts'
 import { cleanRsyncOptions, cleanSyncJob, cleanSyncJobs, newSyncJobId, pairKey } from '../shared/sync.ts'
 import { invertPlan, nextBaseline, planRows, type Baseline } from './sync-core.ts'
@@ -28,6 +31,14 @@ import { isDue, nextDueAt } from './sync-schedule.ts'
 import { applyRsync, planRsync, rsyncAvailable, trashDirFor, type RsyncRequest } from './sync-rsync.ts'
 import { getSyncSecret } from './sync-secrets.ts'
 import { recipientOf, type ResolvedEncryption } from './sync-crypt.ts'
+import {
+  VERSION_TAG,
+  backup as resticBackup,
+  forget as resticForget,
+  resticAvailable,
+  restoreToTemp as resticRestore,
+  snapshots as resticSnapshots
+} from './sync-versions.ts'
 import { watch as fsWatch } from 'node:fs'
 import { isRemotePath } from '../shared/remote-path.ts'
 
@@ -48,6 +59,8 @@ export type CompareOptions = {
   rsync?: RsyncOptions
   /** per-side content encryption; the secret material is looked up by id in main */
   enc?: { left?: SyncEncryption; right?: SyncEncryption }
+  /** restic history for a local one-way destination */
+  versions?: SyncVersions
 }
 
 export type RunOptions = CompareOptions & {
@@ -157,6 +170,41 @@ export function createSyncService(deps: SyncDeps) {
 
   const isEncrypted = (opts: CompareOptions): boolean => Boolean(opts.enc?.left || opts.enc?.right)
   const effectiveCompareBy = (opts: CompareOptions): SyncCompareBy => (isEncrypted(opts) ? 'hash' : opts.compareBy)
+
+  type VersionState = { repo: string; password: string; keep: number; dest: string }
+
+  /** Resolve the repo/password for a one-way local destination; throws before any file is touched. */
+  const versionState = async (opts: RunOptions): Promise<VersionState | null> => {
+    if (!opts.versions) return null
+    if (opts.mode === 'both') throw new Error('version history is one-way only')
+    const dest = opts.mode === 'rtl' ? opts.left : opts.right
+    if (isRemotePath(dest)) throw new Error('version history needs a local destination')
+    if (!(await resticAvailable())) throw new Error('restic is not installed')
+    const password = getSyncSecret(opts.versions.secretId)
+    if (!password) throw new Error('the restic repository password is missing')
+    const repo = opts.versions.repo || path.join(dest, '.mfm-restic')
+    if (!path.isAbsolute(repo) || isRemotePath(repo)) throw new Error('the restic repository must be a local absolute path')
+    return { repo, password, keep: opts.versions.keep, dest }
+  }
+
+  /** The first run has no previous post-snapshot, so take one before touching the destination. */
+  const preVersion = async (vs: VersionState | null): Promise<void> => {
+    if (!vs) return
+    const existing = await resticSnapshots(vs.repo, vs.password).catch((e) => {
+      throw e instanceof Error ? e : new Error(String(e))
+    })
+    if (!existing.length) await resticBackup(vs.repo, vs.password, vs.dest)
+  }
+
+  const postVersion = async (vs: VersionState | null, summary: SyncRunSummary): Promise<void> => {
+    if (!vs) return
+    try {
+      await resticBackup(vs.repo, vs.password, vs.dest)
+      await resticForget(vs.repo, vs.password, vs.keep)
+    } catch (e) {
+      summary.errors.push(`versions: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   // ── compare / run ─────────────────────────────────────────────────────────────────────────
   const compare = async (opts: CompareOptions): Promise<CompareResult> => {
@@ -276,6 +324,8 @@ export function createSyncService(deps: SyncDeps) {
         deps.emit('sync:done', summary)
         return { id, rows: planned.rows, plan: planned.plan, cmp: { rows: planned.rows, leftCount: planned.rows.length, rightCount: planned.rows.length, capped: planned.capped, hashed: 0 }, applied: null, summary, blocked }
       }
+      const vs = await versionState(opts)
+      await preVersion(vs)
       emitProgress(true)
       const applied = await applyRsync(
         req,
@@ -301,6 +351,7 @@ export function createSyncService(deps: SyncDeps) {
       progress.state = summary.state
       progress.errors = applied.errors
       deps.emit('sync:progress', { ...progress, paused: control.paused })
+      if (summary.state === 'done') await postVersion(vs, summary)
       saveRun(summary, planned.plan)
       pruneRuns()
       if (opts.jobId) lastRun.set(opts.jobId, started)
@@ -415,6 +466,9 @@ export function createSyncService(deps: SyncDeps) {
       if (remoteDeletes.length && !opts.confirmRemoteDelete) {
         throw new Error('refusing to delete on a remote side without an explicit confirmation')
       }
+      // the history is taken before the first file is touched; a missing secret/repo aborts here
+      const vs = await versionState(opts)
+      await preVersion(vs)
       emitProgress(true)
       const applied = await applyPlan(opts.left, opts.right, plan, ops(), {
         trash: deps.trash,
@@ -431,6 +485,7 @@ export function createSyncService(deps: SyncDeps) {
       progress.state = summary.state
       progress.errors = applied.errors
       deps.emit('sync:progress', { ...progress })
+      if (summary.state === 'done') await postVersion(vs, summary)
       saveRun(summary, plan)
       pruneRuns()
       if (opts.mode === 'both' && summary.state === 'done') {
@@ -677,6 +732,36 @@ export function createSyncService(deps: SyncDeps) {
 
   const baseline = (left: string, right: string): Baseline => loadBaseline(pairKey(left, right))
 
+  /** Snapshot list for the Versions tab; the repo defaults to the destination's .mfm-restic. */
+  const versionsQuery = async (opts: {
+    left: string
+    right: string
+    mode: SyncMode
+    repo?: string
+    secretId: string
+  }): Promise<{ available: boolean; repo: string; snapshots: SyncSnapshot[]; error: string }> => {
+    if (!(await resticAvailable())) {
+      return { available: false, repo: '', snapshots: [], error: 'restic is not installed' }
+    }
+    if (opts.mode === 'both') throw new Error('version history is one-way only')
+    const dest = opts.mode === 'rtl' ? opts.left : opts.right
+    if (isRemotePath(dest)) throw new Error('version history needs a local destination')
+    const password = getSyncSecret(opts.secretId)
+    if (!password) throw new Error('the restic repository password is missing')
+    const repo = opts.repo || path.join(dest, '.mfm-restic')
+    if (!path.isAbsolute(repo) || isRemotePath(repo)) throw new Error('the restic repository must be a local absolute path')
+    const list = await resticSnapshots(repo, password)
+    return { available: true, repo, snapshots: list, error: '' }
+  }
+
+  /** Restore a snapshot into a fresh temp folder; the caller opens that folder for inspection. */
+  const versionsRestore = async (repo: string, secretId: string, id: string): Promise<string> => {
+    if (!path.isAbsolute(repo) || isRemotePath(repo)) throw new Error('the restic repository must be a local absolute path')
+    const password = getSyncSecret(secretId)
+    if (!password) throw new Error('the restic repository password is missing')
+    return resticRestore(repo, password, id)
+  }
+
   return {
     setRemote,
     listJobs,
@@ -693,6 +778,8 @@ export function createSyncService(deps: SyncDeps) {
     history,
     restore,
     baseline,
+    versionsQuery,
+    versionsRestore,
     dueAt,
     runJob,
     notifyMount,

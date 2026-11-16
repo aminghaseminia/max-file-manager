@@ -4462,6 +4462,10 @@ export default function App() {
           onClose={() => setSyncOpen(null)}
           onSaveJobs={(jobs) => updatePrefs({ syncJobs: jobs })}
           onOpenJob={openSyncJob}
+          onOpenPath={(path, side) => {
+            setSyncOpen(null)
+            go(side === 'left' ? 0 : 1, path)
+          }}
           onModeChange={(m) =>
             updatePrefs({ syncPairDirs: { ...prefs.syncPairDirs, [pairKey(syncOpen.left, syncOpen.right)]: m } })
           }

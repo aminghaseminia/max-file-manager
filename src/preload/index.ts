@@ -154,6 +154,10 @@ contextBridge.exposeInMainWorld('api', {
     secretReveal: (id: string) => ipcRenderer.invoke('sync:secretReveal', id),
     keypair: () => ipcRenderer.invoke('sync:keypair'),
     recipientOf: (identity: string) => ipcRenderer.invoke('sync:recipientOf', identity),
+    versionsAvailable: () => ipcRenderer.invoke('sync:versionsAvailable'),
+    versions: (opts: unknown) => ipcRenderer.invoke('sync:versions', opts),
+    versionsRestore: (repo: string, secretId: string, id: string) =>
+      ipcRenderer.invoke('sync:versionsRestore', { repo, secretId, id }),
     onProgress: (cb: (p: unknown) => void) => {
       const fn = (_e: unknown, p: unknown) => cb(p)
       ipcRenderer.on('sync:progress', fn)

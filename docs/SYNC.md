@@ -1,8 +1,8 @@
 # Two-folder synchronisation
 
-Status: **implemented** for local and remote endpoints, one-way and two-way, with a dry run,
-saved jobs, a scheduler, history and restore. **Not implemented yet:** per-side encryption, the
-rsync engine, and restic version history (see *Later phases* at the end).
+Status: **implemented** for local and remote endpoints, one-way and two-way, dry run,
+saved jobs and a scheduler, history/restore, the optional local rsync engine, per-side age
+encryption, and restic version history for local destinations.
 
 The user-facing entry points are the three direction buttons on the pane divider and the
 `Sync with the other pane` command (`Ctrl+Shift+Y`).
@@ -78,6 +78,59 @@ The baseline is updated only after a **successful** two-way run. A copy records 
 a delete removes the path; a skipped or unresolved row keeps the previous anchor, so the next run
 reports the same difference instead of forgetting it.
 
+## rsync (local, one-way)
+
+`SyncJob.useRsync` / the `Use rsync` checkbox switches one direction to the system `rsync` binary.
+It is local ↔ local only: rsync over ssh would bypass the app's own host-key and credential model.
+The engine is optional and detected at runtime; a missing binary is a clear error, not a fallback.
+
+- The preview is rsync's own `--dry-run --itemize-changes`, so the plan is not a second
+  implementation. Dirs, symlinks and hardlinks are left to rsync and are not separate plan rows.
+- `--update` implements newest-wins for mtime comparison; hash comparison switches to
+  `--checksum` and drops `--update`.
+- Deletions use `--backup --backup-dir=<dest>/.mfm-trash/<stamp>`, not a hard delete. The next
+  run excludes `.mfm-trash`, `.mfm-restic`, `.mfm.json` and `.mfm-versions`.
+- Advanced switches are opt-in: `compress`, `bwlimitKB`, `partial`, `inplace`, `sparse`,
+  `hard-links`, `acls`, `xattrs`. Every switch is a separate argv entry; no shell is involved.
+- rsync cannot encrypt; a job with an encrypted side always uses the native engine.
+- Two-way sync stays native (it needs the baseline and conflict rules).
+
+## Encryption per side
+
+Each side can store age ciphertext (`age-encryption`, pure JS; X25519 or a passphrase). Jobs keep
+only a `secretId`; the passphrase or private identity is encrypted with the OS keyring
+(`safeStorage`) and never crosses to the renderer beyond an explicit key-backup reveal.
+
+- **Target side:** every copied file is encrypted before it is written. **Source side:** every read
+  is decrypted before comparing or copying. A plaintext side is untouched.
+- The file name stays visible; content becomes age ciphertext. An encrypted side is **not** browsable
+  by other tools (or the ordinary preview) — the sync workspace is the decrypting surface.
+- Comparison is forced to **sha256 of the plaintext**; the encrypted side is decrypted (to a temp
+  file) for each hash. That is correct but slower than an mtime comparison; a manifest cache is a
+  future optimization.
+- A keypair can be generated in the UI and must be backed up (the reveal/copy box). Replacing a
+  keypair can make old ciphertext unreadable and asks for confirmation.
+- If the OS has no real keyring, the secret is session-only and the UI says so.
+
+## Versions (restic)
+
+A job can keep a local history of its destination with `restic`. The default repository is
+`<destination>/.mfm-restic`; a different absolute local path is allowed. The repository password is
+another `secretId` in the same keyring store, passed to restic through `RESTIC_PASSWORD` (never
+argv).
+
+- One-way local destinations only. A remote destination is refused before any file is touched,
+  because restic's own SSH/S3 backends would duplicate the app's credential and host-key model.
+- The **first** run takes a pre-snapshot (nothing else exists to fall back on), then a post-snapshot
+  after a successful run. Later runs rely on the previous post-snapshot as their «before» state and
+  take one after; `forget --keep-last N --prune` keeps the configured number (default 5).
+- A failure to take the pre-snapshot aborts the run before touching the destination. A failed
+  post-snapshot is recorded as a warning in the run summary.
+- The Versions tab lists the tagged snapshots. **Restore** writes a snapshot into a fresh temp
+  folder and opens it in the pane opposite the destination; it never overwrites the live trees.
+  The temp folder is intentionally left for inspection.
+- `.mfm-restic` and `.mfm-trash` are excluded from every backup and from the native/rsync walk.
+
 ## Dry run, run, restore
 
 - *Compare* walks both trees and builds the plan, writes nothing, and returns rows + counts.
@@ -139,18 +192,21 @@ trusting rows supplied by the caller, and never confirms a remote deletion on it
 | `src/main/sync-engine.ts` | walk/hash/copy/delete over local or `RemoteFs` (tested against a fake remote) |
 | `src/main/sync-store.ts` | `sync_runs` and `sync_baseline` tables in `search.db` |
 | `src/main/sync-schedule.ts` | cron/interval due-time maths (tested) |
-| `src/main/sync-service.ts` | queue, one active run, scheduler, history, restore |
+| `src/main/sync-rsync.ts` | local one-way rsync: argv, itemize/progress parsing, `.mfm-trash` (tested with real rsync) |
+| `src/main/sync-crypt.ts` | age file encryption/decryption and plaintext hashing (tested) |
+| `src/main/sync-secrets.ts` | sync secrets (age passphrase/key, restic password) in the OS keyring |
+| `src/main/sync-versions.ts` | restic init/backup/snapshots/forget/restore (tested with real restic) |
+| `src/main/sync-service.ts` | queue, one active run, scheduler, history, restore, encryption and versions |
 | `src/main/sync.ts` | the old local-only helpers; only the line diff remains in use |
 | `src/renderer/src/SyncWorkspace.tsx` | the full-window workspace |
 | `src/renderer/src/SyncPill.tsx` | the three direction buttons on the divider |
 
-## Later phases
+## Known limits
 
-1. **Encryption per side** (age-compatible, passphrase or X25519). Content-only, names clear;
-   the encrypted side stores `name.ext.age`, and hashes are computed on plaintext. The engine must
-   stream through the cipher, which is why it needs its own phase.
-2. **rsync for local ↔ local** as an optional advanced engine (argv array, never a shell string);
-   remote endpoints stay on `RemoteFs`.
-3. **restic versions** for local destinations: `keep-last N` (default 5, configurable), snapshot
-   before/after, restore via `restic dump`. A remote destination is deliberately out of scope until
-   the credential/host-key story for restic's own backends is settled.
+- rsync is local/one-way; two-way and remote stay on the native engine.
+- An encrypted side is opaque to the ordinary file manager; decryption happens only inside sync.
+- restic history is local-destination only, and restore goes to a temp folder rather than rolling
+  the live tree back.
+- A restic snapshot of a large tree costs seconds; retention runs `--prune` after every post
+  snapshot and can take longer.
+- The `.mfm-trash` from rsync is recoverable but is not cleaned automatically; the user owns it.

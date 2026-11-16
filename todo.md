@@ -21,12 +21,3 @@ locations.
       `node-gyp rebuild` for an optional crypto binding and exits 0 on failure. The packaged app
       excludes `cpu-features` and `nan`, but a developer machine needs Python/make/g++ for the
       optional speed-up. Say this in the build prerequisites.
-
-## Sync, later phases
-
-The first two phases are implemented; see `docs/SYNC.md`.
-
-- [ ] Per-side encryption (age-compatible: passphrase or X25519), content-only with `.age` names.
-- [ ] Optional rsync engine for local ↔ local (argv array, no shell).
-- [ ] restic version history for local destinations (`keep-last N`, default 5), restore from a
-      snapshot. Remote destinations wait for a separate credential decision.

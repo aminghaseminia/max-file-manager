@@ -77,8 +77,8 @@ export function rsyncArgs(req: RsyncRequest, dryRun: boolean, progress: boolean)
   if (req.options?.hardLinks) a.push('--hard-links')
   if (req.options?.acls) a.push('--acls')
   if (req.options?.xattrs) a.push('--xattrs')
-  // the trash is inside the destination; it must never be mirrored on the next run
-  a.push('--exclude=.mfm-trash')
+  // app metadata, the trash and the version repository live inside the tree; never mirror them
+  a.push('--exclude=.mfm.json', '--exclude=.mfm-versions', '--exclude=.mfm-trash', '--exclude=.mfm-restic')
   for (const pattern of req.ignore) if (pattern) a.push(`--exclude=${pattern}`)
   if (dryRun) a.push('--dry-run')
   if (progress) a.push('--info=progress2')

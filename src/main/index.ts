@@ -112,10 +112,11 @@ import {
 import { randomBytes } from 'node:crypto'
 import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
 import { diffFiles } from './sync.ts'
-import { cleanEncryption, cleanRsyncOptions, type SyncEncryption } from '../shared/sync.ts'
+import { cleanEncryption, cleanRsyncOptions, cleanVersions, type SyncEncryption } from '../shared/sync.ts'
 import { createSyncService } from './sync-service.ts'
 import { generateKeypair, looksLikeIdentity, recipientOf } from './sync-crypt.ts'
 import { getSyncSecret, hasSyncSecret, removeSyncSecret, setSyncSecret } from './sync-secrets.ts'
+import { resticAvailable } from './sync-versions.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
@@ -1953,6 +1954,7 @@ app.whenReady().then(async () => {
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
           enc: { left: syncEnc(args.encLeft), right: syncEnc(args.encRight) },
+          versions: syncVersions(args.versions),
           dryRun: args.dryRun === true,
           confirmRemoteDelete: args.confirm === true
         })
@@ -2002,6 +2004,22 @@ app.whenReady().then(async () => {
         return syncService.cancel(typeof args.id === 'string' ? args.id : undefined)
       case 'sync_status':
         return syncService.status()
+      case 'sync_versions':
+        return syncService.versionsQuery({
+          left: needPath(args.left),
+          right: needPath(args.right),
+          mode: args.mode === 'rtl' ? 'rtl' : 'ltr',
+          repo: typeof args.repo === 'string' && args.repo.trim() ? args.repo.trim() : undefined,
+          secretId: String(args.secretId ?? '')
+        })
+      case 'sync_versions_restore':
+        return {
+          path: await syncService.versionsRestore(
+            String(args.repo ?? ''),
+            String(args.secretId ?? ''),
+            String(args.id ?? '')
+          )
+        }
       case 'run_script':
         return runScriptCommand({
           command: String(args.command ?? ''),
@@ -2214,6 +2232,11 @@ app.whenReady().then(async () => {
     if (e === null) throw new Error('invalid encryption configuration')
     return e
   }
+  const syncVersions = (v: unknown) => {
+    const x = cleanVersions(v)
+    if (x === null) throw new Error('invalid version configuration')
+    return x
+  }
 
   const syncBroadcastJobs = (): void => {
     const jobs = syncService.listJobs()
@@ -2242,6 +2265,7 @@ app.whenReady().then(async () => {
       useRsync: a?.useRsync === true,
       rsync: cleanRsyncOptions(a?.rsync),
       enc: { left: syncEnc(a?.encLeft), right: syncEnc(a?.encRight) },
+      versions: syncVersions(a?.versions),
       selected: syncSelections(a),
       resolutions: syncResolutions(a),
       dryRun: a?.dryRun === true,
@@ -2284,6 +2308,21 @@ app.whenReady().then(async () => {
     if (!looksLikeIdentity(String(identity ?? ''))) throw new Error('invalid age identity')
     return recipientOf(String(identity))
   })
+  ipcMain.handle('sync:versionsAvailable', () => resticAvailable())
+  ipcMain.handle(
+    'sync:versions',
+    (_e, a: { left?: string; right?: string; mode?: string; repo?: string; secretId?: string }) =>
+      syncService.versionsQuery({
+        left: syncPath(a?.left),
+        right: syncPath(a?.right),
+        mode: a?.mode === 'rtl' || a?.mode === 'both' ? a.mode : 'ltr',
+        repo: typeof a?.repo === 'string' && a.repo.trim() ? a.repo.trim() : undefined,
+        secretId: String(a?.secretId ?? '')
+      })
+  )
+  ipcMain.handle('sync:versionsRestore', (_e, a: { repo?: string; secretId?: string; id?: string }) =>
+    syncService.versionsRestore(syncPath(a?.repo), String(a?.secretId ?? ''), String(a?.id ?? ''))
+  )
   ipcMain.handle('fs:diff', (_e, a: { a: string; b: string }) => diffFiles(a?.a ?? '', a?.b ?? ''))
   ipcMain.handle('fs:readText', (_e, p: string) => readTextAny(p ?? ''))
   const editablePath = (p: string): boolean => isRemotePath(p) || path.isAbsolute(p)

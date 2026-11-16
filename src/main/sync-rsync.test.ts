@@ -70,6 +70,8 @@ test('rsyncArgs: delete moves files to the backup dir, exclusions and advanced s
   assert.ok(args.includes('--exclude=*.log'))
   assert.ok(args.includes('--exclude=node_modules'))
   assert.ok(args.includes('--exclude=.mfm-trash'))
+  assert.ok(args.includes('--exclude=.mfm-restic'))
+  assert.ok(args.includes('--exclude=.mfm.json'))
   assert.ok(args.includes('--compress'))
   assert.ok(args.includes('--bwlimit=512'))
   assert.ok(args.includes('--partial'))

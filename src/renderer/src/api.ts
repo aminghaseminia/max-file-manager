@@ -9,7 +9,9 @@ import type {
   SyncPlan,
   SyncProgress,
   SyncRow,
-  SyncRunSummary
+  SyncRunSummary,
+  SyncSnapshot,
+  SyncVersions
 } from '../../shared/sync.ts'
 
 export type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
@@ -27,7 +29,9 @@ export type {
   SyncRunSummary,
   SyncSchedule,
   SyncSide,
-  SyncState
+  SyncSnapshot,
+  SyncState,
+  SyncVersions
 } from '../../shared/sync.ts'
 
 export type SyncCompareResult = {
@@ -64,6 +68,7 @@ export type SyncOptions = {
   rsync?: RsyncOptions
   encLeft?: SyncEncryption
   encRight?: SyncEncryption
+  versions?: SyncVersions
 }
 export type RemoteTestResult =
   | { ok: true; detail: string; hostKey?: string }
@@ -572,6 +577,15 @@ export type Api = {
     secretReveal(id: string): Promise<string | null>
     keypair(): Promise<{ identity: string; recipient: string }>
     recipientOf(identity: string): Promise<string>
+    versionsAvailable(): Promise<boolean>
+    versions(opts: {
+      left: string
+      right: string
+      mode: SyncMode
+      repo?: string
+      secretId: string
+    }): Promise<{ available: boolean; repo: string; snapshots: SyncSnapshot[]; error: string }>
+    versionsRestore(repo: string, secretId: string, id: string): Promise<string>
     onProgress(cb: (p: SyncProgress) => void): () => void
     onDone(cb: (r: SyncRunSummary) => void): () => void
     onJobs(cb: (jobs: SyncJob[]) => void): () => void
