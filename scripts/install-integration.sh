@@ -7,19 +7,59 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DESKTOP_DIR="$HOME/.local/share/applications"
 DESKTOP_FILE="$DESKTOP_DIR/max-file-manager.desktop"
 ICON="$APP_DIR/build/icon.png"
+LAUNCHER="$HOME/.local/bin/max-file-manager-launch"
 
 # Packaged build wins; otherwise run the repo in dev mode.
 # electron-builder writes to release/ (see directories.output); dist/ is the old layout.
+BIN=""
+APP_PATH=""
 if [ -x "$APP_DIR/release/linux-unpacked/max-file-manager" ]; then
-  EXEC="$APP_DIR/release/linux-unpacked/max-file-manager --ozone-platform=x11 %U"
+  BIN="$APP_DIR/release/linux-unpacked/max-file-manager"
 elif [ -x "$APP_DIR/dist/linux-unpacked/max-file-manager" ]; then
-  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager --ozone-platform=x11 %U"
+  BIN="$APP_DIR/dist/linux-unpacked/max-file-manager"
 elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
-  EXEC="$APP_DIR/node_modules/.bin/electron --ozone-platform=x11 $APP_DIR %U"
+  BIN="$APP_DIR/node_modules/.bin/electron"
+  APP_PATH="$APP_DIR"
 else
   echo "no runnable build found in $APP_DIR" >&2
   exit 1
 fi
+
+# Ubuntu 23.10+ restricts unprivileged user namespaces for unconfined processes
+# (kernel.apparmor_restrict_unprivileged_userns=1). The Chromium namespace sandbox cannot map
+# uids there, so Chromium falls back to the SUID helper and aborts with "The SUID sandbox helper
+# binary was found, but is not configured correctly" unless chrome-sandbox is root-owned 4755.
+# A user-level install has no way to do that without root, so the launcher uses the same
+# --no-sandbox fallback as electron-builder's AppImage — but only when no sandbox can work.
+# A .deb install ships an AppArmor userns profile and keeps the sandbox.
+mkdir -p "$HOME/.local/bin"
+cat > "$LAUNCHER" <<EOF
+#!/usr/bin/env bash
+BIN=$(printf '%q' "$BIN")
+APP_PATH=$(printf '%q' "$APP_PATH")
+SANDBOX_OK=0
+SB="\$(dirname -- "\$BIN")/chrome-sandbox"
+if [ -x "\$SB" ] && [ "\$(stat -c '%u:%a' "\$SB" 2>/dev/null)" = "0:4755" ]; then
+  SANDBOX_OK=1
+fi
+if [ "\$SANDBOX_OK" != 1 ] && command -v unshare >/dev/null 2>&1 && unshare --user --map-root-user true 2>/dev/null; then
+  SANDBOX_OK=1
+fi
+if [ "\$SANDBOX_OK" != 1 ]; then
+  set -- --no-sandbox "\$@"
+fi
+if [ -n "\$APP_PATH" ]; then
+  set -- "\$APP_PATH" "\$@"
+fi
+# Electron's transparent frameless window is reliable on XWayland; GNOME/KDE Wayland sessions
+# export DISPLAY, so prefer X11 there and keep native Wayland elsewhere.
+if [ "\${XDG_SESSION_TYPE:-}" = "wayland" ] && [ -n "\${DISPLAY:-}" ]; then
+  set -- --ozone-platform=x11 "\$@"
+fi
+exec "\$BIN" "\$@"
+EOF
+chmod +x "$LAUNCHER"
+EXEC="$LAUNCHER %U"
 
 mkdir -p "$DESKTOP_DIR"
 cat > "$DESKTOP_FILE" <<EOF

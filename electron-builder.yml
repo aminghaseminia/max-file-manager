@@ -23,6 +23,10 @@ linux:
     - deb
   category: FileManager
   synopsis: Dual-pane file manager
+  # Keep the installed .desktop filename in sync with desktopName: Electron uses it as the
+  # Wayland app_id, and StartupWMClass must match the real WM_CLASS for the launcher to
+  # associate the window (otherwise the app drawer keeps spinning).
+  syncDesktopName: true
 win:
   target:
     - nsis

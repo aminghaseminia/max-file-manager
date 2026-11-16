@@ -11,6 +11,9 @@
 
 1. `~/.local/share/applications/max-file-manager.desktop` را می‌سازد (با آیکون `build/icon.png`).
    اگر بیلد بسته‌بندی‌شده باشد همان باینری اجرا می‌شود، وگرنه Electron داخل مخزن.
+   اجرا از راه `~/.local/bin/max-file-manager-launch` است: روی Wayland با `DISPLAY` موجود
+   `--ozone-platform=x11` می‌دهد و اگر سندباکس Chromium در دسترس نباشد (اوبونتو ۲۴+ و نصب
+   کاربری بدون `chrome-sandbox` روت) `--no-sandbox` — همان fallback خود AppImage.
 2. `update-desktop-database` را اجرا می‌کند.
 3. اپ را **هندلر پیش‌فرض `inode/directory` و `x-scheme-handler/file`** می‌کند:
    ```bash
