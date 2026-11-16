@@ -9,10 +9,13 @@ DESKTOP_FILE="$DESKTOP_DIR/max-file-manager.desktop"
 ICON="$APP_DIR/build/icon.png"
 
 # Packaged build wins; otherwise run the repo in dev mode.
-if [ -x "$APP_DIR/dist/linux-unpacked/max-file-manager" ]; then
-  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager %F"
+# electron-builder writes to release/ (see directories.output); dist/ is the old layout.
+if [ -x "$APP_DIR/release/linux-unpacked/max-file-manager" ]; then
+  EXEC="$APP_DIR/release/linux-unpacked/max-file-manager %U"
+elif [ -x "$APP_DIR/dist/linux-unpacked/max-file-manager" ]; then
+  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager %U"
 elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
-  EXEC="$APP_DIR/node_modules/.bin/electron $APP_DIR %F"
+  EXEC="$APP_DIR/node_modules/.bin/electron $APP_DIR %U"
 else
   echo "no runnable build found in $APP_DIR" >&2
   exit 1
@@ -34,7 +37,7 @@ Categories=System;FileManager;Utility;
 MimeType=inode/directory;x-scheme-handler/file;application/x-gnome-saved-search;
 Keywords=files;manager;explorer;
 StartupNotify=true
-StartupWMClass=max-file-manager
+StartupWMClass=Max File Manager
 EOF
 chmod 644 "$DESKTOP_FILE"
 
