@@ -2560,8 +2560,8 @@ export default function App() {
   const menuItems = (path: string | null): MenuItem[] => {
     const me = panes?.[active]
     if (!me) return []
-    // remote folders support navigation, transfers, open/preview and properties; local-only
-    // features (metadata, archives, scripts, terminal, sync) are deliberately not offered
+    // remote folders support navigation, transfers, open/preview, properties and sync; local-only
+    // features (metadata, archives, scripts, terminal) are deliberately not offered
     const remoteHere = isRemotePath(curPath) || (!!path && isRemotePath(path))
     if (menu?.tab != null) {
       const idx = menu.tab
@@ -2647,9 +2647,10 @@ export default function App() {
               { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem,
               { sep: true } as MenuItem,
               { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> } as MenuItem,
-              { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> } as MenuItem,
-              { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem
+              { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> } as MenuItem
             ]),
+        // sync understands remote endpoints, so it is offered here even when the folder is remote
+        { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem,
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
         ...(remoteHere
           ? []
@@ -2816,11 +2817,12 @@ export default function App() {
       { id: 'reveal', label: t('نمایش در فایل‌منیجر سیستم'), icon: <DriveIcon /> },
       ...(remoteHere ? [] : [{ id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem]),
       { id: 'sha', label: 'SHA-256', icon: <GaugeIcon /> },
+      { sep: true } as MenuItem,
+      // sync works with remote endpoints too; the rest of this group is local-only
+      { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem,
       ...(remoteHere
         ? []
         : [
-            { sep: true } as MenuItem,
-            { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem,
             ...(me.sel.length === 2
               ? [
                   {
@@ -3661,7 +3663,7 @@ export default function App() {
     : 'ltr'
   const toolbarDisabled: CommandId[] =
     isRemotePath(curPath)
-      ? (['flat', 'dupes', 'sync', 'diff', 'compress', 'extract', 'terminal', 'look', 'saveFormat', 'indexSizes'] as CommandId[])
+      ? (['flat', 'dupes', 'diff', 'compress', 'extract', 'terminal', 'look', 'saveFormat', 'indexSizes'] as CommandId[])
       : []
   const runBarCommand = (id: CommandId, anchor?: { x: number; y: number }) => {
     if (id === 'newItem') openNewMenu(anchor)
