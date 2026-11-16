@@ -4,6 +4,7 @@ import type {
   RsyncOptions,
   SyncCompareBy,
   SyncEncryption,
+  SyncIgnoreRule,
   SyncJob,
   SyncMode,
   SyncPlan,
@@ -21,6 +22,7 @@ export type {
   SyncAction,
   SyncEncryption,
   SyncCompareBy,
+  SyncIgnoreRule,
   SyncJob,
   SyncMode,
   SyncPlan,
@@ -58,6 +60,7 @@ export type SyncOptions = {
   mode?: SyncMode
   compareBy?: SyncCompareBy
   ignore?: string[]
+  ignoreRules?: SyncIgnoreRule[]
   deleteExtra?: boolean
   selected?: string[]
   resolutions?: Record<string, 'left' | 'right' | 'skip'>

@@ -9,9 +9,9 @@ import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { isRemotePath, remoteJoinRel, remoteName } from '../shared/remote-path.ts'
-import type { SyncAction, SyncCompareBy, SyncPlan, SyncRow, SyncSide } from '../shared/sync.ts'
+import type { SyncAction, SyncCompareBy, SyncIgnoreRule, SyncPlan, SyncRow, SyncSide } from '../shared/sync.ts'
 import type { RemoteFs } from './remote-core.ts'
-import { ignored, planRows, rowOf, sortRows, SYNC_SKIP_NAMES, threeWay, type Baseline } from './sync-core.ts'
+import { ignored, ignoredBy, planRows, rowOf, sortRows, SYNC_SKIP_NAMES, threeWay, type Baseline } from './sync-core.ts'
 import { decryptFile, encryptFile, hashPlaintext, type ResolvedEncryption } from './sync-crypt.ts'
 
 export type SyncControl = {
@@ -23,6 +23,8 @@ export type SyncControl = {
 
 export type WalkOptions = {
   ignore?: string[]
+  /** Ignore-tab rules (glob/regex/path/size); applied before a row can reach the plan */
+  rules?: SyncIgnoreRule[]
   /** rows cap; 20 000 is what the dialog can show without lying about completeness */
   maxRows?: number
   /** wall-clock budget for one tree */
@@ -267,6 +269,7 @@ export async function walkTree(
       if (SYNC_SKIP_NAMES.has(entry.name)) continue
       const childRel = rel ? `${rel}/${entry.name}` : entry.name
       if (ignored(childRel, opts.ignore ?? [])) continue
+      if (ignoredBy(childRel, opts.rules, entry.size, entry.dir)) continue
       tree.set(childRel, { size: entry.size, mtime: entry.mtime, dir: entry.dir })
       count++
       opts.onProgress?.(count, childRel)
@@ -350,6 +353,7 @@ export async function compareTrees(
   opts: {
     compareBy?: SyncCompareBy
     ignore?: string[]
+    rules?: SyncIgnoreRule[]
     twoWay?: boolean
     baseline?: Baseline
     /** per-side decryption for hashing and copies */
@@ -364,6 +368,7 @@ export async function compareTrees(
   const maxRows = opts.maxRows ?? 20_000
   const leftWalk = await walkTree(left, ops, {
     ignore: opts.ignore,
+    rules: opts.rules,
     maxRows,
     budgetMs: opts.budgetMs,
     onProgress: (n, cur) => opts.onProgress?.('left', n, cur)
@@ -371,13 +376,14 @@ export async function compareTrees(
   if (opts.ctl?.cancelled) throw new Error('cancelled')
   const rightWalk = await walkTree(right, ops, {
     ignore: opts.ignore,
+    rules: opts.rules,
     maxRows,
     budgetMs: opts.budgetMs,
     onProgress: (n, cur) => opts.onProgress?.('right', n, cur)
   })
   if (opts.ctl?.cancelled) throw new Error('cancelled')
   const rels = [...new Set([...leftWalk.tree.keys(), ...rightWalk.tree.keys()])].filter(
-    (rel) => !ignored(rel, opts.ignore ?? [])
+    (rel) => !ignored(rel, opts.ignore ?? []) && !ignoredBy(rel, opts.rules)
   )
   rels.sort()
   const cache = new HashCache()

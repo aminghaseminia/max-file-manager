@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   cleanCron,
+  cleanIgnoreRules,
   cleanPairDirs,
   cleanSyncJob,
   cleanVersions,
@@ -55,6 +56,48 @@ test('cleanSyncJob: a valid job survives and the unknowns fall back to safe defa
   assert.equal(job.schedule.cron, undefined)
   assert.equal(job.schedule.onStart, true)
   assert.equal(job.schedule.onMount, false)
+})
+
+test('cleanIgnoreRules: valid rules survive; bad regex, traversal and junk are dropped', () => {
+  const rules = cleanIgnoreRules([
+    { kind: 'glob', value: '*.log' },
+    { kind: 'regex', value: '^build/' },
+    { kind: 'path', value: './docs/private/' },
+    { kind: 'path', value: '../etc' },
+    { kind: 'path', value: '/absolute' },
+    { kind: 'regex', value: '[' },
+    { kind: 'size', op: 'gt', bytes: '1024' },
+    { kind: 'size', op: 'eq', bytes: 5 },
+    { kind: 'glob', value: '*.log' },
+    null,
+    'nope'
+  ])
+  assert.deepEqual(rules, [
+    { kind: 'glob', value: '*.log' },
+    { kind: 'regex', value: '^build/' },
+    { kind: 'path', value: 'docs/private' },
+    { kind: 'size', op: 'gt', bytes: 1024 }
+  ])
+})
+
+test('cleanSyncJob: legacy ignore patterns are migrated into ignoreRules', () => {
+  const job = cleanSyncJob({ ...base, ignore: ['*.tmp', 'node_modules'] })
+  assert.ok(job)
+  assert.deepEqual(job.ignore, ['*.tmp', 'node_modules'])
+  assert.deepEqual(job.ignoreRules, [
+    { kind: 'glob', value: '*.tmp' },
+    { kind: 'glob', value: 'node_modules' }
+  ])
+  const custom = cleanSyncJob({
+    ...base,
+    ignore: ['*.tmp'],
+    ignoreRules: [{ kind: 'regex', value: '^cache/' }, { kind: 'size', op: 'lt', bytes: 4 }]
+  })
+  assert.deepEqual(custom?.ignoreRules, [
+    { kind: 'regex', value: '^cache/' },
+    { kind: 'size', op: 'lt', bytes: 4 },
+    { kind: 'glob', value: '*.tmp' }
+  ])
 })
 
 test('cleanSyncJob: bad ids, relative paths, the same path and missing sides are rejected', () => {

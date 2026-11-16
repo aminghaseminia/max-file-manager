@@ -112,7 +112,14 @@ import {
 import { randomBytes } from 'node:crypto'
 import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
 import { diffFiles } from './sync.ts'
-import { cleanEncryption, cleanRsyncOptions, cleanVersions, type SyncEncryption } from '../shared/sync.ts'
+import {
+  cleanEncryption,
+  cleanIgnoreRules,
+  cleanRsyncOptions,
+  cleanVersions,
+  type SyncEncryption,
+  type SyncIgnoreRule
+} from '../shared/sync.ts'
 import { createSyncService } from './sync-service.ts'
 import { generateKeypair, looksLikeIdentity, recipientOf } from './sync-crypt.ts'
 import { getSyncSecret, hasSyncSecret, removeSyncSecret, setSyncSecret } from './sync-secrets.ts'
@@ -1929,7 +1936,8 @@ app.whenReady().then(async () => {
           right: needPath(args.right),
           mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
           compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
-          ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : []
+          ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
+          ignoreRules: cleanIgnoreRules(args.ignoreRules)
         })
       case 'sync_plan':
         return syncService.plan({
@@ -1938,6 +1946,7 @@ app.whenReady().then(async () => {
           mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
           compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
+          ignoreRules: cleanIgnoreRules(args.ignoreRules),
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
@@ -1950,6 +1959,7 @@ app.whenReady().then(async () => {
           mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
           compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
+          ignoreRules: cleanIgnoreRules(args.ignoreRules),
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
@@ -2198,6 +2208,7 @@ app.whenReady().then(async () => {
     mode: 'ltr' | 'rtl' | 'both'
     compareBy: 'mtime' | 'hash'
     ignore: string[]
+    ignoreRules: SyncIgnoreRule[]
   } => {
     const left = syncPath(a?.left)
     const right = syncPath(a?.right)
@@ -2210,7 +2221,8 @@ app.whenReady().then(async () => {
       compareBy: a?.compareBy === 'hash' ? 'hash' : 'mtime',
       ignore: Array.isArray(a?.ignore)
         ? (a.ignore as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 50)
-        : []
+        : [],
+      ignoreRules: cleanIgnoreRules(a?.ignoreRules)
     }
   }
   const syncSelections = (a: Record<string, unknown> | undefined): string[] | undefined =>

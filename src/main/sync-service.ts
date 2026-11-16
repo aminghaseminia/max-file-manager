@@ -14,6 +14,7 @@ import type {
   RsyncOptions,
   SyncCompareBy,
   SyncEncryption,
+  SyncIgnoreRule,
   SyncJob,
   SyncMode,
   SyncPlan,
@@ -54,6 +55,8 @@ export type CompareOptions = {
   mode: SyncMode
   compareBy: SyncCompareBy
   ignore?: string[]
+  /** richer Ignore-tab rules; glob entries are also in `ignore` for rsync */
+  ignoreRules?: SyncIgnoreRule[]
   /** optional rsync engine; local ↔ local one-way only */
   useRsync?: boolean
   rsync?: RsyncOptions
@@ -214,6 +217,7 @@ export function createSyncService(deps: SyncDeps) {
     return compareTrees(opts.left, opts.right, ops(), {
       compareBy: effectiveCompareBy(opts),
       ignore: opts.ignore ?? [],
+      rules: opts.ignoreRules,
       twoWay,
       baseline,
       enc,
@@ -226,6 +230,8 @@ export function createSyncService(deps: SyncDeps) {
     if (opts.enc?.left || opts.enc?.right) throw new Error('rsync cannot encrypt; use the native engine')
     if (opts.mode === 'both') throw new Error('rsync works one way only')
     if (isRemotePath(opts.left) || isRemotePath(opts.right)) throw new Error('rsync is local only')
+    if ((opts.ignoreRules ?? []).some((r) => r.kind !== 'glob'))
+      throw new Error('rsync supports glob ignore rules only; use the native engine')
     if (!(await rsyncAvailable())) throw new Error('rsync is not installed')
     const src = opts.mode === 'rtl' ? opts.right : opts.left
     const dst = opts.mode === 'rtl' ? opts.left : opts.right
@@ -646,6 +652,7 @@ export function createSyncService(deps: SyncDeps) {
       mode: mode ?? job.direction,
       compareBy: job.compareBy,
       ignore: job.ignore,
+      ignoreRules: job.ignoreRules,
       deleteExtra: job.deleteExtra,
       useRsync: job.useRsync === true,
       rsync: job.rsync,

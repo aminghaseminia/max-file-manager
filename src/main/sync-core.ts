@@ -13,6 +13,7 @@ import type {
   ConflictKind,
   SyncAction,
   SyncCompareBy,
+  SyncIgnoreRule,
   SyncMode,
   SyncPlan,
   SyncRow,
@@ -34,16 +35,55 @@ export function ignored(rel: string, patterns: string[]): boolean {
   if (!patterns.length) return false
   const parts = rel.split(/[\\/]/)
   const base = parts[parts.length - 1] ?? rel
-  return patterns.some((raw) => {
-    const p = raw.trim()
-    if (!p) return false
-    const rx = new RegExp(
-      '^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
-    )
-    if (rx.test(base) || rx.test(rel)) return true
-    // a bare folder name (`node_modules`) hides it at any depth, not only at the root
-    return !p.includes('/') && parts.some((part) => rx.test(part))
-  })
+  return patterns.some((raw) => globHits(rel, parts, base, raw.trim()))
+}
+
+function globHits(rel: string, parts: string[], base: string, pattern: string): boolean {
+  if (!pattern) return false
+  const rx = new RegExp(
+    '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
+  )
+  if (rx.test(base) || rx.test(rel)) return true
+  // a bare folder name (`node_modules`) hides it at any depth, not only at the root
+  return !pattern.includes('/') && parts.some((part) => rx.test(part))
+}
+
+/**
+ * One rule of the Ignore tab. `size` rules only see files (a folder's recursive size is not known
+ * during the walk), and a `path` rule hides the whole subtree below that exact relative path.
+ */
+export function matchesIgnore(
+  rel: string,
+  rule: SyncIgnoreRule,
+  size?: number,
+  dir?: boolean
+): boolean {
+  if (rule.kind === 'size') {
+    if (dir === true || size === undefined) return false
+    return rule.op === 'gt' ? size > rule.bytes : size < rule.bytes
+  }
+  const parts = rel.split(/[\\/]/)
+  const base = parts[parts.length - 1] ?? rel
+  if (rule.kind === 'path') return rel === rule.value || rel.startsWith(rule.value + '/')
+  if (rule.kind === 'regex') {
+    try {
+      const rx = new RegExp(rule.value)
+      return rx.test(base) || rx.test(rel)
+    } catch {
+      return false
+    }
+  }
+  return globHits(rel, parts, base, rule.value)
+}
+
+export function ignoredBy(
+  rel: string,
+  rules: SyncIgnoreRule[] | undefined,
+  size?: number,
+  dir?: boolean
+): boolean {
+  if (!rules?.length) return false
+  return rules.some((rule) => matchesIgnore(rel, rule, size, dir))
 }
 
 const sameMoment = (a: number, b: number): boolean => Math.abs(a - b) <= SAME_MTIME_MS

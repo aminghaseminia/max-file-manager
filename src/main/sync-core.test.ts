@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {
   invertPlan,
   ignored,
+  ignoredBy,
+  matchesIgnore,
   nextBaseline,
   planRows,
   sameSide,
@@ -24,6 +26,35 @@ test('ignored: base name and relative path globs', () => {
   assert.equal(ignored('src/node_modules/x.js', ['node_modules']), true)
   assert.equal(ignored('src/app.ts', ['*.log']), false)
   assert.equal(ignored('a.b', ['a?b']), true)
+})
+
+test('matchesIgnore: exact path hides its subtree, regex covers base and path', () => {
+  assert.equal(matchesIgnore('docs/secret.txt', { kind: 'path', value: 'docs/secret.txt' }), true)
+  assert.equal(matchesIgnore('docs/private', { kind: 'path', value: 'docs/private' }), true)
+  assert.equal(matchesIgnore('docs/private/a/b.txt', { kind: 'path', value: 'docs/private' }), true)
+  assert.equal(matchesIgnore('docs/private2/a', { kind: 'path', value: 'docs/private' }), false)
+  assert.equal(matchesIgnore('a/b/notes.log', { kind: 'regex', value: '\\.log$' }), true)
+  assert.equal(matchesIgnore('notes.log', { kind: 'regex', value: '^notes' }), true)
+  assert.equal(matchesIgnore('a/notes.txt', { kind: 'regex', value: '\\.log$' }), false)
+  // an invalid regex is inert instead of breaking a run
+  assert.equal(matchesIgnore('x', { kind: 'regex', value: '[' }), false)
+})
+
+test('matchesIgnore: size rules only see files; gt/lt are strict', () => {
+  assert.equal(matchesIgnore('big.bin', { kind: 'size', op: 'gt', bytes: 10 }, 11, false), true)
+  assert.equal(matchesIgnore('big.bin', { kind: 'size', op: 'gt', bytes: 10 }, 10, false), false)
+  assert.equal(matchesIgnore('small.txt', { kind: 'size', op: 'lt', bytes: 10 }, 9, false), true)
+  assert.equal(matchesIgnore('small.txt', { kind: 'size', op: 'lt', bytes: 10 }, 10, false), false)
+  // a folder's recursive size is unknown at walk time, so a size rule never hides a folder
+  assert.equal(matchesIgnore('dir', { kind: 'size', op: 'gt', bytes: 0 }, 999, true), false)
+})
+
+test('ignoredBy: an empty list is a no-op and globs keep the old behaviour', () => {
+  assert.equal(ignoredBy('a.log', []), false)
+  assert.equal(ignoredBy('a.log', undefined), false)
+  assert.equal(ignoredBy('a/b/notes.log', [{ kind: 'glob', value: '*.log' }]), true)
+  assert.equal(ignoredBy('src/node_modules/x.js', [{ kind: 'glob', value: 'node_modules' }]), true)
+  assert.equal(ignoredBy('src/app.ts', [{ kind: 'glob', value: '*.log' }]), false)
 })
 
 test('stateOf: newest wins, equal timestamps with a size change are ambiguous', () => {

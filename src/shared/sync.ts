@@ -82,6 +82,18 @@ export type SyncEncryption = {
   recipient?: string
 }
 
+/**
+ * A sync ignore rule. Name rules hide a path from both walks (so «delete extra» can never remove an
+ * ignored file); size rules only apply to files. `glob` is the legacy `*.log` / `node_modules`
+ * form, `path` is an exact relative path including its subtree, `regex` is a JS regular expression
+ * tested against the relative path and the base name.
+ */
+export type SyncIgnoreRule =
+  | { kind: 'glob'; value: string }
+  | { kind: 'regex'; value: string }
+  | { kind: 'path'; value: string }
+  | { kind: 'size'; op: 'gt' | 'lt'; bytes: number }
+
 /** A restic snapshot as the Versions tab shows it. */
 export type SyncSnapshot = {
   id: string
@@ -124,6 +136,8 @@ export type SyncJob = {
   compareBy: SyncCompareBy
   /** wildcard names or relative paths, e.g. `*.log`, `node_modules` */
   ignore: string[]
+  /** richer user-authored rules; `ignore` stays for rsync and older jobs */
+  ignoreRules?: SyncIgnoreRule[]
   /** delete files that exist only on the destination (one-way) or on one side (two-way) */
   deleteExtra: boolean
   enabled: boolean
@@ -206,6 +220,50 @@ function cleanIgnore(raw: unknown): string[] {
   return out
 }
 
+/**
+ * Keep only well-formed rules. A bad regex or a path that tries to escape the root is dropped
+ * instead of breaking the whole job; the rest of the list still applies.
+ */
+export function cleanIgnoreRules(raw: unknown): SyncIgnoreRule[] {
+  if (!Array.isArray(raw)) return []
+  const out: SyncIgnoreRule[] = []
+  const seen = new Set<string>()
+  for (const value of raw) {
+    if (!value || typeof value !== 'object') continue
+    const r = value as Record<string, unknown>
+    let rule: SyncIgnoreRule | null = null
+    if (r.kind === 'size') {
+      const bytes = Number(r.bytes)
+      if ((r.op === 'gt' || r.op === 'lt') && Number.isFinite(bytes) && bytes >= 0) {
+        rule = { kind: 'size', op: r.op, bytes: Math.min(Number.MAX_SAFE_INTEGER, Math.round(bytes)) }
+      }
+    } else if (r.kind === 'glob' || r.kind === 'regex' || r.kind === 'path') {
+      const v = text(r.value, 300)
+      if (!v || v === '.' || v === '..' || /[\0\r\n]/.test(v)) continue
+      if (r.kind === 'regex') {
+        try {
+          new RegExp(v)
+          rule = { kind: 'regex', value: v }
+        } catch {
+          // an invalid expression is user error, not a reason to reject the job
+        }
+      } else if (r.kind === 'path') {
+        const p = v.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+        if (p && !p.startsWith('/') && !p.split('/').includes('..')) rule = { kind: 'path', value: p }
+      } else {
+        rule = { kind: 'glob', value: v }
+      }
+    }
+    if (!rule) continue
+    const key = JSON.stringify(rule)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(rule)
+    if (out.length >= 100) break
+  }
+  return out
+}
+
 export function cleanSchedule(raw: unknown): SyncSchedule {
   const s = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   const every = Number(s.everyMinutes)
@@ -241,6 +299,15 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
   const localOnly = !isRemotePath(left) && !isRemotePath(right)
   // rsync cannot encrypt/decrypt; a job with an encrypted side always uses the native engine
   const useRsync = localOnly && j.useRsync === true && !encLeft && !encRight
+  const ignore = cleanIgnore(j.ignore)
+  // migrate the old glob-only list so an existing job behaves exactly as before
+  const ignoreRules = cleanIgnoreRules(j.ignoreRules)
+  for (const value of ignore) {
+    if (!ignoreRules.some((r) => r.kind === 'glob' && r.value === value)) {
+      ignoreRules.push({ kind: 'glob', value })
+      if (ignoreRules.length >= 100) break
+    }
+  }
   return {
     id,
     name,
@@ -248,7 +315,8 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
     right,
     direction,
     compareBy,
-    ignore: cleanIgnore(j.ignore),
+    ignore,
+    ignoreRules,
     deleteExtra: j.deleteExtra === true,
     enabled: j.enabled !== false,
     schedule: cleanSchedule(j.schedule),
