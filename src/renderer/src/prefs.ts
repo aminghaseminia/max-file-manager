@@ -109,6 +109,8 @@ export type Prefs = {
   toolbar: string[]
   /** toolbar button look: icon only, icon with its label, or the label alone */
   toolbarMode: 'icon' | 'icon-text' | 'text'
+  /** the command bar is hidden; the header ⋮ menu carries the same commands */
+  toolbarVisible: boolean
   /** show the bookmark bar under the command bar (the sidebar's bookmarks as a strip) */
   bookmarkBar: boolean
   // tabs
@@ -316,6 +318,7 @@ export const DEFAULTS: Prefs = {
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
+  toolbarVisible: true,
   bookmarkBar: true,
   newTabPos: 'next',
   middleClickClosesTab: true,
@@ -626,6 +629,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
       p.toolbarMode === 'icon' || p.toolbarMode === 'text' ? p.toolbarMode : 'icon-text',
+    toolbarVisible: p.toolbarVisible !== false,
     bookmarkBar: p.bookmarkBar !== false,
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',
     middleClickClosesTab: p.middleClickClosesTab !== false,

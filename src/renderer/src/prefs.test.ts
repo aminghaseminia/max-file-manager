@@ -232,6 +232,12 @@ test('removable devices: shown by default, can be turned off', () => {
   assert.equal(mergePrefs({ sidebarDrives: 'no' as never }).sidebarDrives, true)
 })
 
+test('toolbar: visible by default, only an explicit false hides it', () => {
+  assert.equal(mergePrefs({}).toolbarVisible, true)
+  assert.equal(mergePrefs({ toolbarVisible: false }).toolbarVisible, false)
+  assert.equal(mergePrefs({ toolbarVisible: 'no' as never }).toolbarVisible, true)
+})
+
 test('folder view memory: on by default and only stored views are gated', () => {
   // an old prefs file without the key gets the default, nonsense is not trusted either
   assert.equal(mergePrefs({}).rememberFolderView, true)

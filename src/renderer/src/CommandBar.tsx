@@ -13,6 +13,8 @@ type Props = {
   shortcuts: Record<string, string>
   /** commands that exist but do not apply to what the active pane shows (e.g. a remote folder) */
   disabled?: CommandId[]
+  /** no horizontal row: render only the header's ⋮ button and its all-commands menu */
+  collapsed?: boolean
   onRun(id: CommandId, anchor?: { x: number; y: number }): void
 }
 
@@ -22,7 +24,7 @@ const MORE = 34
  * The command bar. Every item is measured in an off-screen copy first, so a narrow window shows
  * a `…` button instead of silently cutting (or scrolling) the tail of the toolbar.
  */
-export function CommandBar({ items, mode, shortcuts, disabled = [], onRun }: Props) {
+export function CommandBar({ items, mode, shortcuts, disabled = [], collapsed, onRun }: Props) {
   const bar = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
   const [shown, setShown] = useState(items.length)
@@ -58,6 +60,45 @@ export function CommandBar({ items, mode, shortcuts, disabled = [], onRun }: Pro
     onRun(id, anchor)
   }
 
+  const menuItems = (list: CommandId[]): MenuItem[] =>
+    list
+      .map((id) => COMMAND_BY_ID[id])
+      .filter(Boolean)
+      .map((c) => ({
+        id: c.id,
+        label: labelOf(c),
+        key: formatAccel(shortcuts[c.id] ?? c.key),
+        icon: CMD_ICON[c.id],
+        disabled: disabled.includes(c.id)
+      }))
+
+  if (collapsed) {
+    return (
+      <>
+        <button
+          className="tb tb-more"
+          title={t('همهٔ فرمان‌ها')}
+          aria-label={t('همهٔ فرمان‌ها')}
+          onClick={(ev) => {
+            const r = ev.currentTarget.getBoundingClientRect()
+            setMenu({ x: r.left, y: r.bottom + 2 })
+          }}
+        >
+          ⋮
+        </button>
+        {menu && (
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            items={menuItems(items)}
+            onPick={(id) => press(id as CommandId, menu ?? undefined)}
+            onClose={() => setMenu(null)}
+          />
+        )}
+      </>
+    )
+  }
+
   const button = (id: CommandId, hidden: boolean) => {
     const c = COMMAND_BY_ID[id]
     if (!c) return null
@@ -81,16 +122,7 @@ export function CommandBar({ items, mode, shortcuts, disabled = [], onRun }: Pro
   }
 
   const rest = items.slice(shown)
-  const overflow: MenuItem[] = rest
-    .map((id) => COMMAND_BY_ID[id])
-    .filter(Boolean)
-    .map((c) => ({
-      id: c.id,
-      label: labelOf(c),
-      key: formatAccel(shortcuts[c.id] ?? c.key),
-      icon: CMD_ICON[c.id],
-      disabled: disabled.includes(c.id)
-    }))
+  const overflow: MenuItem[] = menuItems(rest)
 
   return (
     <>

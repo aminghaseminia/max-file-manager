@@ -3650,6 +3650,15 @@ export default function App() {
     />
   ) : null
 
+  const toolbarDisabled: CommandId[] =
+    isRemotePath(curPath)
+      ? (['flat', 'dupes', 'sync', 'diff', 'compress', 'extract', 'terminal', 'look', 'saveFormat', 'indexSizes'] as CommandId[])
+      : []
+  const runBarCommand = (id: CommandId, anchor?: { x: number; y: number }) => {
+    if (id === 'newItem') openNewMenu(anchor)
+    else RUN[id]?.()
+  }
+
   return (
     <div className="app" data-layout={prefs.layout}>
       {editor && editorMax && (
@@ -3685,6 +3694,16 @@ export default function App() {
         >
           <MenuIcon />
         </button>
+        {!drivesPageOpen && !prefs.toolbarVisible && prefs.toolbar.length > 0 && (
+          <CommandBar
+            collapsed
+            items={prefs.toolbar as CommandId[]}
+            mode={prefs.toolbarMode}
+            shortcuts={prefs.shortcuts}
+            disabled={toolbarDisabled}
+            onRun={runBarCommand}
+          />
+        )}
         <span className="spacer" />
         <button
           className={'tb' + (prefs.layout === 'dual' ? ' on' : '')}
@@ -3692,14 +3711,6 @@ export default function App() {
           onClick={() => updatePrefs({ layout: prefs.layout === 'dual' ? 'single' : 'dual' })}
         >
           <SplitIcon />
-        </button>
-        <button
-          className={'tb' + (drivesPageOpen ? ' on' : '')}
-          title={t('درایوها و دیسک‌ها')}
-          aria-pressed={drivesPageOpen}
-          onClick={() => setDrivesPageOpen((open) => !open)}
-        >
-          <DriveIcon />
         </button>
         <button
           className={'tb' + (previewOn ? ' on' : '')}
@@ -3768,20 +3779,13 @@ export default function App() {
         )}
       </header>
 
-      {!drivesPageOpen && prefs.toolbar.length > 0 && (
+      {!drivesPageOpen && prefs.toolbarVisible && prefs.toolbar.length > 0 && (
         <CommandBar
           items={prefs.toolbar as CommandId[]}
           mode={prefs.toolbarMode}
           shortcuts={prefs.shortcuts}
-          disabled={
-            isRemotePath(curPath)
-              ? (['flat', 'dupes', 'sync', 'diff', 'compress', 'extract', 'terminal', 'look', 'saveFormat', 'indexSizes'] as CommandId[])
-              : []
-          }
-          onRun={(id, anchor) => {
-            if (id === 'newItem') openNewMenu(anchor)
-            else RUN[id]?.()
-          }}
+          disabled={toolbarDisabled}
+          onRun={runBarCommand}
         />
       )}
 
