@@ -7,6 +7,7 @@ export const DEFAULT_TOOLBAR = [
   'newItem',
   'copy',
   'move',
+  'sync',
   'edit',
   'rename',
   'trash',
@@ -439,6 +440,23 @@ function normalFileTypes(raw: unknown): Record<string, string> {
   return out
 }
 
+const LEGACY_DEFAULT_TOOLBAR = [
+  'newItem',
+  'copy',
+  'move',
+  'edit',
+  'rename',
+  'trash',
+  'size',
+  'look',
+  'previewPane',
+  'undo',
+  'newTab',
+  'flat',
+  'dupes',
+  'terminal'
+]
+
 /** Only known commands survive; a missing or garbage value falls back to the default toolbar. */
 function normalToolbar(raw: unknown): string[] {
   if (!Array.isArray(raw)) return DEFAULT_TOOLBAR
@@ -451,6 +469,12 @@ function normalToolbar(raw: unknown): string[] {
   }
   if (!ids.includes('newItem')) {
     ids = ['newItem', ...ids]
+  }
+  if (
+    ids.length === LEGACY_DEFAULT_TOOLBAR.length &&
+    ids.every((id, i) => id === LEGACY_DEFAULT_TOOLBAR[i])
+  ) {
+    return DEFAULT_TOOLBAR
   }
   return ids
 }

@@ -499,6 +499,11 @@ const EN: Record<string, string> = {
   'تاریخ ساخت': 'Created',
   'هش محتوا': 'Content hash',
   'نادیده گرفتن:': 'Ignore:',
+  'مقایسه': 'Compare',
+  'برای دیدن تفاوت‌ها، تنظیمات را انتخاب کرده و «مقایسه» را بزنید.':
+    'Choose settings and click "Compare" to see differences.',
+  'تنظیمات تغییر کرده؛ دوباره «مقایسه» را بزنید.': 'Settings changed; click "Compare" again.',
+  'تفاوتی یافت نشد': 'No differences found',
   'مشکلی': 'issue',
   'اجرا': 'Run',
   'مقایسهٔ دو فایل': 'Compare two files',

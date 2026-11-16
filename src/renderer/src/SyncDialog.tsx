@@ -40,6 +40,7 @@ type Props = {
   right: string
   rows: SyncRow[]
   capped: boolean
+  compared: boolean
   busy: boolean
   result: string
   compareBy: 'mtime' | 'ctime' | 'hash'
@@ -49,12 +50,13 @@ type Props = {
   onClose(): void
 }
 
-/** Two-folder sync: show every difference, pick a direction, run it. */
+/** Two-folder sync: configure comparison, compare, pick a direction, run it. */
 export function SyncDialog({
   left,
   right,
   rows,
   capped,
+  compared,
   busy,
   result,
   compareBy,
@@ -66,8 +68,10 @@ export function SyncDialog({
   const [mode, setMode] = useState<'ltr' | 'rtl'>('ltr')
   const [deleteExtra, setDeleteExtra] = useState(false)
   const [only, setOnly] = useState(false)
+  const [selectedCompareBy, setSelectedCompareBy] = useState<'mtime' | 'ctime' | 'hash'>(compareBy)
   const [ignoreText, setIgnoreText] = useState(ignore)
 
+  const dirty = compared && (selectedCompareBy !== compareBy || ignoreText !== ignore)
   const differs = rows.filter((r) => r.state !== 'same')
   const shown = only ? differs : rows
   const count = (state: string) => rows.filter((r) => r.state === state).length
@@ -75,7 +79,7 @@ export function SyncDialog({
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog sync-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">{t(t('همگام‌سازی دو پوشه'))}</div>
+        <div className="dialog-title">{t('همگام‌سازی دو پوشه')}</div>
 
         <div className="sync-paths">
           <span dir="auto">{left}</span>
@@ -88,7 +92,8 @@ export function SyncDialog({
             {(['mtime', 'ctime', 'hash'] as const).map((k) => (
               <button
                 key={k}
-                className={compareBy === k ? 'on' : ''}
+                className={selectedCompareBy === k ? 'on' : ''}
+                disabled={busy}
                 title={
                   k === 'mtime'
                     ? t('تاریخ آخرین تغییر')
@@ -96,22 +101,22 @@ export function SyncDialog({
                       ? t('تاریخ ساخت فایل')
                       : t('هش محتوا (کندتر و دقیق‌تر)')
                 }
-                onClick={() => onRecompare(k, ignoreText)}
+                onClick={() => setSelectedCompareBy(k)}
               >
                 {k === 'mtime' ? t('تاریخ تغییر') : k === 'ctime' ? t('تاریخ ساخت') : t('هش محتوا')}
               </button>
             ))}
           </div>
           <label className="check-label">
-            <span>{t(t('نادیده گرفتن:'))}</span>
+            <span>{t('نادیده گرفتن:')}</span>
             <input
               className="ignore-input"
               dir="ltr"
               placeholder="*.log, node_modules"
               value={ignoreText}
+              disabled={busy}
               onChange={(e) => setIgnoreText(e.target.value)}
-              onBlur={() => ignoreText !== ignore && onRecompare(compareBy, ignoreText)}
-              onKeyDown={(e) => e.key === 'Enter' && onRecompare(compareBy, ignoreText)}
+              onKeyDown={(e) => e.key === 'Enter' && !busy && onRecompare(selectedCompareBy, ignoreText)}
             />
           </label>
           <div className="seg">
@@ -124,41 +129,68 @@ export function SyncDialog({
           </div>
           <label className="check-label">
             <input type="checkbox" checked={deleteExtra} onChange={(e) => setDeleteExtra(e.target.checked)} />
-            <span>{t(t('فایل‌های اضافی مقصد به سطل بازیافت'))}</span>
+            <span>{t('فایل‌های اضافی مقصد به سطل بازیافت')}</span>
           </label>
           <label className="check-label">
             <input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />
-            <span>{t(t('فقط تفاوت‌ها'))}</span>
+            <span>{t('فقط تفاوت‌ها')}</span>
           </label>
         </div>
 
-        <div className="sync-summary">
-          <span className="chip add">{t('{n} از مبدأ', { n: fa(count('leftOnly') + count('leftNewer')) })}</span>
-          <span className="chip del">{t('{n} از مقصد', { n: fa(count('rightOnly') + count('rightNewer')) })}</span>
-          <span className="chip warn">{t('{n} مشکوک', { n: fa(count('sizeDiff') + count('contentDiff') + count('typeDiff')) })}</span>
-          <span className="chip">{t('{n} یکسان', { n: fa(count('same')) })}</span>
-          {capped && <span className="chip warn">{t(t('فهرست بریده شد'))}</span>}
-        </div>
+        {compared && (
+          <div className="sync-summary">
+            <span className="chip add">{t('{n} از مبدأ', { n: fa(count('leftOnly') + count('leftNewer')) })}</span>
+            <span className="chip del">{t('{n} از مقصد', { n: fa(count('rightOnly') + count('rightNewer')) })}</span>
+            <span className="chip warn">
+              {t('{n} مشکوک', { n: fa(count('sizeDiff') + count('contentDiff') + count('typeDiff')) })}
+            </span>
+            <span className="chip">{t('{n} یکسان', { n: fa(count('same')) })}</span>
+            {capped && <span className="chip warn">{t('فهرست بریده شد')}</span>}
+            {dirty && <span className="chip warn">{t('تنظیمات تغییر کرده؛ دوباره «مقایسه» را بزنید.')}</span>}
+          </div>
+        )}
 
         <div className="sync-list">
-          {shown.slice(0, 500).map((r) => (
-            <div className="sync-row" key={r.rel}>
-              <span className={'chip ' + (TONE[r.state] ?? '')}>{labelOfState(r.state) ?? r.state}</span>
-              <span className="sync-rel" dir="auto">
-                {r.rel}
-              </span>
-              <span className="dim sync-size">
-                {r.left && !r.left.dir ? `${fa(r.left.size)}B` : '—'} / {r.right && !r.right.dir ? `${fa(r.right.size)}B` : '—'}
-              </span>
-            </div>
-          ))}
-          {shown.length > 500 && <div className="dim">{t('… {n} ردیف دیگر', { n: fa(shown.length - 500) })}</div>}
+          {busy ? (
+            <div className="sync-empty dim">{t('در حال مقایسه…')}</div>
+          ) : !compared ? (
+            <div className="sync-empty dim">{t('برای دیدن تفاوت‌ها، تنظیمات را انتخاب کرده و «مقایسه» را بزنید.')}</div>
+          ) : shown.length === 0 ? (
+            <div className="sync-empty dim">{t('تفاوتی یافت نشد')}</div>
+          ) : (
+            <>
+              {shown.slice(0, 500).map((r) => (
+                <div className="sync-row" key={r.rel}>
+                  <span className={'chip ' + (TONE[r.state] ?? '')}>{labelOfState(r.state) ?? r.state}</span>
+                  <span className="sync-rel" dir="auto">
+                    {r.rel}
+                  </span>
+                  <span className="dim sync-size">
+                    {r.left && !r.left.dir ? `${fa(r.left.size)}B` : '—'} /{' '}
+                    {r.right && !r.right.dir ? `${fa(r.right.size)}B` : '—'}
+                  </span>
+                </div>
+              ))}
+              {shown.length > 500 && <div className="dim">{t('… {n} ردیف دیگر', { n: fa(shown.length - 500) })}</div>}
+            </>
+          )}
         </div>
 
         {result && <div className="sync-result dim">{result}</div>}
 
         <div className="dialog-actions">
-          <button className="btn" disabled={busy} onClick={() => onApply(mode, deleteExtra)}>
+          <button
+            className={!compared || dirty ? 'btn' : 'btn ghost'}
+            disabled={busy}
+            onClick={() => onRecompare(selectedCompareBy, ignoreText)}
+          >
+            {t('مقایسه')}
+          </button>
+          <button
+            className={compared && !dirty ? 'btn' : 'btn ghost'}
+            disabled={busy || !compared || dirty}
+            onClick={() => onApply(mode, deleteExtra)}
+          >
             {t('اجرا')}
           </button>
           <button className="btn ghost" onClick={onClose}>

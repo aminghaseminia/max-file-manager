@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #14161b;
   --panel: #1a1d23;
   --panel-2: #1f232a;
@@ -64,6 +65,7 @@
 }
 
 :root[data-theme='light'] {
+  color-scheme: light;
   --bg: #eef0f4;
   --panel: #ffffff;
   --panel-2: #f6f7fa;
@@ -4061,6 +4063,11 @@ html[data-rounded='0'] .app {
 .sync-result {
   margin-top: 8px;
   font-size: 11.5px;
+}
+.sync-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
 }
 .diff-body {
   flex: 1;

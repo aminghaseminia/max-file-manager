@@ -360,6 +360,7 @@ export default function App() {
     right: string
     rows: any[]
     capped: boolean
+    compared: boolean
     result: string
     busy: boolean
     compareBy: 'mtime' | 'ctime' | 'hash'
@@ -2616,7 +2617,8 @@ export default function App() {
               { id: 'terminal', label: t('ترمینال اینجا'), key: 'Ctrl+Alt+T', icon: <TerminalIcon /> } as MenuItem,
               { sep: true } as MenuItem,
               { id: 'flat', label: t('نمای تخت'), icon: <LayersIcon /> } as MenuItem,
-              { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> } as MenuItem
+              { id: 'dupes', label: t('فایل‌های تکراری'), icon: <GaugeIcon /> } as MenuItem,
+              { id: 'sync', label: t('همگام‌سازی با پنجرهٔ مقابل'), key: 'Ctrl+Shift+Y', icon: <SplitIcon /> } as MenuItem
             ]),
         { id: 'size', label: t('اندازهٔ این پوشه'), key: 'F9', icon: <GaugeIcon /> },
         ...(remoteHere
@@ -3068,6 +3070,11 @@ export default function App() {
     compareBy: 'mtime' | 'ctime' | 'hash',
     ignore: string
   ) => {
+    setSync((prev) =>
+      prev
+        ? { ...prev, busy: true, result: '', compareBy, ignore }
+        : { left, right, rows: [], capped: false, compared: false, result: '', busy: true, compareBy, ignore }
+    )
     setNote(t('در حال مقایسه…'))
     const r = await api.syncCompare(left, right, {
       compareBy,
@@ -3077,10 +3084,20 @@ export default function App() {
         .filter(Boolean)
     })
     setNote(t('{n} تفاوت', { n: fa(r.rows.filter((x) => x.state !== 'same').length) }))
-    setSync({ left, right, rows: r.rows, capped: r.capped, result: '', busy: false, compareBy, ignore })
+    setSync({
+      left,
+      right,
+      rows: r.rows,
+      capped: r.capped,
+      compared: true,
+      result: '',
+      busy: false,
+      compareBy,
+      ignore
+    })
   }
 
-  const openSync = async () => {
+  const openSync = () => {
     const left = tabOf(panes![active])
     const right = tabOf(panes![1 - active])
     if (remoteGuard(left) || remoteGuard(right)) return
@@ -3088,7 +3105,17 @@ export default function App() {
       setNote(t('پنجرهٔ مقابل پوشهٔ دیگری باشد'))
       return
     }
-    await runCompare(left, right, 'mtime', '')
+    setSync({
+      left,
+      right,
+      rows: [],
+      capped: false,
+      compared: false,
+      result: '',
+      busy: false,
+      compareBy: 'mtime',
+      ignore: ''
+    })
   }
 
   const openDiff = async () => {
@@ -4391,6 +4418,7 @@ export default function App() {
           right={sync.right}
           rows={sync.rows}
           capped={sync.capped}
+          compared={sync.compared}
           busy={sync.busy}
           result={sync.result}
           compareBy={sync.compareBy}
