@@ -74,7 +74,11 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `read_text` | `path` | text up to 8 MB |
 | `archive_list` | `path` | entries inside a zip/tar |
 | `diff` | `a`, `b` | line diff of two text files |
-| `sync_compare` | `left`, `right`, `deep?`, `compareBy?`, `ignore[]?` | a two-way synchronisation plan |
+| `sync_compare` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?` | compare two local/remote trees (read-only) |
+| `sync_plan` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `deleteExtra?` | rows + exact copy/delete plan, writes nothing |
+| `sync_jobs` | – | saved jobs, directions and schedules |
+| `sync_history` | `limit?` | recent runs with stats and conflicts |
+| `sync_status` | – | the run currently in progress |
 | `tags` | `paths[]` | ID3 / EXIF tags, including `coverMime` for an embedded picture |
 | `tags_cover` | `path`, `out?` | embedded cover: `{mime, size, dataUrl}` (max 4 MB), or with an absolute `out` the image is written to a free name and `{path, size}` comes back |
 | `meta_get` | `dir` | `{color, icon, pins, labels, colors, ratings, notes, format}` |
@@ -128,7 +132,12 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `pin_set` | `dir`, `name`, `on` | |
 | `job_start` / `job_pause` / `job_resume` / `job_cancel` / `job_clear` | `kind`, `sources[]`, `dest`, `opts?` / `id` | full transfer control |
 | `undo` | – | undo the last transfer |
-| `sync_apply` | `left`, `right`, `rows[]`, `mode`, `deleteExtra?` | apply a sync plan; extras go to trash |
+| `sync_apply` | `left`, `right`, `mode`, `deleteExtra?` | legacy one-way helper; re-compares, local deletes go to trash, remote deletes are refused |
+| `sync_run` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `deleteExtra?`, `dryRun?`, `confirm?` | one run; two-way reports conflicts instead of guessing, remote deletes need `confirm:true` |
+| `sync_job_save` | `job` | create/update a validated job (no secrets) |
+| `sync_job_remove` | `id` | delete a job |
+| `sync_restore` | `id`, `confirm?` | reverse the copies of a run; deleted files are reported unrestorable |
+| `sync_cancel` | `id?` | cancel the active run |
 | `run_script` | `command`, `path?`, `dir?` | the user's own script text with `{path}`/`{dir}` |
 | `search_index` | `roots[]`, `exclude[]?`, `wait?` | build the index; `wait:false` starts it and returns at once |
 | `search_clear` | – | wipe the index; **settings are kept** |

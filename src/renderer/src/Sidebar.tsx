@@ -1,10 +1,10 @@
 import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DirRef, type Drive, type RemoteProfile } from './api'
+import { api, type DirRef, type Drive, type RemoteProfile, type SyncJob } from './api'
 import { baseName, fa } from './format'
 import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, pathsOf, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
-import { ChevronDownIcon, ChevronLeftIcon, CloudIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, PlusIcon, ServerIcon, StarIcon, UsbIcon, XIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, CloudIcon, DriveIcon, EjectIcon, EntryIcon, FolderIcon, HomeIcon, PinIcon, PlayIcon, PlusIcon, ServerIcon, StarIcon, SwapIcon, UsbIcon, XIcon } from './Icons'
 import { profileUri } from '../../shared/remote-profile.ts'
 
 type LabelCount = { id: string; name: string; color: string; count: number }
@@ -52,6 +52,9 @@ type Props = {
   collapsed?: string[]
   onToggleSection?(id: string): void
   onReorderMarks?(from: number, to: number, place: 'before' | 'after'): void
+  /** saved sync jobs; undefined/empty hides the section entirely */
+  syncJobs?: SyncJob[]
+  onSyncJob?(job: SyncJob): void
 }
 
 export function Sidebar({
@@ -87,7 +90,9 @@ export function Sidebar({
   onDoubleClickHead,
   collapsed,
   onToggleSection,
-  onReorderMarks
+  onReorderMarks,
+  syncJobs,
+  onSyncJob
 }: Props) {
   const [dragMarkIdx, setDragMarkIdx] = useState<number | null>(null)
   /** path of the bookmark whose title is being edited inline */
@@ -737,6 +742,48 @@ export function Sidebar({
           </div>
         )
       })}
+
+      {syncJobs && syncJobs.length > 0 && (
+        <div className="side-section-head">
+          <button
+            type="button"
+            className="side-section-toggle"
+            onClick={() => toggleSection('sync')}
+            aria-expanded={!isCollapsed('sync')}
+          >
+            <span className="side-twisty">
+              {!isCollapsed('sync') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+            </span>
+            <span className="side-title">{t('همگام‌سازی')}</span>
+            <span className="side-section-badge">{fa(syncJobs.length)}</span>
+          </button>
+        </div>
+      )}
+      {!isCollapsed('sync') &&
+        syncJobs?.map((j) => (
+          <div key={j.id} className="tree-row side-sync" title={`${j.left} ↔ ${j.right}`}>
+            <span className="twisty" />
+            <button className="tree-name" dir="auto" onClick={() => onSyncJob?.(j)}>
+              <SwapIcon size={13} />
+              <span className="side-sync-name">{j.name}</span>
+              <span className="dim side-mount-tag">
+                {j.direction === 'rtl' ? '←' : j.direction === 'both' ? '↔' : '→'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="side-eject-btn"
+              title={t('باز کردن برای اجرا')}
+              aria-label={t('باز کردن برای اجرا')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSyncJob?.(j)
+              }}
+            >
+              <PlayIcon size={11} />
+            </button>
+          </div>
+        ))}
     </aside>
   )
 }

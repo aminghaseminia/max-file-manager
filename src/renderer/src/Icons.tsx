@@ -269,8 +269,8 @@ export const TrashXIcon = () => (
     <path d="M10.2 11.2l3.6 3.6M13.8 11.2l-3.6 3.6" />
   </S>
 )
-export const TrashIcon = () => (
-  <S>
+export const TrashIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l1 13h9l1-13" />
   </S>
 )
@@ -346,6 +346,16 @@ export const SwapIcon = ({ size = 15 }: { size?: number }) => (
     <path d="M4 8h13l-3-3M20 16H7l3 3" />
   </S>
 )
+export const ArrowRightIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M4 12h16M14 6l6 6-6 6" />
+  </S>
+)
+export const ArrowLeftIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
+    <path d="M20 12H4M10 6l-6 6 6 6" />
+  </S>
+)
 export const UsbIcon = ({ size = 14 }: { size?: number }) => (
   <S size={size}>
     <circle cx="12" cy="18" r="1.5" />
@@ -362,13 +372,13 @@ export const EjectIcon = ({ size = 13 }: { size?: number }) => (
     <path d="M5 18h14" />
   </S>
 )
-export const PauseIcon = () => (
-  <S>
+export const PauseIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M9 5v14M15 5v14" />
   </S>
 )
-export const PlayIcon = () => (
-  <S>
+export const PlayIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M7 4.5l12 7.5-12 7.5z" />
   </S>
 )
@@ -643,8 +653,8 @@ export const ResizeIcon = () => (
     <path d="M10 8.5h5.5V14" />
   </S>
 )
-export const CheckIcon = () => (
-  <S>
+export const CheckIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M5 12.5l4.5 4.5L19 6.5" />
   </S>
 )

@@ -1,7 +1,7 @@
 import { t } from './i18n.ts'
-import type { Job } from './api'
+import type { Job, SyncProgress } from './api'
 import { fa, fmtSize } from './format'
-import { CopyIcon, MoveIcon, PauseIcon, PlayIcon, XIcon } from './Icons'
+import { CopyIcon, MoveIcon, PauseIcon, PlayIcon, SwapIcon, XIcon } from './Icons'
 
 type Props = {
   jobs: Job[]
@@ -9,6 +9,12 @@ type Props = {
   onResume(id: string): void
   onCancel(id: string): void
   onClear(): void
+  /** the sync run currently in progress, if any */
+  sync?: SyncProgress | null
+  syncPaused?: boolean
+  onSyncPause?(): void
+  onSyncResume?(): void
+  onSyncCancel?(): void
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -20,19 +26,63 @@ const STATE_LABEL: Record<string, string> = {
   error: 'خطا'
 }
 
-export function JobsBar({ jobs, onPause, onResume, onCancel, onClear }: Props) {
-  if (!jobs.length) return null
+export function JobsBar({
+  jobs,
+  onPause,
+  onResume,
+  onCancel,
+  onClear,
+  sync,
+  syncPaused,
+  onSyncPause,
+  onSyncResume,
+  onSyncCancel
+}: Props) {
+  if (!jobs.length && !sync) return null
+  const syncPct = sync && sync.files ? Math.min(100, Math.round((sync.filesDone / sync.files) * 100)) : 0
   return (
     <div className="jobs">
       <div className="jobs-head">
         <span className="jobs-title">{t(t('عملیات‌ها'))}</span>
-        <span className="pill">{t('{n} در حال اجرا', { n: fa(jobs.filter((j) => j.state === 'running').length) })}</span>
+        <span className="pill">
+          {t('{n} در حال اجرا', {
+            n: fa(jobs.filter((j) => j.state === 'running').length + (sync?.state === 'running' ? 1 : 0))
+          })}
+        </span>
         <span className="spacer" />
         <button className="tb" title={t(t('پاک کردن تمام‌شده‌ها'))} onClick={onClear}>
           <XIcon size={12} />
         </button>
       </div>
       <div className="jobs-list">
+        {sync && sync.state === 'running' && (
+          <div className={'job running' + (syncPaused ? ' paused' : '')}>
+            <span className="ic">
+              <SwapIcon />
+            </span>
+            <span className="job-label" dir="auto" title={sync.current}>
+              {t('همگام‌سازی')} · {sync.current || '…'}
+            </span>
+            <span className="bar">
+              <i style={{ width: syncPct + '%' }} />
+            </span>
+            <span className="job-meta">
+              {t('{n}٪', { n: fa(syncPct) })} · {fmtSize(sync.bytesDone, false)} ·{' '}
+              {t('{n} از {m}', { n: fa(sync.filesDone), m: fa(sync.files) })}
+            </span>
+            <span className="spacer" />
+            <button
+              className="tb"
+              title={syncPaused ? t('ادامه') : t('مکث')}
+              onClick={() => (syncPaused ? onSyncResume?.() : onSyncPause?.())}
+            >
+              {syncPaused ? <PlayIcon /> : <PauseIcon />}
+            </button>
+            <button className="tb" title={t('لغو')} onClick={() => onSyncCancel?.()}>
+              <XIcon size={12} />
+            </button>
+          </div>
+        )}
         {jobs.map((j) => {
           const pct = j.bytes ? Math.min(100, Math.round((j.done / j.bytes) * 100)) : j.state === 'done' ? 100 : 0
           const live = j.state === 'running' || j.state === 'paused' || j.state === 'queued'

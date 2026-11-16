@@ -1,6 +1,7 @@
 import { t } from './i18n.ts'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS } from './commands.ts'
 import { DEFAULT_COLOR_THEME, isColorTheme } from './themes.ts'
+import { cleanPairDirs, cleanSyncJobs, type SyncJob, type SyncMode } from '../../shared/sync.ts'
 
 /** The toolbar the app ships with; the user can change it in preferences. */
 export const DEFAULT_TOOLBAR = [
@@ -195,6 +196,10 @@ export type Prefs = {
   // icon packs (folder look)
   iconDirs: string[]
   iconTheme: string
+  /** saved sync jobs; `cleanSyncJobs` is the only validation, so a bad disk value cannot boot-fail */
+  syncJobs: SyncJob[]
+  /** the direction the divider pill last chose for a pair of panes (pairKey → direction) */
+  syncPairDirs: Record<string, SyncMode>
 }
 
 export type CustomCommand = {
@@ -364,7 +369,9 @@ export const DEFAULTS: Prefs = {
   customCommands: [],
   terminal: 'auto',
   iconDirs: [],
-  iconTheme: ''
+  iconTheme: '',
+  syncJobs: [],
+  syncPairDirs: {}
 }
 
 /**
@@ -700,7 +707,9 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     customCommands: cleanCustomCommands(p.customCommands),
     terminal: cleanTerminalId(p.terminal),
     iconDirs: Array.isArray(p.iconDirs) ? p.iconDirs.filter((d) => typeof d === 'string' && d) : [],
-    iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : ''
+    iconTheme: typeof p.iconTheme === 'string' ? p.iconTheme : '',
+    syncJobs: cleanSyncJobs(p.syncJobs),
+    syncPairDirs: cleanPairDirs(p.syncPairDirs)
   }
 }
 

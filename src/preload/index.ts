@@ -132,10 +132,38 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('image:batchConvert', { files, opts }),
   exportListing: (dir: string, name: string, rows: unknown, format: string, theme?: string) =>
     ipcRenderer.invoke('export:listing', { dir, name, rows, format, theme }),
-  syncCompare: (left: string, right: string, opts?: unknown) =>
-    ipcRenderer.invoke('sync:compare', { left, right, ...(opts as object) }),
-  syncApply: (left: string, right: string, rows: unknown, mode: string, deleteExtra?: boolean) =>
-    ipcRenderer.invoke('sync:apply', { left, right, rows, mode, deleteExtra }),
+  sync: {
+    compare: (opts: unknown) => ipcRenderer.invoke('sync:compare', opts),
+    plan: (opts: unknown) => ipcRenderer.invoke('sync:plan', opts),
+    run: (opts: unknown) => ipcRenderer.invoke('sync:run', opts),
+    jobs: () => ipcRenderer.invoke('sync:jobs'),
+    saveJob: (job: unknown) => ipcRenderer.invoke('sync:jobSave', job),
+    removeJob: (id: string) => ipcRenderer.invoke('sync:jobRemove', id),
+    history: (limit?: number) => ipcRenderer.invoke('sync:history', limit),
+    restore: (id: string, confirmRemote?: boolean) =>
+      ipcRenderer.invoke('sync:restore', { id, confirmRemote }),
+    status: () => ipcRenderer.invoke('sync:status'),
+    cancel: (id?: string) => ipcRenderer.invoke('sync:cancel', id),
+    pause: (id?: string) => ipcRenderer.invoke('sync:pause', id),
+    resume: (id?: string) => ipcRenderer.invoke('sync:resume', id),
+    clearBaseline: (left: string, right: string) =>
+      ipcRenderer.invoke('sync:clearBaseline', { left, right }),
+    onProgress: (cb: (p: unknown) => void) => {
+      const fn = (_e: unknown, p: unknown) => cb(p)
+      ipcRenderer.on('sync:progress', fn)
+      return () => ipcRenderer.removeListener('sync:progress', fn)
+    },
+    onDone: (cb: (r: unknown) => void) => {
+      const fn = (_e: unknown, r: unknown) => cb(r)
+      ipcRenderer.on('sync:done', fn)
+      return () => ipcRenderer.removeListener('sync:done', fn)
+    },
+    onJobs: (cb: (jobs: unknown) => void) => {
+      const fn = (_e: unknown, jobs: unknown) => cb(jobs)
+      ipcRenderer.on('sync:jobs', fn)
+      return () => ipcRenderer.removeListener('sync:jobs', fn)
+    }
+  },
   diffFiles: (a: string, b: string) => ipcRenderer.invoke('fs:diff', { a, b }),
   readText: (p: string) => ipcRenderer.invoke('fs:readText', p),
   drafts: {

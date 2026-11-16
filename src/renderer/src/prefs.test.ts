@@ -255,3 +255,26 @@ test('Places tree: expanded folders are absolute paths, deduped and capped', () 
   const many = Array.from({ length: 400 }, (_, i) => `/d${i}`)
   assert.equal(mergePrefs({ sidebarTreeOpen: many }).sidebarTreeOpen.length, 300)
 })
+
+test('sync jobs and pair directions: invalid disk values are dropped, valid ones survive', () => {
+  const good = {
+    id: 'job-1',
+    left: '/a',
+    right: '/b',
+    direction: 'both',
+    compareBy: 'hash',
+    ignore: ['*.log'],
+    enabled: true
+  }
+  const p = mergePrefs({
+    syncJobs: [good, { id: 'bad', left: 'relative', right: '/b' }, null] as never,
+    syncPairDirs: { '/a\u0000/b': 'rtl', x: 'sideways' } as never
+  })
+  assert.equal(p.syncJobs.length, 1)
+  assert.equal(p.syncJobs[0].direction, 'both')
+  assert.equal(p.syncJobs[0].compareBy, 'hash')
+  assert.deepEqual(p.syncPairDirs, { '/a\u0000/b': 'rtl' })
+  assert.deepEqual(mergePrefs({}).syncJobs, [])
+  assert.deepEqual(mergePrefs({ syncJobs: 'nope' as never }).syncJobs, [])
+  assert.deepEqual(mergePrefs({ syncPairDirs: null as never }).syncPairDirs, {})
+})

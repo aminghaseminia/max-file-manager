@@ -235,6 +235,27 @@ export function remoteJoin(dir: string, name: string): string {
   return withPath(loc, `${base}/${name}`)
 }
 
+/**
+ * Append a relative path (which may contain slashes) to a remote folder. `remoteJoin` refuses a
+ * slash on purpose (it protects FTP commands); the sync engine speaks relative paths, so it needs
+ * the same safety per segment without refusing the whole path.
+ */
+export function remoteJoinRel(dir: string, rel: string): string {
+  const parts = String(rel ?? '')
+    .split('/')
+    .filter((p) => p && p !== '.')
+  if (parts.some((p) => p === '..' || /[\0\r\n\\]/.test(p))) throw new Error('invalid remote path')
+  const loc = parseRemote(dir)
+  if (!loc) throw new Error('invalid remote folder')
+  const suffix = parts.join('/')
+  if (loc.scheme === 's3') {
+    const key = loc.path ? (suffix ? `${loc.path}/${suffix}` : loc.path) : suffix
+    return withPath(loc, key)
+  }
+  const base = loc.path === '/' ? '' : loc.path.replace(/\/+$/, '')
+  return withPath(loc, suffix ? `${base}/${suffix}` : base || '/')
+}
+
 /** The server/bucket part, which is what a profile lookup is keyed on. */
 export function remoteOriginKey(uri: string): string {
   const loc = parseRemote(uri)

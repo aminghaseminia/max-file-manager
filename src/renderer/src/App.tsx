@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type RemoteProfile, type SearchProgress } from './api'
+import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type RemoteProfile, type SearchProgress, type SyncJob, type SyncMode, type SyncProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { DrivesPage } from './DrivesPage'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
@@ -48,12 +48,14 @@ import { TreePane } from './TreePane'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { RemoteDialog } from './RemoteDialog'
-import { SyncDialog } from './SyncDialog'
+import { SyncWorkspace } from './SyncWorkspace'
+import { SyncPill } from './SyncPill'
 import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
 import { CommandBar } from './CommandBar'
 import { BookmarkBar } from './BookmarkBar'
 import { profileUri } from '../../shared/remote-profile.ts'
+import { pairKey } from '../../shared/sync.ts'
 import { COMMANDS, type CommandId } from './commands'
 import { appModifier, matchAccel } from './keys'
 import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
@@ -355,17 +357,15 @@ export default function App() {
   const [archiveJob, setArchiveJob] = useState<ArchiveJob | null>(null)
   const [archiveBusy, setArchiveBusy] = useState(false)
   const [archiveResult, setArchiveResult] = useState('')
-  const [sync, setSync] = useState<{
-    left: string
-    right: string
-    rows: any[]
-    capped: boolean
-    compared: boolean
-    result: string
-    busy: boolean
-    compareBy: 'mtime' | 'ctime' | 'hash'
-    ignore: string
-  } | null>(null)
+  /** the pair the sync workspace was opened for; the workspace owns its own compare/plan state */
+  const [syncOpen, setSyncOpen] = useState<{ left: string; right: string } | null>(null)
+  const [syncKey, setSyncKey] = useState(0)
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
+  const [syncPaused, setSyncPaused] = useState(false)
+  const prefsRef = useRef(prefs)
+  useEffect(() => {
+    prefsRef.current = prefs
+  }, [prefs])
   const [diff, setDiff] = useState<{ a: string; b: string; result: any } | null>(null)
   const [gallery, setGallery] = useState<{ images: Entry[]; start: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
@@ -751,6 +751,37 @@ export default function App() {
     })
     return off
   }, [])
+
+  // sync events: live progress, one completion note, and jobs saved by MCP before the next reload
+  useEffect(
+    () =>
+      api.sync.onProgress((p) => {
+        setSyncProgress(p)
+        setSyncPaused(p.paused === true)
+      }),
+    []
+  )
+  useEffect(
+    () =>
+      api.sync.onDone((r) => {
+        setSyncProgress(null)
+        setSyncPaused(false)
+        if (r.state === 'error') setNote(`${t('همگام‌سازی خطا داد')} — ${r.errors[0] ?? ''}`)
+        else if (r.state === 'cancelled') setNote(t('همگام‌سازی لغو شد'))
+        else setNote(t('همگام‌سازی تمام شد — {n} کپی', { n: fa(r.copied) }))
+      }),
+    []
+  )
+  useEffect(
+    () =>
+      api.sync.onJobs((jobs) => {
+        const next = { ...prefsRef.current, syncJobs: jobs }
+        prefsRef.current = next
+        setPrefs(next)
+        void api.state.setPrefs(next)
+      }),
+    []
+  )
 
   // remember the session, debounced so a directory load doesn't hammer the disk
   useEffect(() => {
@@ -3064,58 +3095,31 @@ export default function App() {
     setReveal((r) => ({ pane: active, path, tick: r.tick + 1 }))
   }
 
-  const runCompare = async (
-    left: string,
-    right: string,
-    compareBy: 'mtime' | 'ctime' | 'hash',
-    ignore: string
-  ) => {
-    setSync((prev) =>
-      prev
-        ? { ...prev, busy: true, result: '', compareBy, ignore }
-        : { left, right, rows: [], capped: false, compared: false, result: '', busy: true, compareBy, ignore }
-    )
-    setNote(t('در حال مقایسه…'))
-    const r = await api.syncCompare(left, right, {
-      compareBy,
-      ignore: ignore
-        .split(/[,\s]+/)
-        .map((x) => x.trim())
-        .filter(Boolean)
-    })
-    setNote(t('{n} تفاوت', { n: fa(r.rows.filter((x) => x.state !== 'same').length) }))
-    setSync({
-      left,
-      right,
-      rows: r.rows,
-      capped: r.capped,
-      compared: true,
-      result: '',
-      busy: false,
-      compareBy,
-      ignore
-    })
-  }
-
-  const openSync = () => {
-    const left = tabOf(panes![active])
-    const right = tabOf(panes![1 - active])
-    if (remoteGuard(left) || remoteGuard(right)) return
+  /**
+   * Open the sync workspace for the two panes. The pill's direction is written into prefs so the
+   * next open (and the saved job) starts from the same choice; the workspace still owns the run.
+   */
+  const openSync = (mode?: SyncMode) => {
+    if (prefs.layout !== 'dual') {
+      setNote(t('همگام‌سازی در نمای دوپنجره کار می‌کند'))
+      return
+    }
+    // pane 0 is «left» and pane 1 is «right», whatever pane the user clicked last
+    const left = tabOf(panes![0])
+    const right = tabOf(panes![1])
     if (!right || right === left) {
       setNote(t('پنجرهٔ مقابل پوشهٔ دیگری باشد'))
       return
     }
-    setSync({
-      left,
-      right,
-      rows: [],
-      capped: false,
-      compared: false,
-      result: '',
-      busy: false,
-      compareBy: 'mtime',
-      ignore: ''
-    })
+    if (mode) updatePrefs({ syncPairDirs: { ...prefs.syncPairDirs, [pairKey(left, right)]: mode } })
+    setSyncKey((k) => k + 1)
+    setSyncOpen({ left, right })
+  }
+
+  const openSyncJob = (job: SyncJob) => {
+    updatePrefs({ syncPairDirs: { ...prefs.syncPairDirs, [pairKey(job.left, job.right)]: job.direction } })
+    setSyncKey((k) => k + 1)
+    setSyncOpen({ left: job.left, right: job.right })
   }
 
   const openDiff = async () => {
@@ -3425,7 +3429,7 @@ export default function App() {
         return
       }
       // a modal owns the keyboard: deleting behind the properties sheet would be invisible
-      if (editor || gallery || menu || columnMenu || marksMenu || markRowMenu || sortMenu || settingsOpen || openWith || propsFor || breakdownFor || confirmAsk) return
+      if (editor || gallery || menu || columnMenu || marksMenu || markRowMenu || sortMenu || settingsOpen || openWith || propsFor || breakdownFor || confirmAsk || syncOpen) return
       // the drives page owns its own controls; file-manager shortcuts must not operate on a pane
       // that is currently hidden behind it.
       if (drivesPageOpen) {
@@ -3650,6 +3654,13 @@ export default function App() {
     />
   ) : null
 
+  const syncJob = syncOpen
+    ? prefs.syncJobs.find((j) => j.left === syncOpen.left && j.right === syncOpen.right)
+    : undefined
+  const syncDir: SyncMode = syncOpen
+    ? (prefs.syncPairDirs[pairKey(syncOpen.left, syncOpen.right)] ?? syncJob?.direction ?? 'ltr')
+    : 'ltr'
+
   return (
     <div className="app" data-layout={prefs.layout}>
       {editor && editorMax && (
@@ -3853,6 +3864,8 @@ export default function App() {
               }}
               onMarkDrop={addMarks}
               onReorderMarks={handleReorderMarks}
+              syncJobs={prefs.syncJobs}
+              onSyncJob={openSyncJob}
               drives={prefs.sidebarDrives ? drives : undefined}
               remotes={remotes}
               onRemote={(p) => {
@@ -4084,18 +4097,26 @@ export default function App() {
             )
 
           if (isDualBoth && i === 0) {
+            const pair = pairKey(tabOf(panes[0]), tabOf(panes[1]))
             return (
               <Fragment key={i}>
                 {renderedPane}
-                <div
-                  key="dual-split"
-                  className="vsplit"
-                  role="separator"
-                  aria-orientation="vertical"
-                  title={t('تغییر عرض دو پنجره')}
-                  onPointerDown={startDualResize}
-                  onDoubleClick={() => updatePrefs({ dualSplit: 0.5 })}
-                />
+                <div key="dual-split" className="split-wrap">
+                  <div
+                    className="vsplit"
+                    role="separator"
+                    aria-orientation="vertical"
+                    title={t('تغییر عرض دو پنجره')}
+                    onPointerDown={startDualResize}
+                    onDoubleClick={() => updatePrefs({ dualSplit: 0.5 })}
+                  />
+                  <SyncPill
+                    mode={prefs.syncPairDirs[pair] ?? 'ltr'}
+                    leftName={baseName(tabOf(panes[0]))}
+                    rightName={baseName(tabOf(panes[1]))}
+                    onPick={(m) => openSync(m)}
+                  />
+                </div>
               </Fragment>
             )
           }
@@ -4195,6 +4216,8 @@ export default function App() {
               }}
                 onMarkDrop={addMarks}
                 onReorderMarks={handleReorderMarks}
+                syncJobs={prefs.syncJobs}
+                onSyncJob={openSyncJob}
                 drives={prefs.sidebarDrives ? drives : undefined}
                 remotes={remotes}
                 onRemote={(p) => {
@@ -4238,6 +4261,20 @@ export default function App() {
 
       <JobsBar
         jobs={jobs}
+        sync={syncProgress}
+        syncPaused={syncPaused}
+        onSyncPause={() => {
+          void api.sync.pause()
+          setSyncPaused(true)
+        }}
+        onSyncResume={() => {
+          void api.sync.resume()
+          setSyncPaused(false)
+        }}
+        onSyncCancel={() => {
+          void api.sync.cancel()
+          setSyncPaused(false)
+        }}
         onPause={(id) => void api.jobs.pause(id)}
         onResume={(id) => void api.jobs.resume(id)}
         onCancel={(id) => void api.jobs.cancel(id)}
@@ -4412,31 +4449,25 @@ export default function App() {
         />
       )}
 
-      {sync && (
-        <SyncDialog
-          left={sync.left}
-          right={sync.right}
-          rows={sync.rows}
-          capped={sync.capped}
-          compared={sync.compared}
-          busy={sync.busy}
-          result={sync.result}
-          compareBy={sync.compareBy}
-          ignore={sync.ignore}
-          onRecompare={(by, ig) => void runCompare(sync.left, sync.right, by, ig)}
-          onClose={() => setSync(null)}
-          onApply={(mode, deleteExtra) => {
-            setSync({ ...sync, busy: true })
-            void api.syncApply(sync.left, sync.right, sync.rows, mode, deleteExtra).then(async (r) => {
-              setSync({
-                ...sync,
-                busy: false,
-                result: r.errors.length
-                  ? `کپی ${fa(r.copied)} · حذف ${fa(r.deleted)} · ${fa(r.errors.length)} خطا — ${r.errors[0]}`
-                  : `کپی ${fa(r.copied)} · حذف ${fa(r.deleted)} · بدون خطا`
-              })
-              await Promise.all([load(0, tabOf(panes![0])), load(1, tabOf(panes![1]))])
-            })
+      {syncOpen && (
+        <SyncWorkspace
+          key={syncKey}
+          left={syncOpen.left}
+          right={syncOpen.right}
+          initialMode={syncDir}
+          compareBy={syncJob?.compareBy ?? 'mtime'}
+          ignore={(syncJob?.ignore ?? []).join(', ')}
+          deleteExtra={syncJob?.deleteExtra === true}
+          jobs={prefs.syncJobs}
+          onClose={() => setSyncOpen(null)}
+          onSaveJobs={(jobs) => updatePrefs({ syncJobs: jobs })}
+          onOpenJob={openSyncJob}
+          onModeChange={(m) =>
+            updatePrefs({ syncPairDirs: { ...prefs.syncPairDirs, [pairKey(syncOpen.left, syncOpen.right)]: m } })
+          }
+          onFinished={() => {
+            void load(0, tabOf(panes![0]))
+            if (panes![1]) void load(1, tabOf(panes![1]))
           }}
         />
       )}

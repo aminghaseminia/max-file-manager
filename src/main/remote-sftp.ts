@@ -505,6 +505,16 @@ export async function sftpUpload(
   return { size: st.size }
 }
 
+/** Set the modification time after an upload; SFTP servers keep it, so the next sync is stable. */
+export async function sftpUtimes(cfg: SftpConfig, remotePath: string, mtimeMs: number): Promise<void> {
+  const secs = Math.floor(mtimeMs / 1000)
+  await withSftp(cfg, async ({ sftp }) => {
+    await new Promise<void>((resolve, reject) => {
+      sftp.utimes(remotePath, secs, secs, (err) => (err ? reject(mapError(err)) : resolve()))
+    })
+  })
+}
+
 export async function sftpTest(
   cfg: SftpConfig
 ): Promise<{ ok: true; hostKey: string; root: string; entries: number }> {

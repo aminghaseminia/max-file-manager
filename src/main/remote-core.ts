@@ -41,6 +41,7 @@ import {
   ftpRename,
   ftpStat,
   ftpUpload,
+  ftpUtimes,
   FtpError,
   type FtpConfig
 } from './remote-ftp.ts'
@@ -52,6 +53,7 @@ import {
   sftpRename,
   sftpStat,
   sftpUpload,
+  sftpUtimes,
   SftpError,
   type SftpAuth,
   type SftpConfig
@@ -454,6 +456,14 @@ export function createRemoteFs(
     }
   }
 
+  /** Set a remote file's mtime where the protocol allows it (SFTP always, FTP via MFMT). */
+  async function utimes(uri: string, mtime: number): Promise<void> {
+    const { loc, resolution } = await resolved(uri)
+    if (loc.scheme === 's3') return
+    if (loc.scheme === 'sftp') return sftpUtimes(sftpConfigOf(resolution, loc), loc.path || '/', mtime)
+    return ftpUtimes(ftpConfig(resolution, loc), loc.path || '/', mtime)
+  }
+
   async function rename(from: string, to: string): Promise<void> {
     const a = await resolved(from)
     const b = await resolved(to)
@@ -628,6 +638,7 @@ export function createRemoteFs(
     mkdir,
     remove,
     rename,
+    utimes,
     readText,
     writeText,
     properties,

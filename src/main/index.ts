@@ -111,7 +111,9 @@ import {
 } from './mcp.ts'
 import { randomBytes } from 'node:crypto'
 import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
-import { applySync, compareTrees, diffFiles, type SyncRow } from './sync.ts'
+import { diffFiles } from './sync.ts'
+import { cleanRsyncOptions } from '../shared/sync.ts'
+import { createSyncService } from './sync-service.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
@@ -215,6 +217,20 @@ try {
 
 const boot = bootState()
 const bootPrefs = boot.prefs ?? {}
+
+/**
+ * One sync service for the app: saved jobs, the queue and the scheduler. It reads the jobs from the
+ * same prefs blob the renderer writes, so a job is never duplicated in a second store.
+ */
+const syncService = createSyncService({
+  remote: remoteFs,
+  trash: (p) => shell.trashItem(p),
+  emit: (channel, payload) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(channel, payload)
+    }
+  }
+})
 
 // frame/transparent are window-construction options, so the chrome choice is read before the window exists
 let chrome: Chrome = {
@@ -983,6 +999,8 @@ function createWindow(): BrowserWindow {
 }
 
 app.on('will-quit', () => {
+  syncService.cancel()
+  syncService.stopScheduler()
   stopPlayerJobs()
   globalShortcut.unregisterAll()
   stopWinETakeover()
@@ -1208,6 +1226,7 @@ app.whenReady().then(async () => {
 
   if (!portalOnly) win = createWindow()
   if (!portalOnly) installMacMenu()
+  if (!portalOnly) syncService.startScheduler()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   }, remoteFs)
@@ -1308,7 +1327,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('fs:home', () => os.homedir())
   ipcMain.handle('drives:list', () => listDrives())
   ipcMain.handle('drives:volumes', () => listVolumes())
-  ipcMain.handle('drives:mount', (_e, dev: string) => mountDrive(dev))
+  ipcMain.handle('drives:mount', async (_e, dev: string) => {
+    const res = await mountDrive(dev)
+    if (res.ok) void syncService.notifyMount()
+    return res
+  })
   ipcMain.handle('drives:unmount', (_e, dev: string) => unmountDrive(dev))
   ipcMain.handle('system:memory', () => memoryInfo())
   ipcMain.handle('fs:size', (_e, p: string) =>
@@ -1898,19 +1921,83 @@ app.whenReady().then(async () => {
       case 'hotkey':
         return registerHotkey(String(args.accel ?? ''))
       case 'sync_compare':
-        return compareTrees(needAbs(args.left), needAbs(args.right), !!args.deep, {
-          compareBy: args.compareBy === 'ctime' || args.compareBy === 'hash' ? args.compareBy : 'mtime',
+        return syncService.compare({
+          left: needPath(args.left),
+          right: needPath(args.right),
+          mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
+          compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : []
         })
-      case 'sync_apply':
-        return applySync(
-          needAbs(args.left),
-          needAbs(args.right),
-          (Array.isArray(args.rows) ? args.rows : []) as SyncRow[],
-          args.mode === 'rtl' ? 'rtl' : 'ltr',
-          !!args.deleteExtra,
-          (p) => shell.trashItem(p)
-        )
+      case 'sync_plan':
+        return syncService.plan({
+          left: needPath(args.left),
+          right: needPath(args.right),
+          mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
+          compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
+          ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
+          deleteExtra: !!args.deleteExtra,
+          useRsync: !!args.useRsync,
+          rsync: cleanRsyncOptions(args.rsync)
+        })
+      case 'sync_run': {
+        const r = await syncService.run({
+          left: needPath(args.left),
+          right: needPath(args.right),
+          mode: args.mode === 'rtl' || args.mode === 'both' ? args.mode : 'ltr',
+          compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
+          ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
+          deleteExtra: !!args.deleteExtra,
+          useRsync: !!args.useRsync,
+          rsync: cleanRsyncOptions(args.rsync),
+          dryRun: args.dryRun === true,
+          confirmRemoteDelete: args.confirm === true
+        })
+        // an agent needs the outcome, not 20 000 rows; sync_plan is the row-shaped tool
+        return {
+          id: r.id,
+          blocked: r.blocked,
+          summary: r.summary,
+          plan: {
+            copy: r.plan.copy.length,
+            remove: r.plan.remove.length,
+            skipped: r.plan.skipped,
+            conflicts: r.plan.conflicts.map((c) => ({ rel: c.rel, conflict: c.conflict }))
+          }
+        }
+      }
+      case 'sync_apply': {
+        // legacy shape: re-compare instead of trusting rows supplied by the caller
+        const r = await syncService.run({
+          left: needPath(args.left),
+          right: needPath(args.right),
+          mode: args.mode === 'rtl' ? 'rtl' : 'ltr',
+          compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
+          deleteExtra: !!args.deleteExtra,
+          confirmRemoteDelete: false
+        })
+        return {
+          copied: r.applied?.copied ?? 0,
+          deleted: r.applied?.removed ?? 0,
+          skipped: r.applied?.skipped ?? r.plan.skipped,
+          errors: r.applied?.errors ?? (r.blocked ? ['conflicts need a decision'] : [])
+        }
+      }
+      case 'sync_jobs':
+        return syncService.listJobs()
+      case 'sync_job_save':
+        return syncService.upsertJob(args.job)
+      case 'sync_job_remove':
+        return syncService.removeJob(String(args.id ?? ''))
+      case 'sync_history':
+        return syncService.history(Number(args.limit) || 100)
+      case 'sync_restore': {
+        const r = await syncService.restore(String(args.id ?? ''), args.confirm === true)
+        return { id: r.id, summary: r.summary, copied: r.applied?.copied ?? 0 }
+      }
+      case 'sync_cancel':
+        return syncService.cancel(typeof args.id === 'string' ? args.id : undefined)
+      case 'sync_status':
+        return syncService.status()
       case 'run_script':
         return runScriptCommand({
           command: String(args.command ?? ''),
@@ -2072,19 +2159,106 @@ app.whenReady().then(async () => {
         a?.theme ?? 'dark'
       )
   )
-  ipcMain.handle(
-    'sync:compare',
-    (_e, a: { left: string; right: string; deep?: boolean; compareBy?: 'mtime' | 'ctime' | 'hash'; ignore?: string[] }) =>
-      compareTrees(a?.left ?? '', a?.right ?? '', !!a?.deep, {
-        compareBy: a?.compareBy,
-        ignore: Array.isArray(a?.ignore) ? a.ignore.slice(0, 50) : []
-      })
+  /**
+   * Sync IPC. Every path is validated here (absolute local or a remote URI), every mode is clamped,
+   * and the actual work is delegated to the one service — the renderer never runs a comparison.
+   */
+  const syncPath = (v: unknown): string => {
+    const p = typeof v === 'string' ? v.trim() : ''
+    if (!p || (!isRemotePath(p) && !path.isAbsolute(p))) {
+      throw new Error('sync needs an absolute local folder or a remote URI')
+    }
+    return p
+  }
+  const syncOpts = (a: Record<string, unknown> | undefined): {
+    left: string
+    right: string
+    mode: 'ltr' | 'rtl' | 'both'
+    compareBy: 'mtime' | 'hash'
+    ignore: string[]
+  } => {
+    const left = syncPath(a?.left)
+    const right = syncPath(a?.right)
+    if (left === right) throw new Error('the two folders are the same')
+    const mode = a?.mode === 'rtl' || a?.mode === 'both' ? a.mode : 'ltr'
+    return {
+      left,
+      right,
+      mode,
+      compareBy: a?.compareBy === 'hash' ? 'hash' : 'mtime',
+      ignore: Array.isArray(a?.ignore)
+        ? (a.ignore as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 50)
+        : []
+    }
+  }
+  const syncSelections = (a: Record<string, unknown> | undefined): string[] | undefined =>
+    Array.isArray(a?.selected)
+      ? (a.selected as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 20_000)
+      : undefined
+  const syncResolutions = (
+    a: Record<string, unknown> | undefined
+  ): Record<string, 'left' | 'right' | 'skip'> | undefined => {
+    if (!a?.resolutions || typeof a.resolutions !== 'object') return undefined
+    const out: Record<string, 'left' | 'right' | 'skip'> = {}
+    for (const [rel, decision] of Object.entries(a.resolutions as Record<string, unknown>)) {
+      if (decision === 'left' || decision === 'right' || decision === 'skip') out[rel] = decision
+    }
+    return out
+  }
+  const syncBroadcastJobs = (): void => {
+    const jobs = syncService.listJobs()
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('state:prefs-patch', { syncJobs: jobs })
+    }
+  }
+
+  ipcMain.handle('sync:compare', async (_e, a: Record<string, unknown>) => syncService.compare(syncOpts(a)))
+  ipcMain.handle('sync:plan', async (_e, a: Record<string, unknown>) =>
+    syncService.plan({
+      ...syncOpts(a),
+      deleteExtra: a?.deleteExtra === true,
+      useRsync: a?.useRsync === true,
+      rsync: cleanRsyncOptions(a?.rsync),
+      selected: syncSelections(a),
+      resolutions: syncResolutions(a)
+    })
   )
-  ipcMain.handle(
-    'sync:apply',
-    (_e, a: { left: string; right: string; rows: SyncRow[]; mode: 'ltr' | 'rtl'; deleteExtra?: boolean }) =>
-      applySync(a.left, a.right, a.rows ?? [], a.mode, !!a.deleteExtra, (p) => shell.trashItem(p))
+  ipcMain.handle('sync:run', async (_e, a: Record<string, unknown>) =>
+    syncService.run({
+      ...syncOpts(a),
+      jobId: typeof a?.jobId === 'string' ? a.jobId : undefined,
+      deleteExtra: a?.deleteExtra === true,
+      useRsync: a?.useRsync === true,
+      rsync: cleanRsyncOptions(a?.rsync),
+      selected: syncSelections(a),
+      resolutions: syncResolutions(a),
+      dryRun: a?.dryRun === true,
+      confirmRemoteDelete: a?.confirmRemoteDelete === true
+    })
   )
+  ipcMain.handle('sync:jobs', () => syncService.listJobs())
+  ipcMain.handle('sync:jobSave', async (_e, draft: unknown) => {
+    const job = syncService.upsertJob(draft)
+    if (job) syncBroadcastJobs()
+    return job
+  })
+  ipcMain.handle('sync:jobRemove', async (_e, id: string) => {
+    const removed = syncService.removeJob(String(id ?? ''))
+    if (removed) syncBroadcastJobs()
+    return removed
+  })
+  ipcMain.handle('sync:history', (_e, limit?: number) => syncService.history(Number(limit) || 100))
+  ipcMain.handle('sync:restore', async (_e, a: { id?: string; confirmRemote?: boolean }) =>
+    syncService.restore(String(a?.id ?? ''), a?.confirmRemote === true)
+  )
+  ipcMain.handle('sync:status', () => syncService.status())
+  ipcMain.handle('sync:cancel', (_e, id?: string) => syncService.cancel(id ? String(id) : undefined))
+  ipcMain.handle('sync:pause', (_e, id?: string) => syncService.pause(id ? String(id) : undefined))
+  ipcMain.handle('sync:resume', (_e, id?: string) => syncService.resume(id ? String(id) : undefined))
+  ipcMain.handle('sync:clearBaseline', (_e, a: { left?: string; right?: string }) => {
+    syncService.clearBaseline(syncPath(a?.left), syncPath(a?.right))
+    return true
+  })
   ipcMain.handle('fs:diff', (_e, a: { a: string; b: string }) => diffFiles(a?.a ?? '', a?.b ?? ''))
   ipcMain.handle('fs:readText', (_e, p: string) => readTextAny(p ?? ''))
   const editablePath = (p: string): boolean => isRemotePath(p) || path.isAbsolute(p)

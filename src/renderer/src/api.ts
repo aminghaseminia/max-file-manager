@@ -1,7 +1,66 @@
 import type { PortalFilter } from '../../shared/portal-filters.ts'
 import type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
+import type {
+  RsyncOptions,
+  SyncCompareBy,
+  SyncJob,
+  SyncMode,
+  SyncPlan,
+  SyncProgress,
+  SyncRow,
+  SyncRunSummary
+} from '../../shared/sync.ts'
 
 export type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
+export type {
+  ConflictKind,
+  RsyncOptions,
+  SyncAction,
+  SyncCompareBy,
+  SyncJob,
+  SyncMode,
+  SyncPlan,
+  SyncProgress,
+  SyncRow,
+  SyncRunSummary,
+  SyncSchedule,
+  SyncSide,
+  SyncState
+} from '../../shared/sync.ts'
+
+export type SyncCompareResult = {
+  rows: SyncRow[]
+  leftCount: number
+  rightCount: number
+  capped: boolean
+  hashed: number
+}
+export type SyncApplyResult = { copied: number; removed: number; skipped: number; bytes: number; errors: string[]; cancel: boolean }
+export type SyncPlanResult = { cmp: SyncCompareResult; plan: SyncPlan; rows: SyncRow[]; blocked: boolean }
+export type SyncRunResult = {
+  id: string
+  rows: SyncRow[]
+  plan: SyncPlan
+  cmp: SyncCompareResult
+  applied: SyncApplyResult | null
+  summary: SyncRunSummary
+  blocked: boolean
+}
+export type SyncOptions = {
+  left: string
+  right: string
+  mode?: SyncMode
+  compareBy?: SyncCompareBy
+  ignore?: string[]
+  deleteExtra?: boolean
+  selected?: string[]
+  resolutions?: Record<string, 'left' | 'right' | 'skip'>
+  jobId?: string
+  dryRun?: boolean
+  confirmRemoteDelete?: boolean
+  useRsync?: boolean
+  rsync?: RsyncOptions
+}
 export type RemoteTestResult =
   | { ok: true; detail: string; hostKey?: string }
   | { ok: false; error: string }
@@ -151,12 +210,6 @@ export type SearchProgress = {
   error: string
 }
 export type SearchStatus = SearchProgress & { stats: { files: number; dirs: number; lastIndex: number } }
-export type SyncRow = {
-  rel: string
-  state: string
-  left?: { size: number; mtime: number; ctime: number; dir: boolean }
-  right?: { size: number; mtime: number; ctime: number; dir: boolean }
-}
 export type DiffResult = {
   lines: { kind: 'same' | 'add' | 'del' | 'change'; a?: number; b?: number; text: string }[]
   added: number
@@ -494,18 +547,24 @@ export type Api = {
     format: 'csv' | 'pdf',
     theme?: string
   ): Promise<{ path: string; rows: number } | { error: string }>
-  syncCompare(
-    left: string,
-    right: string,
-    opts?: { compareBy?: 'mtime' | 'ctime' | 'hash'; ignore?: string[]; deep?: boolean }
-  ): Promise<{ rows: SyncRow[]; leftCount: number; rightCount: number; capped: boolean }>
-  syncApply(
-    left: string,
-    right: string,
-    rows: SyncRow[],
-    mode: 'ltr' | 'rtl',
-    deleteExtra?: boolean
-  ): Promise<{ copied: number; deleted: number; skipped: number; errors: string[] }>
+  sync: {
+    compare(opts: SyncOptions): Promise<SyncCompareResult>
+    plan(opts: SyncOptions): Promise<SyncPlanResult>
+    run(opts: SyncOptions): Promise<SyncRunResult>
+    jobs(): Promise<SyncJob[]>
+    saveJob(job: Partial<SyncJob>): Promise<SyncJob | null>
+    removeJob(id: string): Promise<boolean>
+    history(limit?: number): Promise<SyncRunSummary[]>
+    restore(id: string, confirmRemote?: boolean): Promise<SyncRunResult>
+    status(): Promise<{ id: string; state: string; paused: boolean } | null>
+    cancel(id?: string): Promise<boolean>
+    pause(id?: string): Promise<boolean>
+    resume(id?: string): Promise<boolean>
+    clearBaseline(left: string, right: string): Promise<boolean>
+    onProgress(cb: (p: SyncProgress) => void): () => void
+    onDone(cb: (r: SyncRunSummary) => void): () => void
+    onJobs(cb: (jobs: SyncJob[]) => void): () => void
+  }
   diffFiles(a: string, b: string): Promise<DiffResult>
   readText(p: string): Promise<{ text: string; size: number } | { error: string }>
   /** unsaved editor buffers, restored after a crash or a closed window */

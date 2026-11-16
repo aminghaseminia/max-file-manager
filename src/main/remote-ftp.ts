@@ -224,6 +224,20 @@ export async function ftpRename(cfg: FtpConfig, from: string, to: string): Promi
   })
 }
 
+/** UTC `YYYYMMDDHHmmss`, the format MFMT expects. */
+const ftpStamp = (ms: number): string => {
+  const d = new Date(ms)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`
+}
+
+/** Best effort: MFMT is a common extension, not part of FTP. A server without it keeps its clock. */
+export async function ftpUtimes(cfg: FtpConfig, remotePath: string, mtimeMs: number): Promise<void> {
+  await withClient(cfg, async (client) => {
+    await client.sendIgnoringError(`MFMT ${ftpStamp(mtimeMs)} ${remotePath}`)
+  })
+}
+
 export async function ftpDownload(
   cfg: FtpConfig,
   remotePath: string,
