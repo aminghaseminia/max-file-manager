@@ -11,11 +11,11 @@ ICON="$APP_DIR/build/icon.png"
 # Packaged build wins; otherwise run the repo in dev mode.
 # electron-builder writes to release/ (see directories.output); dist/ is the old layout.
 if [ -x "$APP_DIR/release/linux-unpacked/max-file-manager" ]; then
-  EXEC="$APP_DIR/release/linux-unpacked/max-file-manager %U"
+  EXEC="$APP_DIR/release/linux-unpacked/max-file-manager --ozone-platform=x11 %U"
 elif [ -x "$APP_DIR/dist/linux-unpacked/max-file-manager" ]; then
-  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager %U"
+  EXEC="$APP_DIR/dist/linux-unpacked/max-file-manager --ozone-platform=x11 %U"
 elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
-  EXEC="$APP_DIR/node_modules/.bin/electron $APP_DIR %U"
+  EXEC="$APP_DIR/node_modules/.bin/electron --ozone-platform=x11 $APP_DIR %U"
 else
   echo "no runnable build found in $APP_DIR" >&2
   exit 1
@@ -36,7 +36,7 @@ Terminal=false
 Categories=System;FileManager;Utility;
 MimeType=inode/directory;x-scheme-handler/file;application/x-gnome-saved-search;
 Keywords=files;manager;explorer;
-StartupWMClass=Max File Manager
+StartupWMClass=max-file-manager
 EOF
 chmod 644 "$DESKTOP_FILE"
 
