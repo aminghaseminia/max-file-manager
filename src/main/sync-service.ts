@@ -45,6 +45,8 @@ import { isRemotePath } from '../shared/remote-path.ts'
 
 export type SyncDeps = {
   remote?: RemoteFs
+  /** same resolver, but SSH transport compression is offered on SFTP sessions */
+  remoteCompressed?: RemoteFs
   trash(p: string): Promise<void>
   emit(channel: string, payload: unknown): void
 }
@@ -57,6 +59,8 @@ export type CompareOptions = {
   ignore?: string[]
   /** richer Ignore-tab rules; glob entries are also in `ignore` for rsync */
   ignoreRules?: SyncIgnoreRule[]
+  /** rsync `-z`, or SSH zlib when an SFTP endpoint is involved */
+  compress?: boolean
   /** optional rsync engine; local ↔ local one-way only */
   useRsync?: boolean
   rsync?: RsyncOptions
@@ -98,6 +102,54 @@ const prefsState = (): { state: Record<string, unknown>; prefs: Record<string, u
 
 const progressEvery = 450
 
+/** Total bytes the plan intends to copy; used for the rate/ETA display. */
+function planBytes(rows: SyncRow[], plan: SyncPlan): number {
+  const byRel = new Map(rows.map((row) => [row.rel, row]))
+  let total = 0
+  for (const action of plan.copy) {
+    const row = byRel.get(action.rel)
+    const side = action.from === 'left' ? row?.left : row?.right
+    if (side && !side.dir) total += side.size
+  }
+  return total
+}
+
+/**
+ * A small exponential moving average of `bytesDone`. The service owns the clock so the renderer
+ * only has to print the values, and a paused run reports zero instead of a frozen last speed.
+ */
+function createMeter(progress: SyncProgress, control: { paused: boolean }) {
+  let at = Date.now()
+  let bytes = 0
+  let rate = 0
+  return (): void => {
+    const now = Date.now()
+    if (control.paused) {
+      rate = 0
+      at = now
+      bytes = progress.bytesDone
+      progress.speed = 0
+      progress.etaMs = null
+      return
+    }
+    const dt = now - at
+    if (dt >= 400) {
+      if (dt > 5000) rate = 0
+      const delta = progress.bytesDone - bytes
+      if (delta >= 0) {
+        const instant = (delta * 1000) / dt
+        rate = rate > 0 ? rate * 0.65 + instant * 0.35 : instant
+      }
+      at = now
+      bytes = progress.bytesDone
+    }
+    progress.speed = Math.max(0, Math.round(rate))
+    const total = progress.bytesTotal ?? 0
+    progress.etaMs =
+      rate > 1 && total > progress.bytesDone ? Math.round(((total - progress.bytesDone) / rate) * 1000) : null
+  }
+}
+
 export function createSyncService(deps: SyncDeps) {
   let remote = deps.remote
   let active: { id: string; control: SyncControl; paused: boolean; progress?: SyncProgress } | null = null
@@ -108,7 +160,7 @@ export function createSyncService(deps: SyncDeps) {
   const watchers = new Map<string, { close(): void; timer: ReturnType<typeof setTimeout> | null }>()
   const changeTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-  const ops = () => createOps(remote)
+  const ops = (compress = false) => createOps(compress && deps.remoteCompressed ? deps.remoteCompressed : remote)
 
   const setRemote = (next: RemoteFs | undefined): void => {
     remote = next
@@ -214,7 +266,7 @@ export function createSyncService(deps: SyncDeps) {
     const twoWay = opts.mode === 'both'
     const baseline: Baseline = twoWay ? loadBaseline(pairKey(opts.left, opts.right)) : {}
     const enc = await resolvedEnc(opts)
-    return compareTrees(opts.left, opts.right, ops(), {
+    return compareTrees(opts.left, opts.right, ops(opts.compress), {
       compareBy: effectiveCompareBy(opts),
       ignore: opts.ignore ?? [],
       rules: opts.ignoreRules,
@@ -242,7 +294,7 @@ export function createSyncService(deps: SyncDeps) {
       deleteExtra: opts.deleteExtra === true,
       ignore: opts.ignore ?? [],
       compareBy: opts.compareBy,
-      options: cleanRsyncOptions(opts.rsync),
+      options: { ...cleanRsyncOptions(opts.rsync), ...(opts.compress ? { compress: true } : {}) },
       backupDir: opts.deleteExtra ? trashDirFor(dst) : undefined
     }
   }
@@ -309,10 +361,12 @@ export function createSyncService(deps: SyncDeps) {
     }
     active = { id, control, paused: false, progress }
     let lastEmit = 0
+    const meter = createMeter(progress, control)
     const emitProgress = (force = false): void => {
       const now = Date.now()
       if (!force && now - lastEmit < progressEvery) return
       lastEmit = now
+      meter()
       deps.emit('sync:progress', { ...progress, paused: control.paused })
     }
     try {
@@ -321,6 +375,7 @@ export function createSyncService(deps: SyncDeps) {
       summary.conflicts = 0
       progress.total = planned.plan.copy.length + planned.plan.remove.length
       progress.files = progress.total
+      progress.bytesTotal = planBytes(planned.rows, planned.plan)
       const blocked = false
       if (opts.dryRun) {
         summary.state = 'done'
@@ -423,10 +478,12 @@ export function createSyncService(deps: SyncDeps) {
     }
     active = { id, control, paused: false, progress }
     let lastEmit = 0
+    const meter = createMeter(progress, control)
     const emitProgress = (force = false): void => {
       const now = Date.now()
       if (!force && now - lastEmit < progressEvery) return
       lastEmit = now
+      meter()
       deps.emit('sync:progress', { ...progress, paused: control.paused })
     }
     control.onFile = (rel) => {
@@ -451,6 +508,7 @@ export function createSyncService(deps: SyncDeps) {
       summary.conflicts = plan.conflicts.length
       progress.total = plan.copy.length + plan.remove.length
       progress.files = progress.total
+      progress.bytesTotal = planBytes(cmp.rows, plan)
       opts.onPlan?.(cmp.rows, plan, cmp)
       if (opts.dryRun || blocked) {
         summary.state = opts.dryRun ? 'done' : 'error'
@@ -476,7 +534,7 @@ export function createSyncService(deps: SyncDeps) {
       const vs = await versionState(opts)
       await preVersion(vs)
       emitProgress(true)
-      const applied = await applyPlan(opts.left, opts.right, plan, ops(), {
+      const applied = await applyPlan(opts.left, opts.right, plan, ops(opts.compress), {
         trash: deps.trash,
         ctl: control,
         enc: await resolvedEnc(opts)
@@ -525,7 +583,11 @@ export function createSyncService(deps: SyncDeps) {
     if (!active || (id && active.id !== id)) return false
     active.control.paused = true
     active.paused = true
-    if (active.progress) deps.emit('sync:progress', { ...active.progress, paused: true })
+    if (active.progress) {
+      active.progress.speed = 0
+      active.progress.etaMs = null
+      deps.emit('sync:progress', { ...active.progress, paused: true })
+    }
     return true
   }
 

@@ -191,11 +191,13 @@ export function remoteOps(remote: RemoteFs, tempRoot = os.tmpdir()): PathOps {
         await waitIfPaused(ctl)
         return
       }
-      // remote → remote: a temp file is the only path both ends understand
+      // remote → remote: a temp file is the only path both ends understand. Report bytes on the
+      // upload only, otherwise progress counts the whole file twice and the rate/ETA lie.
       const dir = await work()
       const tmp = path.join(dir, remoteName(from) || 'file')
+      const quiet = { ...control, onBytes: undefined }
       try {
-        await remote.downloadFile(from, tmp, control)
+        await remote.downloadFile(from, tmp, quiet)
         await remote.uploadFile(tmp, to, control)
       } finally {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
@@ -481,13 +483,15 @@ export async function applyPlan(
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfm-sync-crypt-'))
       const plain = path.join(dir, 'plain')
       const cipher = path.join(dir, 'cipher')
+      // only the last hop is the payload the user is waiting for; intermediates would double-count
+      const quiet = ctl ? { ...ctl, onBytes: undefined } : undefined
       try {
         if (fromEnc) {
           const sourceCipher = path.join(dir, 'source-cipher')
-          await ops.copy(from, sourceCipher, ctl)
+          await ops.copy(from, sourceCipher, quiet)
           await decryptFile(sourceCipher, plain, fromEnc)
         } else {
-          await ops.copy(from, plain, ctl)
+          await ops.copy(from, plain, quiet)
         }
         const payload = toEnc ? (await encryptFile(plain, cipher, toEnc), cipher) : plain
         await ops.copy(payload, to, ctl)

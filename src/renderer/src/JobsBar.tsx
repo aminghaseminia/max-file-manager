@@ -1,6 +1,7 @@
 import { t } from './i18n.ts'
 import type { Job, SyncProgress } from './api'
 import { fa, fmtSize } from './format'
+import { durationText } from './sync-view.ts'
 import { CopyIcon, MoveIcon, PauseIcon, PlayIcon, SwapIcon, XIcon } from './Icons'
 
 type Props = {
@@ -39,7 +40,13 @@ export function JobsBar({
   onSyncCancel
 }: Props) {
   if (!jobs.length && !sync) return null
-  const syncPct = sync && sync.files ? Math.min(100, Math.round((sync.filesDone / sync.files) * 100)) : 0
+  const syncPct = sync
+    ? sync.bytesTotal
+      ? Math.min(100, Math.round((sync.bytesDone / sync.bytesTotal) * 100))
+      : sync.files
+        ? Math.min(100, Math.round((sync.filesDone / sync.files) * 100))
+        : 0
+    : 0
   return (
     <div className="jobs">
       <div className="jobs-head">
@@ -67,7 +74,10 @@ export function JobsBar({
               <i style={{ width: syncPct + '%' }} />
             </span>
             <span className="job-meta">
-              {t('{n}٪', { n: fa(syncPct) })} · {fmtSize(sync.bytesDone, false)} ·{' '}
+              {t('{n}٪', { n: fa(syncPct) })} · {fmtSize(sync.bytesDone, false)}
+              {sync.speed ? ` · ${fmtSize(sync.speed, false)}/s` : ''}
+              {sync.etaMs != null ? ` · ${t('{t} باقی', { t: fa(durationText(sync.etaMs)) })}` : ''}
+              {' · '}
               {t('{n} از {m}', { n: fa(sync.filesDone), m: fa(sync.files) })}
             </span>
             <span className="spacer" />
@@ -97,7 +107,13 @@ export function JobsBar({
               </span>
               <span className="job-meta">
                 {j.state === 'running'
-                  ? `${t('{n}٪', { n: fa(pct) })} · ${fmtSize(j.done, false)} · ${fmtSize(j.speed, false)}/${t('ث')}`
+                  ? `${t('{n}٪', { n: fa(pct) })} · ${fmtSize(j.done, false)} · ${fmtSize(j.speed, false)}/${t('ث')}${
+                      j.speed > 0 && j.bytes > j.done
+                        ? ` · ${t('{t} باقی', {
+                            t: fa(durationText(((j.bytes - j.done) / j.speed) * 1000))
+                          })}`
+                        : ''
+                    }`
                   : t(STATE_LABEL[j.state])}
               </span>
               <span className="spacer" />

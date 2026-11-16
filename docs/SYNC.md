@@ -169,6 +169,27 @@ scheduled run sets `confirmRemoteDelete = false`, so a job that would delete on 
 fails with a clear message instead of deleting silently. The sidebar shows the jobs (only when at
 least one exists); the progress of the active run also appears in the jobs bar.
 
+## Progress, speed and ETA
+
+Every run emits `SyncProgress` with the current file, `filesDone`, `bytesDone`, the plan's
+`bytesTotal`, a moving-average `speed` (bytes/s) and `etaMs`. The meter is computed in main (450 ms
+throttle, exponential smoothing) so both the sync dialog and the jobs bar print the same numbers.
+A paused run reports speed 0 and no ETA. Intermediate hops (a remote→remote temp copy, the
+ciphertext/plaintext stage of encryption) do not report bytes, so the rate is the payload rate,
+not double-counted.
+
+## Compression
+
+`compress` is the rsync `-z` idea:
+
+- with the rsync engine it passes `--compress`;
+- with the native engine and an **SFTP** endpoint, the sync service uses a second `RemoteFs` whose
+  SSH sessions offer `zlib@openssh.com`/`zlib` transport compression (separate pool key, so normal
+  browsing stays uncompressed);
+- FTP and S3 have no transfer-compression switch in their protocols, and local→local copies gain
+  nothing. The UI disables the checkbox in those cases instead of pretending;
+- an encrypted side is already ciphertext, so compression is disabled there.
+
 ## UI
 
 - The pane divider is only a divider; it no longer carries a direction pill. The three direction

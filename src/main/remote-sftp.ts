@@ -37,6 +37,8 @@ export type SftpConfig = {
   /** called once when TOFU accepted a new key, so the profile can remember it */
   onHostKey?: (fingerprint: string) => void
   home?: string
+  /** offer SSH transport compression (zlib@openssh.com / zlib) for this session */
+  compress?: boolean
 }
 
 export type SftpControl = {
@@ -98,7 +100,16 @@ function poolKey(cfg: SftpConfig): string {
   const secret = createHash('sha256')
     .update(`${cfg.password ?? ''}\u0000${cfg.passphrase ?? ''}\u0000${cfg.keyPath ?? ''}`)
     .digest('hex')
-  return [cfg.host, cfg.port, cfg.user, cfg.auth, secret, cfg.acceptNewHostKey ? '1' : '0', cfg.hostKey ?? ''].join('\u0000')
+  return [
+    cfg.host,
+    cfg.port,
+    cfg.user,
+    cfg.auth,
+    secret,
+    cfg.acceptNewHostKey ? '1' : '0',
+    cfg.hostKey ?? '',
+    cfg.compress ? 'z1' : 'z0'
+  ].join('\u0000')
 }
 
 async function readKnownHosts(home: string): Promise<string> {
@@ -175,6 +186,7 @@ async function connect(cfg: SftpConfig): Promise<Session> {
     tryKeyboard: false,
     hostVerifier
   }
+  if (cfg.compress) opts.algorithms = { compress: ['zlib@openssh.com', 'zlib', 'none'] }
   if (cfg.auth === 'agent') {
     const agent = cfg.agent ?? process.env.SSH_AUTH_SOCK ?? (process.platform === 'win32' ? 'pageant' : '')
     if (!agent) throw new SftpError('agent', 'no SSH agent was found (SSH_AUTH_SOCK is empty)')

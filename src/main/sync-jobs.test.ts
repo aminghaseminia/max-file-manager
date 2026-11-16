@@ -100,6 +100,19 @@ test('cleanSyncJob: legacy ignore patterns are migrated into ignoreRules', () =>
   ])
 })
 
+test('cleanSyncJob: compress survives and becomes rsync -z for the rsync engine', () => {
+  const native = cleanSyncJob({ ...base, compress: true })
+  assert.equal(native?.compress, true)
+  assert.equal(native?.useRsync, false)
+  const rsync = cleanSyncJob({ ...base, useRsync: true, compress: true })
+  assert.equal(rsync?.compress, true)
+  assert.equal(rsync?.rsync?.compress, true)
+  // an old job that only had rsync.compress keeps working after the migration
+  const legacy = cleanSyncJob({ ...base, useRsync: true, rsync: { compress: true } })
+  assert.equal(legacy?.compress, true)
+  assert.equal(legacy?.rsync?.compress, true)
+})
+
 test('cleanSyncJob: bad ids, relative paths, the same path and missing sides are rejected', () => {
   assert.equal(cleanSyncJob({ ...base, id: 'Bad Id' }), null)
   assert.equal(cleanSyncJob({ ...base, left: 'relative' }), null)

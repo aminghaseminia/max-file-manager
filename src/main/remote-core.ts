@@ -179,7 +179,7 @@ function s3Config(resolved: RemoteResolution, loc: RemoteLocation): S3Config {
   }
 }
 
-function sftpConfigOf(resolved: RemoteResolution, loc: RemoteLocation): SftpConfig {
+function sftpConfigOf(resolved: RemoteResolution, loc: RemoteLocation, compress = false): SftpConfig {
   const c = resolved.config
   if (c.protocol !== 'sftp') throw new RemoteError('no_profile', 'this location needs an SFTP connection profile')
   return {
@@ -193,7 +193,8 @@ function sftpConfigOf(resolved: RemoteResolution, loc: RemoteLocation): SftpConf
     agent: c.agent,
     hostKey: c.hostKey,
     acceptNewHostKey: c.acceptNewHostKey,
-    onHostKey: c.onHostKey
+    onHostKey: c.onHostKey,
+    compress
   }
 }
 
@@ -227,9 +228,11 @@ export type RemoteFs = ReturnType<typeof createRemoteFs>
 
 export function createRemoteFs(
   resolve: RemoteResolver,
-  opts: { tempDir?: string; listPages?: number; measureMs?: number } = {}
+  opts: { tempDir?: string; listPages?: number; measureMs?: number; compress?: boolean } = {}
 ) {
   const tempRoot = opts.tempDir ?? os.tmpdir()
+  const sftpCfg = (resolved: RemoteResolution, loc: RemoteLocation): SftpConfig =>
+    sftpConfigOf(resolved, loc, opts.compress === true)
 
   async function resolved(uri: string): Promise<{ loc: RemoteLocation; resolution: RemoteResolution }> {
     const loc = parseRemote(uri)
@@ -282,7 +285,7 @@ export function createRemoteFs(
       }
       entries = [...byName.values()]
     } else if (loc.scheme === 'sftp') {
-      const cfg = sftpConfigOf(resolution, loc)
+      const cfg = sftpCfg(resolution, loc)
       const found = await sftpList(cfg, loc.path || '/')
       entries = found.map((e) => ({
         name: e.name,
@@ -342,7 +345,7 @@ export function createRemoteFs(
         return null
       }
       if (loc.scheme === 'sftp') {
-        const e = await sftpStat(sftpConfigOf(resolution, loc), loc.path || '/')
+        const e = await sftpStat(sftpCfg(resolution, loc), loc.path || '/')
         return e ? { name: e.name, dir: e.dir, size: e.size, mtime: e.mtime, link: e.link || undefined } : null
       }
       const e = await ftpStat(ftpConfig(resolution, loc), loc.path || '/')
@@ -396,7 +399,7 @@ export function createRemoteFs(
         return await s3Download(s3Config(resolution, loc), loc.path, localPath, control as S3Control)
       }
       if (loc.scheme === 'sftp') {
-        return await sftpDownload(sftpConfigOf(resolution, loc), loc.path, localPath, control)
+        return await sftpDownload(sftpCfg(resolution, loc), loc.path, localPath, control)
       }
       return await ftpDownload(ftpConfig(resolution, loc), loc.path, localPath, control)
     } catch (e) {
@@ -411,7 +414,7 @@ export function createRemoteFs(
         return await s3Upload(s3Config(resolution, loc), loc.path, localPath, control as S3Control)
       }
       if (loc.scheme === 'sftp') {
-        return await sftpUpload(sftpConfigOf(resolution, loc), localPath, loc.path, control)
+        return await sftpUpload(sftpCfg(resolution, loc), localPath, loc.path, control)
       }
       return await ftpUpload(ftpConfig(resolution, loc), localPath, loc.path, control)
     } catch (e) {
@@ -428,7 +431,7 @@ export function createRemoteFs(
         return
       }
       if (loc.scheme === 'sftp') {
-        await sftpMkdir(sftpConfigOf(resolution, loc), loc.path || '/')
+        await sftpMkdir(sftpCfg(resolution, loc), loc.path || '/')
         return
       }
       await ftpMkdir(ftpConfig(resolution, loc), loc.path || '/')
@@ -447,7 +450,7 @@ export function createRemoteFs(
       }
       if (loc.scheme === 'sftp') {
         if (!loc.path) throw new RemoteError('unsupported', 'the root folder cannot be deleted')
-        await sftpRemove(sftpConfigOf(resolution, loc), loc.path)
+        await sftpRemove(sftpCfg(resolution, loc), loc.path)
         return
       }
       await ftpRemove(ftpConfig(resolution, loc), loc.path || '/', true)
@@ -460,7 +463,7 @@ export function createRemoteFs(
   async function utimes(uri: string, mtime: number): Promise<void> {
     const { loc, resolution } = await resolved(uri)
     if (loc.scheme === 's3') return
-    if (loc.scheme === 'sftp') return sftpUtimes(sftpConfigOf(resolution, loc), loc.path || '/', mtime)
+    if (loc.scheme === 'sftp') return sftpUtimes(sftpCfg(resolution, loc), loc.path || '/', mtime)
     return ftpUtimes(ftpConfig(resolution, loc), loc.path || '/', mtime)
   }
 
@@ -487,7 +490,7 @@ export function createRemoteFs(
         return
       }
       if (a.loc.scheme === 'sftp') {
-        await sftpRename(sftpConfigOf(a.resolution, a.loc), a.loc.path, b.loc.path)
+        await sftpRename(sftpCfg(a.resolution, a.loc), a.loc.path, b.loc.path)
         return
       }
       await ftpRename(ftpConfig(a.resolution, a.loc), a.loc.path, b.loc.path)
@@ -526,7 +529,7 @@ export function createRemoteFs(
       const local = path.join(dir, 'write.bin')
       try {
         await fs.writeFile(local, data)
-        if (loc.scheme === 'sftp') await sftpUpload(sftpConfigOf(resolution, loc), local, loc.path)
+        if (loc.scheme === 'sftp') await sftpUpload(sftpCfg(resolution, loc), local, loc.path)
         else await ftpUpload(ftpConfig(resolution, loc), local, loc.path)
       } finally {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)

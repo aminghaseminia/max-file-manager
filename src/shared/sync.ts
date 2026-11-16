@@ -145,6 +145,8 @@ export type SyncJob = {
   /** local ↔ local only; remote endpoints stay on the native engine */
   useRsync?: boolean
   rsync?: RsyncOptions
+  /** compress the transfer: rsync `-z`, or SSH zlib on an SFTP session */
+  compress?: boolean
   encLeft?: SyncEncryption
   encRight?: SyncEncryption
   versions?: SyncVersions
@@ -180,6 +182,12 @@ export type SyncProgress = {
   filesDone: number
   bytes: number
   bytesDone: number
+  /** total bytes this run intends to copy; 0 while the plan is not known yet */
+  bytesTotal?: number
+  /** recent transfer rate in bytes per second (0 while paused/idle) */
+  speed?: number
+  /** estimated time to finish; null when there is no usable rate */
+  etaMs?: number | null
   current: string
   errors: string[]
   /** pause/resume is a state of the run, not a lost event */
@@ -299,6 +307,8 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
   const localOnly = !isRemotePath(left) && !isRemotePath(right)
   // rsync cannot encrypt/decrypt; a job with an encrypted side always uses the native engine
   const useRsync = localOnly && j.useRsync === true && !encLeft && !encRight
+  const rsync = useRsync ? cleanRsyncOptions(j.rsync) : {}
+  const compress = j.compress === true || rsync.compress === true
   const ignore = cleanIgnore(j.ignore)
   // migrate the old glob-only list so an existing job behaves exactly as before
   const ignoreRules = cleanIgnoreRules(j.ignoreRules)
@@ -321,7 +331,8 @@ export function cleanSyncJob(raw: unknown): SyncJob | null {
     enabled: j.enabled !== false,
     schedule: cleanSchedule(j.schedule),
     useRsync,
-    ...(useRsync ? { rsync: cleanRsyncOptions(j.rsync) } : {}),
+    compress,
+    ...(useRsync ? { rsync: { ...rsync, ...(compress ? { compress: true } : {}) } } : {}),
     ...(encLeft ? { encLeft } : {}),
     ...(encRight ? { encRight } : {}),
     ...(versions ? { versions } : {})

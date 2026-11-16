@@ -354,6 +354,12 @@ export async function resolveRemote(loc: RemoteLocation): Promise<RemoteResoluti
 /** The app-wide remote filesystem; every main-process caller shares it (and therefore its cache). */
 export const remoteFs = createRemoteFs(resolveRemote)
 
+/**
+ * A second SFTP pool that offers SSH transport compression. Only sync runs that asked for `-z`
+ * use it, so normal browsing keeps the cheaper uncompressed session.
+ */
+export const remoteFsCompressed = createRemoteFs(resolveRemote, { compress: true })
+
 /** Test a draft from the dialog before it is saved. */
 export async function testRemoteDraft(
   draft: ProfileDraft

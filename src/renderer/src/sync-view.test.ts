@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { conflictFacts, filterSyncRows, globRules, relativeSpan, ruleKey } from './sync-view.ts'
+import { conflictFacts, durationText, filterSyncRows, globRules, relativeSpan, ruleKey } from './sync-view.ts'
 import type { SyncRow } from '../../shared/sync.ts'
 
 const file = (size: number, mtime: number): NonNullable<SyncRow['left']> => ({ size, mtime, dir: false })
@@ -67,4 +67,13 @@ test('rules: stable keys and the glob-only list rsync sees', () => {
     ]),
     ['*.log', 'node_modules']
   )
+})
+
+test('durationText: seconds, minutes and hours without leading hour zero', () => {
+  assert.equal(durationText(0), '0:00')
+  assert.equal(durationText(42_000), '0:42')
+  assert.equal(durationText(5 * 60_000 + 7_000), '5:07')
+  assert.equal(durationText(3600_000), '1:00:00')
+  assert.equal(durationText(3600_000 + 2 * 60_000 + 3_000), '1:02:03')
+  assert.equal(durationText(-1000), '0:00')
 })

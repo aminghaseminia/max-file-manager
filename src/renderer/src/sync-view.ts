@@ -75,6 +75,17 @@ export function relativeSpan(ms: number): Span {
   return { value: Math.round(mo / 12), unit: 'year' }
 }
 
+/** `0:42`, `12:05`, `1:02:03` — digits are converted by `fa()` at the call site. */
+export function durationText(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
 export const ruleKey = (rule: SyncIgnoreRule): string =>
   rule.kind === 'size' ? `size:${rule.op}:${rule.bytes}` : `${rule.kind}:${rule.value}`
 

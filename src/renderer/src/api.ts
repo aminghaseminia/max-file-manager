@@ -61,6 +61,7 @@ export type SyncOptions = {
   compareBy?: SyncCompareBy
   ignore?: string[]
   ignoreRules?: SyncIgnoreRule[]
+  compress?: boolean
   deleteExtra?: boolean
   selected?: string[]
   resolutions?: Record<string, 'left' | 'right' | 'skip'>

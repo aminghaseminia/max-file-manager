@@ -75,7 +75,7 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `archive_list` | `path` | entries inside a zip/tar |
 | `diff` | `a`, `b` | line diff of two text files |
 | `sync_compare` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?` | compare two local/remote trees (read-only) |
-| `sync_plan` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?`, `deleteExtra?`, `useRsync?`, `rsync?`, `encLeft?`, `encRight?` | rows + exact copy/delete plan, writes nothing |
+| `sync_plan` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?`, `compress?`, `deleteExtra?`, `useRsync?`, `rsync?`, `encLeft?`, `encRight?` | rows + exact copy/delete plan, writes nothing |
 | `sync_jobs` | – | saved jobs, directions and schedules |
 | `sync_history` | `limit?` | recent runs with stats and conflicts |
 | `sync_status` | – | the run currently in progress |
@@ -134,7 +134,7 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `job_start` / `job_pause` / `job_resume` / `job_cancel` / `job_clear` | `kind`, `sources[]`, `dest`, `opts?` / `id` | full transfer control |
 | `undo` | – | undo the last transfer |
 | `sync_apply` | `left`, `right`, `mode`, `deleteExtra?` | legacy one-way helper; re-compares, local deletes go to trash, remote deletes are refused |
-| `sync_run` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?`, `deleteExtra?`, `dryRun?`, `confirm?`, `useRsync?`, `rsync?`, `encLeft?`, `encRight?`, `versions?` | one run; two-way reports conflicts instead of guessing, rsync is local one-way, remote deletes need `confirm:true` |
+| `sync_run` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?`, `compress?`, `deleteExtra?`, `dryRun?`, `confirm?`, `useRsync?`, `rsync?`, `encLeft?`, `encRight?`, `versions?` | one run; two-way reports conflicts instead of guessing, rsync is local one-way, remote deletes need `confirm:true` |
 | `sync_job_save` | `job` | create/update a validated job (no secrets) |
 | `sync_job_remove` | `id` | delete a job |
 | `sync_restore` | `id`, `confirm?` | reverse the copies of a run; deleted files are reported unrestorable |

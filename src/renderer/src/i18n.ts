@@ -31,6 +31,15 @@ export const subscribeLang = (fn: () => void): (() => void) => {
 
 /** Persian → English. Anything missing falls back to the Persian source. */
 const EN: Record<string, string> = {
+  'برای فشرده‌سازی، rsync را روشن کن؛ کپی لوکال فشرده نمی‌شود': 'Turn on rsync to compress; a local copy is not compressed',
+  '{t} باقی': '{t} left',
+  'با رمزنگاری، داده قبل از انتقال رمز می‌شود و فشرده‌سازی بی‌فایده است': 'Encryption runs before transfer, so compressing the payload gains nothing',
+  'زمان باقی‌مانده: {t}': 'Time left: {t}',
+  'فشرده‌سازی (-z)': 'Compression (-z)',
+  'فشرده‌سازی SSH برای انتقال SFTP': 'SSH compression for SFTP transfers',
+  'فشرده‌سازی rsync (-z)': 'rsync compression (-z)',
+  'فشرده‌سازی انتقال (-z)': 'Compress transfer (-z)',
+  'فشرده‌سازی فقط برای SFTP یا rsync است؛ کپی لوکال سود ندارد': 'Compression is for SFTP or rsync; a local copy gains nothing',
   'rsync فقط قاعده‌های glob را می‌شناسد': 'rsync understands glob rules only',
   '{n} second': '{n} second',
   '{n} minute': '{n} minute',

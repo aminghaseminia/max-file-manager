@@ -29,10 +29,11 @@ import {
   TrashIcon,
   XIcon
 } from './Icons'
-import { isRemotePath } from '../../shared/remote-path.ts'
+import { isRemotePath, parseRemote } from '../../shared/remote-path.ts'
 import { newSyncJobId } from '../../shared/sync.ts'
 import {
   conflictFacts,
+  durationText,
   filterSyncRows,
   globRules,
   relativeSpan,
@@ -347,6 +348,9 @@ export function SyncWorkspace({
   const currentJob = jobs.find((j) => j.left === left && j.right === right)
   const [useRsync, setUseRsync] = useState(currentJob?.useRsync === true)
   const [rsyncOpts, setRsyncOpts] = useState<RsyncOptions>(currentJob?.rsync ?? {})
+  const [compress, setCompress] = useState(
+    currentJob?.compress === true || currentJob?.rsync?.compress === true
+  )
   const [encLeftState, setEncLeftState] = useState<EncState>(() => toEncState(currentJob?.encLeft))
   const [encRightState, setEncRightState] = useState<EncState>(() => toEncState(currentJob?.encRight))
   const [secretText, setSecretText] = useState({ left: '', right: '' })
@@ -369,8 +373,22 @@ export function SyncWorkspace({
   const effectiveCompareBy: 'mtime' | 'hash' = encrypted ? 'hash' : compareBy
   // rsync can only express glob excludes; regex/size rules need the native engine
   const rsyncRulesOk = rules.every((r) => r.kind === 'glob')
-  const rsyncAllowed =
-    useRsync && rsyncRulesOk && mode !== 'both' && !encrypted && !isRemotePath(left) && !isRemotePath(right)
+  const rsyncPossible =
+    rsyncRulesOk && mode !== 'both' && !encrypted && !isRemotePath(left) && !isRemotePath(right)
+  const rsyncAllowed = useRsync && rsyncPossible
+  const sftpEndpoint = parseRemote(left)?.scheme === 'sftp' || parseRemote(right)?.scheme === 'sftp'
+  // rsync -z, or SSH zlib on an SFTP session; age ciphertext is incompressible, local copies gain nothing
+  const compressEngine = sftpEndpoint ? 'sftp' : useRsync && rsyncPossible ? 'rsync' : 'none'
+  const compressAllowed = !encrypted && compressEngine !== 'none'
+  const compressTitle = encrypted
+    ? t('با رمزنگاری، داده قبل از انتقال رمز می‌شود و فشرده‌سازی بی‌فایده است')
+    : compressEngine === 'sftp'
+      ? t('فشرده‌سازی SSH برای انتقال SFTP')
+      : compressEngine === 'rsync'
+        ? t('فشرده‌سازی rsync (-z)')
+        : rsyncPossible
+          ? t('برای فشرده‌سازی، rsync را روشن کن؛ کپی لوکال فشرده نمی‌شود')
+          : t('فشرده‌سازی فقط برای SFTP یا rsync است؛ کپی لوکال سود ندارد')
 
   useEffect(() => {
     if (!currentJob) return
@@ -385,6 +403,7 @@ export function SyncWorkspace({
     setOnChange(currentJob.schedule.onChange === true)
     setUseRsync(currentJob.useRsync === true)
     setRsyncOpts(currentJob.rsync ?? {})
+    setCompress(currentJob.compress === true || currentJob.rsync?.compress === true)
     setRules((prev) => {
       const next = currentJob.ignoreRules ?? []
       return prev.length === next.length && prev.every((r, i) => ruleKey(r) === ruleKey(next[i]))
@@ -725,6 +744,7 @@ export function SyncWorkspace({
         compareBy: effectiveCompareBy,
         ignore: ignored,
         ignoreRules: rules,
+        compress: compress && compressAllowed,
         deleteExtra,
         useRsync: rsyncAllowed,
         rsync: rsyncOpts,
@@ -781,6 +801,7 @@ export function SyncWorkspace({
         compareBy: effectiveCompareBy,
         ignore: ignored,
         ignoreRules: rules,
+        compress: compress && compressAllowed,
         deleteExtra,
         encLeft: fromEncState(encLeftState),
         encRight: fromEncState(encRightState),
@@ -984,9 +1005,12 @@ export function SyncWorkspace({
       compareBy,
       ignore: ignored,
       ignoreRules: rules,
+      compress: compress && compressAllowed,
       deleteExtra,
       useRsync: rsyncAllowed,
-      ...(rsyncAllowed ? { rsync: rsyncOpts } : {}),
+      ...(rsyncAllowed
+        ? { rsync: { ...rsyncOpts, ...(compress && compressAllowed ? { compress: true } : {}) } }
+        : {}),
       ...(fromEncState(encLeftState) ? { encLeft: fromEncState(encLeftState) } : {}),
       ...(fromEncState(encRightState) ? { encRight: fromEncState(encRightState) } : {}),
       ...(versionsConfig() ? { versions: versionsConfig() } : {}),
@@ -1031,7 +1055,15 @@ export function SyncWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history.length, versionsReady, versionsOn, versionsAllowed])
 
-  const pct = progress && progress.files ? Math.min(100, Math.round((progress.filesDone / progress.files) * 100)) : 0
+  // once the plan's byte total is known, the bar follows bytes: one 3 GB file must not show
+  // 100 % from the moment its copy starts just because it is the last file in the list
+  const pct = progress
+    ? progress.bytesTotal
+      ? Math.min(100, Math.round((progress.bytesDone / progress.bytesTotal) * 100))
+      : progress.files
+        ? Math.min(100, Math.round((progress.filesDone / progress.files) * 100))
+        : 0
+    : 0
 
   /** The headline card for one pane: name, path, its role in this direction and a row count. */
   const sideCard = (side: 'left' | 'right'): ReactElement => {
@@ -1174,6 +1206,15 @@ export function SyncWorkspace({
             />
             <span>{t('rsync')}</span>
           </label>
+          <label className="check-label" title={compressTitle}>
+            <input
+              type="checkbox"
+              checked={compress}
+              disabled={!compressAllowed}
+              onChange={(e) => setCompress(e.target.checked)}
+            />
+            <span>{t('فشرده‌سازی انتقال (-z)')}</span>
+          </label>
           {useRsync && rsyncAllowed && (
             <details className="sync-rsync-opts">
               <summary>{t('تنظیمات rsync')}</summary>
@@ -1184,14 +1225,6 @@ export function SyncWorkspace({
                   onChange={(e) => setRsyncOpts((o) => ({ ...o, checksum: e.target.checked || undefined }))}
                 />
                 <span>{t('مقایسه با checksum')}</span>
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={rsyncOpts.compress === true}
-                  onChange={(e) => setRsyncOpts((o) => ({ ...o, compress: e.target.checked || undefined }))}
-                />
-                <span>{t('فشرده‌سازی')}</span>
               </label>
               <label className="check-label">
                 <input
@@ -1280,6 +1313,7 @@ export function SyncWorkspace({
           <span className="chip warn">{t('{n} مشکوک', { n: fa(count('sizeDiff') + count('contentDiff') + count('typeDiff')) })}</span>
           <span className="chip warn">{t('{n} تعارض', { n: fa(count('conflict')) })}</span>
           <span className="chip">{t('{n} یکسان', { n: fa(count('same')) })}</span>
+          {compress && compressAllowed && <span className="chip add">{t('فشرده‌سازی (-z)')}</span>}
           {encrypted && <span className="chip warn">{t('رمزشده · هش')}</span>}
           {capped && <span className="chip warn">{t('فهرست بریده شد')}</span>}
           {selected.size > 0 && plan && (
@@ -1809,7 +1843,13 @@ export function SyncWorkspace({
               <i style={{ width: pct + '%' }} />
             </span>
             <span className="dim">
-              {fa(pct)}٪ · {fmtSize(progress.bytesDone, false)} · <span dir="auto">{progress.current}</span>
+              {fa(pct)}٪ · {fmtSize(progress.bytesDone, false)}
+              {progress.speed ? ` · ${fmtSize(progress.speed, false)}/s` : ''}
+              {progress.etaMs != null
+                ? ` · ${t('زمان باقی‌مانده: {t}', { t: fa(durationText(progress.etaMs)) })}`
+                : ''}
+              {' · '}
+              <span dir="auto">{progress.current}</span>
             </span>
             <span className="spacer" />
             <button

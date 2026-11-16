@@ -147,6 +147,7 @@ import {
   listRemoteProfiles,
   readSshConfigHosts,
   remoteFs,
+  remoteFsCompressed,
   remoteProfileUri,
   removeRemoteProfile,
   saveRemoteProfile,
@@ -234,6 +235,7 @@ const bootPrefs = boot.prefs ?? {}
  */
 const syncService = createSyncService({
   remote: remoteFs,
+  remoteCompressed: remoteFsCompressed,
   trash: (p) => shell.trashItem(p),
   emit: (channel, payload) => {
     for (const w of BrowserWindow.getAllWindows()) {
@@ -1947,6 +1949,7 @@ app.whenReady().then(async () => {
           compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
           ignoreRules: cleanIgnoreRules(args.ignoreRules),
+          compress: args.compress === true,
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
@@ -1960,6 +1963,7 @@ app.whenReady().then(async () => {
           compareBy: args.compareBy === 'hash' ? 'hash' : 'mtime',
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
           ignoreRules: cleanIgnoreRules(args.ignoreRules),
+          compress: args.compress === true,
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
@@ -2209,6 +2213,7 @@ app.whenReady().then(async () => {
     compareBy: 'mtime' | 'hash'
     ignore: string[]
     ignoreRules: SyncIgnoreRule[]
+    compress: boolean
   } => {
     const left = syncPath(a?.left)
     const right = syncPath(a?.right)
@@ -2222,7 +2227,8 @@ app.whenReady().then(async () => {
       ignore: Array.isArray(a?.ignore)
         ? (a.ignore as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 50)
         : [],
-      ignoreRules: cleanIgnoreRules(a?.ignoreRules)
+      ignoreRules: cleanIgnoreRules(a?.ignoreRules),
+      compress: a?.compress === true
     }
   }
   const syncSelections = (a: Record<string, unknown> | undefined): string[] | undefined =>
