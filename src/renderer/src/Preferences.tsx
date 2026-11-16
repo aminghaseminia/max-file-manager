@@ -682,6 +682,17 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
             <>
               <div className="hint">{t('دکمه‌های نوار فرمان را انتخاب و مرتب کن. نوار خالی یعنی نوار پنهان.')}</div>
               {row(
+                t('نمایش نوار ابزار'),
+                t('وقتی خاموش است، همهٔ فرمان‌ها در منوی ⋮ سربرگ هستند'),
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={prefs.toolbarVisible}
+                    onChange={(e) => onChange({ toolbarVisible: e.target.checked })}
+                  />
+                </label>
+              )}
+              {row(
                 t('ظاهر دکمه‌ها'),
                 t('فقط آیکون جا بیشتری می‌دهد؛ فقط متن ساده‌تر است'),
                 seg(

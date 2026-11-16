@@ -453,6 +453,15 @@ input {
   color: var(--accent);
   background: var(--accent-soft);
 }
+/* the header's all-commands button when the command bar is off */
+.tb-more {
+  font-size: 16px;
+  line-height: 1;
+}
+/* that button's menu renders inside .topbar, which is the window's drag region */
+.topbar .ctx {
+  -webkit-app-region: no-drag;
+}
 
 /* ---------- layout ---------- */
 .body {
