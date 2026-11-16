@@ -112,8 +112,10 @@ import {
 import { randomBytes } from 'node:crypto'
 import { copyFilesToClipboard, releaseFileClipboard } from './fileclip.ts'
 import { diffFiles } from './sync.ts'
-import { cleanRsyncOptions } from '../shared/sync.ts'
+import { cleanEncryption, cleanRsyncOptions, type SyncEncryption } from '../shared/sync.ts'
 import { createSyncService } from './sync-service.ts'
+import { generateKeypair, looksLikeIdentity, recipientOf } from './sync-crypt.ts'
+import { getSyncSecret, hasSyncSecret, removeSyncSecret, setSyncSecret } from './sync-secrets.ts'
 import { convertImages, type ConvertOpts } from './convert.ts'
 import { exportListing, type ExportRow } from './export.ts'
 import { createEngine, type JobKind, type JobOpts } from './jobs.ts'
@@ -1937,7 +1939,8 @@ app.whenReady().then(async () => {
           ignore: Array.isArray(args.ignore) ? args.ignore.map(String).slice(0, 50) : [],
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
-          rsync: cleanRsyncOptions(args.rsync)
+          rsync: cleanRsyncOptions(args.rsync),
+          enc: { left: syncEnc(args.encLeft), right: syncEnc(args.encRight) }
         })
       case 'sync_run': {
         const r = await syncService.run({
@@ -1949,6 +1952,7 @@ app.whenReady().then(async () => {
           deleteExtra: !!args.deleteExtra,
           useRsync: !!args.useRsync,
           rsync: cleanRsyncOptions(args.rsync),
+          enc: { left: syncEnc(args.encLeft), right: syncEnc(args.encRight) },
           dryRun: args.dryRun === true,
           confirmRemoteDelete: args.confirm === true
         })
@@ -2205,6 +2209,12 @@ app.whenReady().then(async () => {
     }
     return out
   }
+  const syncEnc = (v: unknown): SyncEncryption | undefined => {
+    const e = cleanEncryption(v)
+    if (e === null) throw new Error('invalid encryption configuration')
+    return e
+  }
+
   const syncBroadcastJobs = (): void => {
     const jobs = syncService.listJobs()
     for (const w of BrowserWindow.getAllWindows()) {
@@ -2219,6 +2229,7 @@ app.whenReady().then(async () => {
       deleteExtra: a?.deleteExtra === true,
       useRsync: a?.useRsync === true,
       rsync: cleanRsyncOptions(a?.rsync),
+      enc: { left: syncEnc(a?.encLeft), right: syncEnc(a?.encRight) },
       selected: syncSelections(a),
       resolutions: syncResolutions(a)
     })
@@ -2230,6 +2241,7 @@ app.whenReady().then(async () => {
       deleteExtra: a?.deleteExtra === true,
       useRsync: a?.useRsync === true,
       rsync: cleanRsyncOptions(a?.rsync),
+      enc: { left: syncEnc(a?.encLeft), right: syncEnc(a?.encRight) },
       selected: syncSelections(a),
       resolutions: syncResolutions(a),
       dryRun: a?.dryRun === true,
@@ -2258,6 +2270,19 @@ app.whenReady().then(async () => {
   ipcMain.handle('sync:clearBaseline', (_e, a: { left?: string; right?: string }) => {
     syncService.clearBaseline(syncPath(a?.left), syncPath(a?.right))
     return true
+  })
+  // Secrets are write-only on purpose: the reveal path exists only for backing up a generated
+  // keypair identity, and the MCP surface never gets any of these.
+  ipcMain.handle('sync:secretSet', (_e, a: { id?: string; value?: string }) =>
+    setSyncSecret(String(a?.id ?? ''), String(a?.value ?? ''))
+  )
+  ipcMain.handle('sync:secretHas', (_e, id: string) => hasSyncSecret(String(id ?? '')))
+  ipcMain.handle('sync:secretRemove', (_e, id: string) => removeSyncSecret(String(id ?? '')))
+  ipcMain.handle('sync:secretReveal', (_e, id: string) => getSyncSecret(String(id ?? '')))
+  ipcMain.handle('sync:keypair', () => generateKeypair())
+  ipcMain.handle('sync:recipientOf', async (_e, identity: string) => {
+    if (!looksLikeIdentity(String(identity ?? ''))) throw new Error('invalid age identity')
+    return recipientOf(String(identity))
   })
   ipcMain.handle('fs:diff', (_e, a: { a: string; b: string }) => diffFiles(a?.a ?? '', a?.b ?? ''))
   ipcMain.handle('fs:readText', (_e, p: string) => readTextAny(p ?? ''))

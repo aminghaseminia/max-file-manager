@@ -148,6 +148,12 @@ contextBridge.exposeInMainWorld('api', {
     resume: (id?: string) => ipcRenderer.invoke('sync:resume', id),
     clearBaseline: (left: string, right: string) =>
       ipcRenderer.invoke('sync:clearBaseline', { left, right }),
+    secretSet: (id: string, value: string) => ipcRenderer.invoke('sync:secretSet', { id, value }),
+    secretHas: (id: string) => ipcRenderer.invoke('sync:secretHas', id),
+    secretRemove: (id: string) => ipcRenderer.invoke('sync:secretRemove', id),
+    secretReveal: (id: string) => ipcRenderer.invoke('sync:secretReveal', id),
+    keypair: () => ipcRenderer.invoke('sync:keypair'),
+    recipientOf: (identity: string) => ipcRenderer.invoke('sync:recipientOf', identity),
     onProgress: (cb: (p: unknown) => void) => {
       const fn = (_e: unknown, p: unknown) => cb(p)
       ipcRenderer.on('sync:progress', fn)

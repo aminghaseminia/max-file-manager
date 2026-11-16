@@ -4019,6 +4019,59 @@ html[data-rounded='0'] .app {
 .sync-rsync-opts .ignore-input {
   width: 90px;
 }
+.sync-enc {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 11px;
+}
+.sync-enc summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--dim);
+}
+.sync-enc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.sync-enc-side {
+  flex: 0 0 42px;
+  color: var(--dim);
+}
+.sync-enc select {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.sync-enc .ignore-input {
+  width: 190px;
+}
+.sync-key-box {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.sync-key-box textarea {
+  flex: 1 1 100%;
+  min-height: 58px;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+}
+.sync-enc-note {
+  margin-top: 6px;
+}
 .check-label {
   display: inline-flex;
   align-items: center;

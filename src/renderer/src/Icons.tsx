@@ -197,8 +197,8 @@ export const LinkIcon = ({ size = 15 }: { size?: number }) => (
   </S>
 )
 
-export const EyeIcon = () => (
-  <S>
+export const EyeIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
     <circle cx="12" cy="12" r="2.5" />
   </S>
@@ -274,8 +274,8 @@ export const TrashIcon = ({ size = 15 }: { size?: number }) => (
     <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l1 13h9l1-13" />
   </S>
 )
-export const CopyIcon = () => (
-  <S>
+export const CopyIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
     <path d="M15.5 5.5h-9a2 2 0 0 0-2 2v9" />
   </S>

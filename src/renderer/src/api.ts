@@ -3,6 +3,7 @@ import type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts
 import type {
   RsyncOptions,
   SyncCompareBy,
+  SyncEncryption,
   SyncJob,
   SyncMode,
   SyncPlan,
@@ -16,6 +17,7 @@ export type {
   ConflictKind,
   RsyncOptions,
   SyncAction,
+  SyncEncryption,
   SyncCompareBy,
   SyncJob,
   SyncMode,
@@ -60,6 +62,8 @@ export type SyncOptions = {
   confirmRemoteDelete?: boolean
   useRsync?: boolean
   rsync?: RsyncOptions
+  encLeft?: SyncEncryption
+  encRight?: SyncEncryption
 }
 export type RemoteTestResult =
   | { ok: true; detail: string; hostKey?: string }
@@ -561,6 +565,13 @@ export type Api = {
     pause(id?: string): Promise<boolean>
     resume(id?: string): Promise<boolean>
     clearBaseline(left: string, right: string): Promise<boolean>
+    secretSet(id: string, value: string): Promise<{ ok: true; sessionOnly: boolean } | { error: string }>
+    secretHas(id: string): Promise<boolean>
+    secretRemove(id: string): Promise<boolean>
+    /** only for backing up a generated keypair identity; never call it for a passphrase */
+    secretReveal(id: string): Promise<string | null>
+    keypair(): Promise<{ identity: string; recipient: string }>
+    recipientOf(identity: string): Promise<string>
     onProgress(cb: (p: SyncProgress) => void): () => void
     onDone(cb: (r: SyncRunSummary) => void): () => void
     onJobs(cb: (jobs: SyncJob[]) => void): () => void

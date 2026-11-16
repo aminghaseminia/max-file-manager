@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { t } from './i18n.ts'
 import {
   api,
   type RsyncOptions,
+  type SyncEncryption,
   type SyncJob,
   type SyncMode,
   type SyncPlan,
@@ -15,6 +16,8 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
+  CopyIcon,
+  EyeIcon,
   PauseIcon,
   PlayIcon,
   PlusIcon,
@@ -65,6 +68,16 @@ const CONFLICT_LABEL: Record<string, string> = {
 const MODE_LABEL: Record<string, string> = { ltr: 'چپ → راست', rtl: 'راست → چپ', both: 'دوطرفه' }
 
 const ROW_H = 28
+
+type EncState = { mode: 'off' | 'passphrase' | 'keypair'; secretId: string; recipient: string }
+const toEncState = (e?: SyncEncryption): EncState =>
+  e
+    ? { mode: e.mode, secretId: e.secretId, recipient: e.recipient ?? '' }
+    : { mode: 'off', secretId: '', recipient: '' }
+const fromEncState = (s: EncState): SyncEncryption | undefined =>
+  s.mode === 'off'
+    ? undefined
+    : { mode: s.mode, secretId: s.secretId, ...(s.recipient.trim() ? { recipient: s.recipient.trim() } : {}) }
 
 const labelOfState = (state: string): string => t(STATE_LABEL[state] ?? state)
 const labelOfConflict = (kind: string | undefined): string => t(CONFLICT_LABEL[kind ?? ''] ?? kind ?? '')
@@ -201,7 +214,15 @@ export function SyncWorkspace({
   const currentJob = jobs.find((j) => j.left === left && j.right === right)
   const [useRsync, setUseRsync] = useState(currentJob?.useRsync === true)
   const [rsyncOpts, setRsyncOpts] = useState<RsyncOptions>(currentJob?.rsync ?? {})
-  const rsyncAllowed = useRsync && mode !== 'both' && !isRemotePath(left) && !isRemotePath(right)
+  const [encLeftState, setEncLeftState] = useState<EncState>(() => toEncState(currentJob?.encLeft))
+  const [encRightState, setEncRightState] = useState<EncState>(() => toEncState(currentJob?.encRight))
+  const [secretText, setSecretText] = useState({ left: '', right: '' })
+  const [secretReady, setSecretReady] = useState({ left: false, right: false })
+  const [revealed, setRevealed] = useState({ left: '', right: '' })
+  const encrypted = encLeftState.mode !== 'off' || encRightState.mode !== 'off'
+  const effectiveCompareBy: 'mtime' | 'hash' = encrypted ? 'hash' : compareBy
+  const rsyncAllowed =
+    useRsync && mode !== 'both' && !encrypted && !isRemotePath(left) && !isRemotePath(right)
 
   useEffect(() => {
     if (!currentJob) return
@@ -213,6 +234,8 @@ export function SyncWorkspace({
     setOnChange(currentJob.schedule.onChange === true)
     setUseRsync(currentJob.useRsync === true)
     setRsyncOpts(currentJob.rsync ?? {})
+    setEncLeftState(toEncState(currentJob.encLeft))
+    setEncRightState(toEncState(currentJob.encRight))
     // only a different job repopulates the form; typing must not be overwritten
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentJob?.id])
@@ -224,6 +247,18 @@ export function SyncWorkspace({
       setHistory([])
     }
   }
+
+  useEffect(() => {
+    let alive = true
+    const check = async (s: EncState): Promise<boolean> =>
+      s.mode === 'off' || !s.secretId ? false : await api.sync.secretHas(s.secretId).catch(() => false)
+    void Promise.all([check(encLeftState), check(encRightState)]).then(([left, right]) => {
+      if (alive) setSecretReady({ left, right })
+    })
+    return () => {
+      alive = false
+    }
+  }, [encLeftState.mode, encLeftState.secretId, encRightState.mode, encRightState.secretId])
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent): void => {
@@ -253,6 +288,174 @@ export function SyncWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const encOf = (side: 'left' | 'right'): EncState => (side === 'left' ? encLeftState : encRightState)
+  const setEncOf = (side: 'left' | 'right', next: EncState): void =>
+    side === 'left' ? setEncLeftState(next) : setEncRightState(next)
+
+  const changeEncMode = (side: 'left' | 'right', next: EncState['mode']): void => {
+    const current = encOf(side)
+    if (next === current.mode) return
+    if (current.secretId && next !== 'off') void api.sync.secretRemove(current.secretId)
+    const fresh: EncState =
+      next === 'off'
+        ? { mode: 'off', secretId: '', recipient: '' }
+        : { mode: next, secretId: crypto.randomUUID(), recipient: '' }
+    setEncOf(side, fresh)
+    setSecretText((v) => ({ ...v, [side]: '' }))
+    setRevealed((v) => ({ ...v, [side]: '' }))
+    setSecretReady((v) => ({ ...v, [side]: false }))
+    if (next !== 'off') {
+      setCompareBy('hash')
+      setUseRsync(false)
+    }
+  }
+
+  const saveSecret = async (side: 'left' | 'right'): Promise<void> => {
+    const state = encOf(side)
+    if (state.mode === 'off' || !state.secretId) return
+    const value = secretText[side]
+    if (!value.trim()) {
+      setError(t('پسورد یا کلید را بنویس'))
+      return
+    }
+    let recipient = state.recipient
+    if (state.mode === 'keypair') {
+      try {
+        recipient = await api.sync.recipientOf(value)
+      } catch {
+        setError(t('کلید خصوصی age معتبر نیست'))
+        return
+      }
+    }
+    const res = await api.sync.secretSet(state.secretId, value)
+    if ('error' in res) {
+      setError(res.error)
+      return
+    }
+    setEncOf(side, { ...state, recipient })
+    setSecretReady((v) => ({ ...v, [side]: true }))
+    setSecretText((v) => ({ ...v, [side]: '' }))
+    setMessage(
+      res.sessionOnly ? t('کلید فقط تا پایان این نشست نگه داشته می‌شود') : t('کلید ذخیره شد')
+    )
+  }
+
+  const generateKey = async (side: 'left' | 'right'): Promise<void> => {
+    const state = encOf(side)
+    if (state.mode !== 'keypair' || !state.secretId) return
+    if (
+      secretReady[side] &&
+      !window.confirm(
+        t('جفت‌کلید موجود عوض شود؟ فایل‌های رمزشدهٔ قبلی با کلید تازه باز نمی‌شوند')
+      )
+    ) {
+      return
+    }
+    const kp = await api.sync.keypair()
+    const res = await api.sync.secretSet(state.secretId, kp.identity)
+    if ('error' in res) {
+      setError(res.error)
+      return
+    }
+    setEncOf(side, { mode: 'keypair', secretId: state.secretId, recipient: kp.recipient })
+    setRevealed((v) => ({ ...v, [side]: kp.identity }))
+    setSecretReady((v) => ({ ...v, [side]: true }))
+    setMessage(res.sessionOnly ? t('کلید فقط تا پایان این نشست نگه داشته می‌شود') : t('جفت‌کلید ساخته شد'))
+  }
+
+  const revealKey = async (side: 'left' | 'right'): Promise<void> => {
+    const state = encOf(side)
+    if (state.mode !== 'keypair' || !state.secretId) return
+    const value = await api.sync.secretReveal(state.secretId)
+    if (!value) {
+      setError(t('کلیدی ذخیره نشده است'))
+      return
+    }
+    setRevealed((v) => ({ ...v, [side]: value }))
+  }
+
+  const encRow = (side: 'left' | 'right'): ReactElement => {
+    const state = encOf(side)
+    return (
+      <div className="sync-enc-row" key={side}>
+        <span className="sync-enc-side">{side === 'left' ? t('چپ') : t('راست')}</span>
+        <select
+          value={state.mode}
+          onChange={(e) => changeEncMode(side, e.target.value as EncState['mode'])}
+          aria-label={t('حالت رمزنگاری')}
+        >
+          <option value="off">{t('خاموش')}</option>
+          <option value="passphrase">{t('پسورد')}</option>
+          <option value="keypair">{t('جفت‌کلید')}</option>
+        </select>
+        {state.mode === 'passphrase' && (
+          <>
+            <input
+              type="password"
+              className="ignore-input"
+              dir="ltr"
+              placeholder={t('پسورد')}
+              value={secretText[side]}
+              onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
+            />
+            <button className="tb" onClick={() => void saveSecret(side)}>
+              {secretReady[side] ? t('تغییر') : t('ذخیره')}
+            </button>
+            {secretReady[side] && <span className="chip add">{t('ذخیره‌شده')}</span>}
+          </>
+        )}
+        {state.mode === 'keypair' && (
+          <>
+            <input
+              className="ignore-input"
+              dir="ltr"
+              placeholder="age1…"
+              title={t('کلید عمومی (recipient)')}
+              value={state.recipient}
+              onChange={(e) => setEncOf(side, { ...state, recipient: e.target.value })}
+            />
+            <input
+              type="password"
+              className="ignore-input"
+              dir="ltr"
+              placeholder="AGE-SECRET-KEY-1…"
+              title={t('کلید خصوصی (identity)')}
+              value={secretText[side]}
+              onChange={(e) => setSecretText((v) => ({ ...v, [side]: e.target.value }))}
+            />
+            <button className="tb" onClick={() => void saveSecret(side)}>
+              {t('ذخیره کلید')}
+            </button>
+            <button className="tb" onClick={() => void generateKey(side)}>
+              {t('ساخت جفت‌کلید')}
+            </button>
+            <button className="tb" onClick={() => void revealKey(side)} title={t('نمایش کلید برای بکاپ')}>
+              <EyeIcon size={12} />
+            </button>
+            {secretReady[side] && <span className="chip add">{t('کلید ذخیره شد')}</span>}
+          </>
+        )}
+        {revealed[side] && (
+          <div className="sync-key-box">
+            <div className="dim">
+              {t('این کلید خصوصی را جای امن نگه دار؛ بدون آن فایل‌های رمزشده باز نمی‌شوند')}
+            </div>
+            <textarea dir="ltr" readOnly value={revealed[side]} />
+            <button
+              className="tb"
+              onClick={() => {
+                void navigator.clipboard.writeText(revealed[side])
+                setMessage(t('کپی شد'))
+              }}
+            >
+              <CopyIcon size={11} /> {t('کپی')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const doCompare = async (): Promise<void> => {
     setBusy(true)
     setError('')
@@ -263,11 +466,13 @@ export function SyncWorkspace({
         left,
         right,
         mode,
-        compareBy,
+        compareBy: effectiveCompareBy,
         ignore: ignored,
         deleteExtra,
         useRsync: rsyncAllowed,
-        rsync: rsyncOpts
+        rsync: rsyncOpts,
+        encLeft: fromEncState(encLeftState),
+        encRight: fromEncState(encRightState)
       })
       setRows(r.rows)
       setPlan(r.plan)
@@ -286,7 +491,7 @@ export function SyncWorkspace({
   useEffect(() => {
     void doCompare()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left, right, mode, compareBy, useRsync])
+  }, [left, right, mode, compareBy, useRsync, encrypted])
 
   const execute = async (dryRun: boolean, confirmed = false): Promise<void> => {
     if (!plan) return
@@ -308,9 +513,11 @@ export function SyncWorkspace({
         left,
         right,
         mode,
-        compareBy,
+        compareBy: effectiveCompareBy,
         ignore: ignored,
         deleteExtra,
+        encLeft: fromEncState(encLeftState),
+        encRight: fromEncState(encRightState),
         selected: [...selected],
         resolutions,
         dryRun,
@@ -370,6 +577,14 @@ export function SyncWorkspace({
   }
 
   const saveJob = (): void => {
+    if (
+      encrypted &&
+      ((encLeftState.mode !== 'off' && !secretReady.left) ||
+        (encRightState.mode !== 'off' && !secretReady.right))
+    ) {
+      setError(t('اول پسورد/کلید هر طرف را ذخیره کن'))
+      return
+    }
     const id = currentJob?.id ?? newSyncJobId(jobs.map((j) => j.id))
     const job: SyncJob = {
       id,
@@ -382,6 +597,8 @@ export function SyncWorkspace({
       deleteExtra,
       useRsync: rsyncAllowed,
       ...(rsyncAllowed ? { rsync: rsyncOpts } : {}),
+      ...(fromEncState(encLeftState) ? { encLeft: fromEncState(encLeftState) } : {}),
+      ...(fromEncState(encRightState) ? { encRight: fromEncState(encRightState) } : {}),
       enabled: true,
       schedule: {
         ...(every.trim() ? { everyMinutes: Number(every) || undefined } : {}),
@@ -441,10 +658,17 @@ export function SyncWorkspace({
 
         <div className="sync-controls">
           <div className="seg" title={t('معیار مقایسه')}>
-            <button className={compareBy === 'mtime' ? 'on' : ''} onClick={() => setCompareBy('mtime')}>
+            <button
+              className={encrypted ? '' : compareBy === 'mtime' ? 'on' : ''}
+              disabled={encrypted}
+              onClick={() => setCompareBy('mtime')}
+            >
               {t('تاریخ تغییر')}
             </button>
-            <button className={compareBy === 'hash' ? 'on' : ''} onClick={() => setCompareBy('hash')}>
+            <button
+              className={encrypted || compareBy === 'hash' ? 'on' : ''}
+              onClick={() => setCompareBy('hash')}
+            >
               {t('هش محتوا')}
             </button>
           </div>
@@ -596,6 +820,20 @@ export function SyncWorkspace({
             <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
             <span>{t('فقط تفاوت‌ها')}</span>
           </label>
+          <details className="sync-enc">
+            <summary>
+              {t('رمزنگاری هر طرف')}
+              {encrypted && <span className="chip warn">{t('هش اجباری')}</span>}
+            </summary>
+            {encRow('left')}
+            {encRow('right')}
+            <div className="dim sync-enc-note">
+              {t('رمزنگاری محتوا با age است؛ نام فایل‌ها روشن می‌ماند و طرف رمزشده با هش مقایسه می‌شود.')}
+              {encLeftState.mode === 'passphrase' || encRightState.mode === 'passphrase'
+                ? ' ' + t('حالت پسورد برای درخت بزرگ کند است؛ جفت‌کلید سریع‌تر است.')
+                : ''}
+            </div>
+          </details>
         </div>
 
         <div className="sync-summary">
@@ -604,6 +842,7 @@ export function SyncWorkspace({
           <span className="chip warn">{t('{n} مشکوک', { n: fa(count('sizeDiff') + count('contentDiff') + count('typeDiff')) })}</span>
           <span className="chip warn">{t('{n} تعارض', { n: fa(count('conflict')) })}</span>
           <span className="chip">{t('{n} یکسان', { n: fa(count('same')) })}</span>
+          {encrypted && <span className="chip warn">{t('رمزشده · هش')}</span>}
           {capped && <span className="chip warn">{t('فهرست بریده شد')}</span>}
           {selected.size > 0 && plan && (
             <span className="chip">{t('{n} انتخاب‌شده', { n: fa(selected.size) })}</span>
