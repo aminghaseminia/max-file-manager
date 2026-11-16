@@ -238,7 +238,9 @@ function Rows({
     ro.observe(el)
     setHeight(el.clientHeight)
   }
-  const start = Math.max(0, Math.floor(scroll / ROW_H) - 6)
+  // filtering can shrink the list under the current scroll offset; never slice past its end
+  const raw = Math.max(0, Math.floor(scroll / ROW_H) - 6)
+  const start = Math.min(raw, Math.max(0, rows.length - Math.ceil(height / ROW_H) - 10))
   const end = Math.min(rows.length, start + Math.ceil(height / ROW_H) + 10)
   return (
     <div className="sync-rows" ref={measure} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
@@ -383,7 +385,12 @@ export function SyncWorkspace({
     setOnChange(currentJob.schedule.onChange === true)
     setUseRsync(currentJob.useRsync === true)
     setRsyncOpts(currentJob.rsync ?? {})
-    setRules(currentJob.ignoreRules ?? [])
+    setRules((prev) => {
+      const next = currentJob.ignoreRules ?? []
+      return prev.length === next.length && prev.every((r, i) => ruleKey(r) === ruleKey(next[i]))
+        ? prev
+        : next
+    })
     setEncLeftState(toEncState(currentJob.encLeft))
     setEncRightState(toEncState(currentJob.encRight))
     setVersionsOn(Boolean(currentJob.versions))
@@ -1347,7 +1354,7 @@ export function SyncWorkspace({
                 <span className="sync-rel">{t('مسیر')}</span>
                 <span className="sync-side">{t('راست')}</span>
               </div>
-              <Rows rows={visibleRows} selected={selected} onToggle={toggle} />
+              <Rows key={statusFilter} rows={visibleRows} selected={selected} onToggle={toggle} />
             </>
           )}
 

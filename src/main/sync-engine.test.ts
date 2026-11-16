@@ -53,6 +53,49 @@ test('walkTree: a missing folder is an empty tree, not an error', async () => {
   await fs.rm(root, { recursive: true, force: true })
 })
 
+test('walkTree: ignore rules hide exact path subtrees and files over a size', async () => {
+  const root = await temp()
+  try {
+    await write(root, 'keep.txt', 'hello')
+    await write(root, 'big.bin', 'x'.repeat(2048))
+    await write(root, 'docs/private/secret.txt', 's')
+    await write(root, 'docs/public/readme.txt', 'r')
+    const got = await walkTree(root, localOps(), {
+      rules: [
+        { kind: 'path', value: 'docs/private' },
+        { kind: 'size', op: 'gt', bytes: 1024 }
+      ]
+    })
+    assert.deepEqual([...got.tree.keys()].sort(), [
+      'docs',
+      'docs/public',
+      'docs/public/readme.txt',
+      'keep.txt'
+    ])
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test('compareTrees: an ignored file is invisible, so delete-extra never removes it', async () => {
+  const left = await temp()
+  const right = await temp()
+  try {
+    await write(left, 'a.txt', 'a')
+    await write(right, 'delete.txt', 'd')
+    await write(right, 'keep.log', 'k')
+    const cmp = await compareTrees(left, right, localOps(), {
+      rules: [{ kind: 'glob', value: '*.log' }]
+    })
+    assert.deepEqual(cmp.rows.map((r) => r.rel).sort(), ['a.txt', 'delete.txt'])
+    const plan = planRows(cmp.rows, 'ltr', { deleteExtra: true })
+    assert.deepEqual(plan.remove.map((a) => a.rel), ['delete.txt'])
+  } finally {
+    await fs.rm(left, { recursive: true, force: true })
+    await fs.rm(right, { recursive: true, force: true })
+  }
+})
+
 test('compareTrees mtime: left-only, right-only, newer and identical', async () => {
   const left = await temp()
   const right = await temp()

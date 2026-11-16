@@ -4407,6 +4407,7 @@ html[data-rounded='0'] .app {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 .mode-label svg {
   flex: none;
@@ -4464,6 +4465,14 @@ html[data-rounded='0'] .app {
 }
 .sync-side-enc .sync-enc-row {
   margin-top: 0;
+}
+.sync-side-enc select {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
 }
 .sync-side-enc .ignore-input {
   width: 100%;
