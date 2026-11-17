@@ -2,10 +2,7 @@ import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { Transform } from 'node:stream'
-import type { Readable, Writable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { createWriteStream } from 'node:fs'
 import { Client, type ConnectConfig, type SFTPWrapper } from 'ssh2'
 import { expandSshPath, fingerprintSha256 } from './ssh-config.ts'
 import { knownHostEntriesFor, knownHostVerdict } from './ssh-known-hosts.ts'
@@ -85,12 +82,18 @@ type Session = {
   client: Client
   sftp: SFTPWrapper
   fingerprint: string
+  /** folders already known to exist (or created) on this connection */
+  dirs: Set<string>
+  /** in-flight `mkdir` chains, so concurrent uploads to one new folder wait instead of racing */
+  dirLocks: Map<string, Promise<void>>
 }
 
 type PoolEntry = {
   session: Session | null
   connected: boolean
-  chain: Promise<unknown>
+  connecting: Promise<Session> | null
+  /** operations currently using this connection */
+  active: number
   idle: ReturnType<typeof setTimeout> | null
 }
 
@@ -215,6 +218,9 @@ async function connect(cfg: SftpConfig): Promise<Session> {
     client.once('error', onError)
     try {
       client.connect(opts)
+      // Nagle would make every small SFTP request wait for the 40 ms delayed ACK: a 64 KB
+      // read then runs at ~1.5 MB/s even on a LAN. ssh2 never sets it by itself.
+      client.setNoDelay(true)
     } catch (e) {
       client.removeListener('ready', onReady)
       client.removeListener('error', onError)
@@ -235,7 +241,57 @@ async function connect(cfg: SftpConfig): Promise<Session> {
     }
   })
   if (learned && fingerprint && cfg.onHostKey) cfg.onHostKey(fingerprint)
-  return { client, sftp, fingerprint }
+  return { client, sftp, fingerprint, dirs: new Set<string>(['/']), dirLocks: new Map() }
+}
+
+/** The shared connection, opened once even when several transfers start together. */
+async function sessionOf(key: string, cfg: SftpConfig, entry: PoolEntry): Promise<Session> {
+  if (entry.connected && entry.session) return entry.session
+  if (entry.connecting) return entry.connecting
+  const pending = connect(cfg).then((session) => {
+    // closeSftpClients() may have run while the handshake was in flight
+    if (pools.get(key) !== entry) {
+      try {
+        session.client.end()
+      } catch {
+        // already closed
+      }
+      throw new SftpError('sftp', 'the connection was closed')
+    }
+    entry.session = session
+    entry.connected = true
+    const drop = (): void => {
+      if (entry.session === session) {
+        entry.session = null
+        entry.connected = false
+      }
+    }
+    session.client.on('error', drop)
+    session.client.on('close', drop)
+    return session
+  })
+  entry.connecting = pending
+  try {
+    return await pending
+  } finally {
+    if (entry.connecting === pending) entry.connecting = null
+  }
+}
+
+function scheduleIdle(key: string, entry: PoolEntry): void {
+  if (entry.idle) clearTimeout(entry.idle)
+  entry.idle = setTimeout(() => {
+    if (entry.active > 0) return
+    try {
+      entry.session?.client.end()
+    } catch {
+      // already closed
+    }
+    entry.session = null
+    entry.connected = false
+    if (pools.get(key) === entry) pools.delete(key)
+  }, 60_000)
+  entry.idle.unref?.()
 }
 
 async function withSftp<T>(
@@ -243,64 +299,40 @@ async function withSftp<T>(
   fn: (session: Session) => Promise<T>,
   control?: SftpControl
 ): Promise<T> {
+  if (isCancelled(control)) throw new Error('cancelled')
   const key = poolKey(cfg)
   let entry = pools.get(key)
   if (!entry) {
-    entry = { session: null, connected: false, chain: Promise.resolve(), idle: null }
+    entry = { session: null, connected: false, connecting: null, active: 0, idle: null }
     pools.set(key, entry)
   }
   const current = entry
-  const run = current.chain.then(async () => {
+  if (current.idle) {
+    clearTimeout(current.idle)
+    current.idle = null
+  }
+  // ssh2 multiplexes SFTP requests on one session, so several files can move at once instead of
+  // paying a full round trip per file. Connect/teardown is still coordinated here.
+  current.active++
+  try {
+    const session = await sessionOf(key, cfg, current)
     if (isCancelled(control)) throw new Error('cancelled')
-    if (!current.connected || !current.session) {
+    return await fn(session)
+  } catch (e) {
+    if (isCancelled(control)) {
       try {
-        const session = await connect(cfg)
-        current.session = session
-        current.connected = true
-        session.client.on('error', () => {
-          current.session = null
-          current.connected = false
-        })
-        session.client.on('close', () => {
-          current.session = null
-          current.connected = false
-        })
-      } catch (e) {
-        current.session = null
-        current.connected = false
-        throw e
+        current.session?.client.end()
+      } catch {
+        // already closed
       }
+      current.session = null
+      current.connected = false
     }
-    try {
-      const result = await fn(current.session!)
-      if (current.idle) clearTimeout(current.idle)
-      current.idle = setTimeout(() => {
-        try {
-          current.session?.client.end()
-        } catch {
-          // already closed
-        }
-        current.session = null
-        current.connected = false
-        pools.delete(key)
-      }, 60_000)
-      current.idle.unref?.()
-      return result
-    } catch (e) {
-      if (isCancelled(control)) {
-        try {
-          current.session?.client.end()
-        } catch {
-          // already closed
-        }
-        current.session = null
-        current.connected = false
-      }
-      throw mapError(e)
-    }
-  })
-  current.chain = run.catch(() => undefined)
-  return run
+    throw mapError(e)
+  } finally {
+    current.active--
+    if (current.active === 0) scheduleIdle(key, current)
+  }
 }
 
 export function closeSftpClients(): void {
@@ -390,20 +422,40 @@ export async function sftpExists(cfg: SftpConfig, remotePath: string): Promise<b
   return (await sftpStat(cfg, remotePath)) !== null
 }
 
-async function ensureDirOn(sftp: SFTPWrapper, dir: string): Promise<void> {
+async function ensureDirOn(session: Session, dir: string): Promise<void> {
   const clean = dir.replace(/\/+$/, '') || '/'
-  if (clean === '/') return
-  const absolute = clean.startsWith('/')
-  const parts = clean.split('/').filter(Boolean)
-  let cur = absolute ? '' : '.'
-  for (const part of parts) {
-    cur = cur === '' || cur === '.' ? (absolute ? `/${part}` : part) : `${cur}/${part}`
-    const st = await statOf(sftp, cur).catch(() => null)
-    if (st) {
-      if (!st.isDirectory()) throw new SftpError('not_a_dir', `${cur} is not a folder`)
-      continue
+  if (clean === '/' || session.dirs.has(clean)) return
+  // another upload to the same new folder may already be creating it
+  const running = session.dirLocks.get(clean)
+  if (running) return running
+  const task = (async () => {
+    const absolute = clean.startsWith('/')
+    const parts = clean.split('/').filter(Boolean)
+    let cur = absolute ? '' : '.'
+    for (const part of parts) {
+      cur = cur === '' || cur === '.' ? (absolute ? `/${part}` : part) : `${cur}/${part}`
+      if (session.dirs.has(cur)) continue
+      const st = await statOf(session.sftp, cur).catch(() => null)
+      if (st) {
+        if (!st.isDirectory()) throw new SftpError('not_a_dir', `${cur} is not a folder`)
+        session.dirs.add(cur)
+        continue
+      }
+      try {
+        await mkdirOf(session.sftp, cur)
+      } catch (e) {
+        // a concurrent upload may have created it between our stat and mkdir
+        const again = await statOf(session.sftp, cur).catch(() => null)
+        if (!again?.isDirectory()) throw e
+      }
+      session.dirs.add(cur)
     }
-    await mkdirOf(sftp, cur)
+  })()
+  session.dirLocks.set(clean, task)
+  try {
+    await task
+  } finally {
+    if (session.dirLocks.get(clean) === task) session.dirLocks.delete(clean)
   }
 }
 
@@ -442,23 +494,128 @@ export async function sftpRename(cfg: SftpConfig, from: string, to: string): Pro
   })
 }
 
-/** Async transform: progress + pause + cancel inside a pipeline (with real backpressure). */
-function monitor(control: SftpControl): Transform {
-  return new Transform({
-    transform(chunk: Buffer, _enc, cb): void {
-      void (async () => {
-        try {
-          if (isCancelled(control)) throw new Error('cancelled')
-          if (control.paused?.()) await control.waitIfPaused?.()
-          if (isCancelled(control)) throw new Error('cancelled')
-          control.onBytes?.(chunk.length)
-          cb(null, chunk)
-        } catch (e) {
-          cb(e as Error)
-        }
-      })()
-    }
+const openOf = (sftp: SFTPWrapper, p: string, flags: 'r' | 'w'): Promise<Buffer> =>
+  new Promise((resolve, reject) => sftp.open(p, flags, (err, handle) => (err ? reject(err) : resolve(handle))))
+
+const fstatOf = (sftp: SFTPWrapper, handle: Buffer): Promise<import('ssh2').Stats> =>
+  new Promise((resolve, reject) => sftp.fstat(handle, (err, stats) => (err ? reject(err) : resolve(stats))))
+
+const closeOf = (sftp: SFTPWrapper, handle: Buffer): Promise<void> =>
+  new Promise((resolve, reject) => sftp.close(handle, (err) => (err ? reject(err) : resolve())))
+
+const readAt = async (sftp: SFTPWrapper, handle: Buffer, offset: number, len: number): Promise<Buffer> => {
+  const buf = Buffer.allocUnsafe(len)
+  let got = 0
+  while (got < len) {
+    const n = await new Promise<number>((resolve, reject) => {
+      sftp.read(handle, buf, got, len - got, offset + got, (err: Error | undefined, bytes: number) =>
+        err ? reject(err) : resolve(bytes)
+      )
+    })
+    if (!n) throw new Error('unexpected end of file')
+    got += n
+  }
+  return buf
+}
+
+const writeAt = (sftp: SFTPWrapper, handle: Buffer, buf: Buffer, offset: number): Promise<void> =>
+  new Promise((resolve, reject) => {
+    sftp.write(handle, buf, 0, buf.length, offset, (err: Error | null | undefined, written?: number) => {
+      if (err) return reject(err)
+      // ssh2 splits writes larger than the negotiated limit and reports the final piece only;
+      // IO_CHUNK stays below the smallest allowed limit (32 KB), so one write is one request
+      if (written !== undefined && written !== buf.length) reject(new Error('short SFTP write'))
+      else resolve()
+    })
   })
+
+/**
+ * 64 requests of 32 KB in flight, like OpenSSH's sftp client: one request per round trip would cap
+ * a 50 ms link at ~0.6 MB/s even though the link itself is much faster.
+ */
+const IO_CHUNK = 32 * 1024
+const IO_WINDOW = 64
+
+async function waitIfPaused(control: SftpControl): Promise<void> {
+  while (control.paused?.() && !isCancelled(control)) {
+    if (control.waitIfPaused) await control.waitIfPaused()
+    else await new Promise((r) => setTimeout(r, 100))
+  }
+  if (isCancelled(control)) throw new Error('cancelled')
+}
+
+async function readRemote(
+  sftp: SFTPWrapper,
+  handle: Buffer,
+  size: number,
+  tmp: string,
+  control: SftpControl
+): Promise<number> {
+  const sink = createWriteStream(tmp)
+  try {
+    let done = 0
+    while (done < size) {
+      await waitIfPaused(control)
+      const batch: Array<{ off: number; len: number }> = []
+      for (let i = 0; i < IO_WINDOW && done + i * IO_CHUNK < size; i++) {
+        const off = done + i * IO_CHUNK
+        batch.push({ off, len: Math.min(IO_CHUNK, size - off) })
+      }
+      const bufs = await Promise.all(batch.map(({ off, len }) => readAt(sftp, handle, off, len)))
+      for (const buf of bufs) {
+        if (!sink.write(buf)) await new Promise<void>((resolve) => sink.once('drain', resolve))
+        control.onBytes?.(buf.length)
+      }
+      done += batch.reduce((n, b) => n + b.len, 0)
+    }
+    await new Promise<void>((resolve, reject) => {
+      sink.end(() => resolve())
+      sink.on('error', reject)
+    })
+    return done
+  } catch (e) {
+    sink.destroy()
+    throw e
+  }
+}
+
+async function writeRemote(
+  sftp: SFTPWrapper,
+  handle: Buffer,
+  localPath: string,
+  size: number,
+  control: SftpControl
+): Promise<void> {
+  // never let one request exceed the server's negotiated write limit: ssh2 would split it and
+  // report only the last piece, which makes byte accounting and short-write checks lie
+  const maxWrite = (sftp as unknown as { _maxWriteLen?: number })._maxWriteLen ?? IO_CHUNK
+  const chunk = Math.max(4096, Math.min(IO_CHUNK, maxWrite))
+  const fd = await fs.open(localPath, 'r')
+  try {
+    let pos = 0
+    while (pos < size) {
+      await waitIfPaused(control)
+      const batch: Array<{ off: number; buf: Buffer }> = []
+      for (let i = 0; i < IO_WINDOW && pos + i * chunk < size; i++) {
+        const off = pos + i * chunk
+        const len = Math.min(chunk, size - off)
+        const buf = Buffer.allocUnsafe(len)
+        let read = 0
+        while (read < len) {
+          const { bytesRead } = await fd.read(buf, read, len - read, off + read)
+          if (!bytesRead) throw new Error('unexpected end of local file')
+          read += bytesRead
+        }
+        batch.push({ off, buf })
+      }
+      await Promise.all(batch.map(({ off, buf }) => writeAt(sftp, handle, buf, off)))
+      const n = batch.reduce((sum, b) => sum + b.buf.length, 0)
+      pos += n
+      control.onBytes?.(n)
+    }
+  } finally {
+    await fd.close().catch(() => undefined)
+  }
 }
 
 export async function sftpDownload(
@@ -473,17 +630,13 @@ export async function sftpDownload(
     const size = await withSftp(
       cfg,
       async ({ sftp }) => {
-        let total = 0
-        const counting = new Transform({
-          transform(chunk: Buffer, _enc, cb): void {
-            total += chunk.length
-            cb(null, chunk)
-          }
-        })
-        const source = sftp.createReadStream(remotePath)
-        const sink = createWriteStream(tmp)
-        await pipeline(source as Readable, counting, monitor(control), sink as Writable)
-        return total
+        const handle = await openOf(sftp, remotePath, 'r')
+        try {
+          const st = await fstatOf(sftp, handle)
+          return await readRemote(sftp, handle, Number(st.size) || 0, tmp, control)
+        } finally {
+          await closeOf(sftp, handle).catch(() => undefined)
+        }
       },
       control
     )
@@ -506,11 +659,15 @@ export async function sftpUpload(
   if (!st.isFile()) throw new SftpError('not_a_file', 'only regular files can be uploaded')
   await withSftp(
     cfg,
-    async ({ sftp }) => {
-      await ensureDirOn(sftp, path.posix.dirname(remotePath))
-      const source = createReadStream(localPath)
-      const sink = sftp.createWriteStream(remotePath)
-      await pipeline(source as Readable, monitor(control), sink as Writable)
+    async (session) => {
+      const { sftp } = session
+      await ensureDirOn(session, path.posix.dirname(remotePath))
+      const handle = await openOf(sftp, remotePath, 'w')
+      try {
+        await writeRemote(sftp, handle, localPath, st.size, control)
+      } finally {
+        await closeOf(sftp, handle).catch(() => undefined)
+      }
     },
     control
   )

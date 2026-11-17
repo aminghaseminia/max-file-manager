@@ -190,6 +190,32 @@ not double-counted.
   nothing. The UI disables the checkbox in those cases instead of pretending;
 - an encrypted side is already ciphertext, so compression is disabled there.
 
+## SFTP transport
+
+The native engine moves SFTP files through `remote-sftp.ts`; the numbers below are why it does
+not use ssh2's own `createReadStream`/`createWriteStream` for bulk data:
+
+- **`TCP_NODELAY`**: ssh2 never sets it, so a request waited for the peer's delayed ACK. One
+  sequential `stat` cost ~42 ms on a LAN whose real RTT is 0.1 ms, and a 32 MB download ran at
+  1.5 MB/s. Every connection now calls `client.setNoDelay(true)`; the same download reaches the
+  LAN's full ~96 MB/s.
+- **A window, not one request per round trip**: ssh2's read stream keeps a single 64 KB request in
+  flight. Downloads and uploads now keep 64 × 32 KB requests in flight per file (the same shape as
+  OpenSSH's `sftp` client) with backpressure, progress, pause and cancel preserved. On a ~5 ms
+  WAN link this took an 8 MB transfer from 1.1 MB/s to 10.4 MB/s and 200 small files from 2.4 to
+  51 files/s.
+- **Directories are cached per session**: an upload used to `stat` every path component for every
+  file. The cache plus in-flight locks removes ~5 round trips per file and keeps concurrent
+  uploads into a brand-new folder from racing on `mkdir`.
+- **Four files in flight**: a remote `applyPlan` copies up to four files at once; one SSH session
+  multiplexes the requests. A 200-file WAN run went from 2.1 to 154 files/s, and a LAN run to
+  ~1,950 files/s. Local→local copies stay sequential (the disk is the bottleneck).
+
+The window and the lanes are transport tuning, not protocol changes: file ordering, mtimes,
+partial-file cleanup (`.part` + rename) and cancellation semantics are unchanged. Any future bulk
+transfer must use the same pump; ssh2's streams are RTT-bound and will silently reintroduce the
+slowdown.
+
 ## UI
 
 - The pane divider is only a divider; it no longer carries a direction pill. The three direction
@@ -235,7 +261,6 @@ trusting rows supplied by the caller, and never confirms a remote deletion on it
 | `src/main/sync-service.ts` | queue, one active run, scheduler, history, restore, encryption and versions |
 | `src/main/sync.ts` | the old local-only helpers; only the line diff remains in use |
 | `src/renderer/src/SyncWorkspace.tsx` | the full-window workspace |
-| `src/renderer/src/SyncPill.tsx` | the three direction buttons on the divider |
 
 ## Known limits
 

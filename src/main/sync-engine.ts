@@ -504,21 +504,51 @@ export async function applyPlan(
     res.bytes += st.size
     await waitIfPaused(ctl)
   }
-  for (const action of plan.copy) {
-    if (ctl?.cancelled) {
-      res.cancel = true
-      break
-    }
+  const runOneCopy = async (action: SyncAction): Promise<boolean> => {
     try {
       ctl?.onFile?.(action.rel)
       await act(action)
+      return true
     } catch (e) {
+      if (ctl?.cancelled) {
+        res.cancel = true
+        return false
+      }
+      res.errors.push(`${action.rel}: ${e instanceof Error ? e.message : String(e)}`)
+      return true
+    }
+  }
+  // a remote run pays several round trips per file; a few files in flight hide that latency
+  // (one SFTP session multiplexes the requests). Local-to-local stays sequential: the disk is
+  // already the bottleneck and parallel copies only add seek noise.
+  const lanes = isRemotePath(left) || isRemotePath(right) ? 4 : 1
+  if (lanes === 1) {
+    for (const action of plan.copy) {
       if (ctl?.cancelled) {
         res.cancel = true
         break
       }
-      res.errors.push(`${action.rel}: ${e instanceof Error ? e.message : String(e)}`)
+      if (!(await runOneCopy(action))) break
     }
+  } else {
+    let next = 0
+    let stop = false
+    const worker = async (): Promise<void> => {
+      while (!stop) {
+        const i = next++
+        if (i >= plan.copy.length) return
+        if (ctl?.cancelled) {
+          stop = true
+          res.cancel = true
+          return
+        }
+        if (!(await runOneCopy(plan.copy[i]))) {
+          stop = true
+          return
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(lanes, plan.copy.length) }, worker))
   }
   if (!res.cancel) {
     for (const action of plan.remove) {
