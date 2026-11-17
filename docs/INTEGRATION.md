@@ -5,6 +5,7 @@
 ```bash
 ./scripts/install-integration.sh            # .desktop + هندلر پیش‌فرض پوشه‌ها
 ./scripts/install-integration.sh --with-kde-shortcut
+./scripts/install-user.sh                   # نصب نسخهٔ بسته‌بندی‌شده در ~/.local/opt + منوی برنامه‌ها
 ```
 
 اسکریپت این کارها را می‌کند:

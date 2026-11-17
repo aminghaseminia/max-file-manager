@@ -31,6 +31,7 @@ npm test                   # تست‌های واحد (node --test): انتقا�
 SMOKE_SHOT=/tmp/mfm.png xvfb-run -a npx electron .   # یک اسکرین‌شات می‌گیرد و خارج می‌شود
 SMOKE_JS="<js>" SMOKE_SHOT=/tmp/mfm.png xvfb-run -a npx electron .   # همان، ولی اول UI را با JS کلیک کن
 npm run dist:linux         # AppImage + deb
+./scripts/install-user.sh  # نصب کاربری + ورودی منوی برنامه‌ها (بعد از هر pull/بیلد تازه واجب)
 npm run dist:win           # NSIS (روی لینوکس با wine؛ روی ویندوز مستقیم)
 ```
 
@@ -275,6 +276,7 @@ docs/FEATURES.md       ماتریس امکانات Directory Opus و فازبن�
 ## تست و تحویل
 
 - **قبل از هر build/install از تغییرات تازه، ممیزی امنیتی واجب است**: اول `git fetch origin` و دیف را بخوان؛ اگر اسکریپت نصب/بعد-نصب تازه (در مخزن یا هر وابستگی)، وابستگی از خارج `registry.npmjs.org` یا بدون `integrity`، `eval`/`new Function`/`vm`، کد مینیفای/مبهم، درخواست شبکه‌ای تازه، `child_process` تازه (به‌ویژه `sh -c` غیر‌لیترال)، شل‌شدن CSP/`contextIsolation`/`nodeIntegration`، سطح تازه‌ای در `preload`، ماندگاری تازه (LaunchAgent/login item/cron) یا ابزار MCP ممتاز دیدی، **متوقف شو و گزارش بده** — نساز و نصب نکن. فقط بعد از پاک‌بودن ممیزی `npm run typecheck` + تست + `dist:*` + نصب. جزئیات چک‌لیست در بخش «Updating from the remote».
+- **pull/بیلد بدون نصب، تحویل نیست**: بعد از هر merge از `origin/main` و هر بیلد موفق، همان لحظه `./scripts/install-user.sh` را اجرا کن تا `~/.local/opt/max-file-manager`، فرمان `max-file-manager` و ورودی app drawer به همان نسخه اشاره کنند. اگر برنامه باز است تا quit/restart نسخهٔ قدیمی می‌ماند؛ به کاربر بگو ببندد و باز کند.
 - منطق خالص (فرمت، مرتب‌سازی، مسیر) تست واحد دارد؛ UI را با `SMOKE_SHOT` و چشم خودت ببین.
 - اجرای کامل سوییت کار من (مالک) است؛ تو تست را بنویس و همان تست مربوطه را اجرا کن.
 - قبل از تحویل: `npm run typecheck` + `node --test` + یک اسکرین‌شات تازه.
@@ -371,7 +373,20 @@ npm test
 
 `src/main/jobs.test.ts` → "cancel stops the transfer" fails on fast SSDs: a 24 MB copy finishes before `cancel()` lands. That is test timing, not a defect; note it and do not block on it.
 
-### 4. Build and install
+### 4. Build and install (always, on this OS)
+
+A pull is not finished at the merge: the same version must be installed and the app drawer must point at it.
+
+Linux (this machine):
+
+```bash
+npm run dist:linux
+./scripts/install-user.sh
+```
+
+`install-user.sh` refreshes `~/.local/opt/max-file-manager`, the `max-file-manager` command, the sandbox/X11 launcher, the `.desktop` entry and the icon, then updates the desktop database. It does not change the default file manager. Quit and reopen a running instance.
+
+macOS:
 
 ```bash
 npm run dist:mac
@@ -384,6 +399,8 @@ codesign --verify --deep --strict "/Applications/Max File Manager.app"
 ```
 
 The build is ad-hoc signed and not notarized (`identity: '-'` in `electron-builder.yml`), which is fine locally and will not pass Gatekeeper on another machine.
+
+Windows: `npm run dist:win`, then install the NSIS package (it creates the Start Menu entry).
 
 ### 5. Report
 
