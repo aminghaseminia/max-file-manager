@@ -99,7 +99,7 @@ function pathDirs(): string[] {
   return [...new Set([...dirs, ...extra])]
 }
 
-const hasBin = (bin: string): boolean => {
+export const hasBin = (bin: string): boolean => {
   const dirs = pathDirs()
   for (const dir of dirs) {
     try {

@@ -1,10 +1,28 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { nativeImage, shell, type WebContents } from 'electron'
+import { selectCommand } from './reveal-core.ts'
+import { hasBin } from './terminals.ts'
 
-/** Shows the file inside the system's own file manager. */
+/**
+ * Shows the file inside the system's own file manager, with the file selected.
+ *
+ * `shell.showItemInFolder` goes through `org.freedesktop.FileManager1`, which only opens the folder
+ * (and here the app's own bridge answers that name), so the start is done directly — see reveal-core.
+ */
 export function revealFile(p: string): { ok: true } | { error: string } {
   if (!path.isAbsolute(p)) return { error: 'مسیر نامعتبر' }
+  const pick =
+    process.platform === 'linux'
+      ? selectCommand(p, process.env['XDG_CURRENT_DESKTOP'] ?? '', hasBin)
+      : null
+  if (pick) {
+    const child = spawn(pick.cmd, pick.args, { detached: true, stdio: 'ignore' })
+    // the binary was checked just now; if it vanished in between there is nothing left to do
+    child.on('error', () => {})
+    child.unref()
+    return { ok: true }
+  }
   shell.showItemInFolder(p)
   return { ok: true }
 }

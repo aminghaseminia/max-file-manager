@@ -1,4 +1,4 @@
-import { app, shell } from 'electron'
+import { app } from 'electron'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { promises as fs } from 'node:fs'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
@@ -350,5 +350,3 @@ function summarise(args: Record<string, unknown> | undefined): Record<string, un
   }
   return out
 }
-
-export const openReveal = (p: string) => shell.showItemInFolder(p)
