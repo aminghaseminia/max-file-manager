@@ -1,6 +1,19 @@
 import type { PortalFilter } from '../../shared/portal-filters.ts'
 import type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
 import type {
+  CloudAccount,
+  CloudBinding,
+  CloudBindingStatus,
+  CloudCompareBy,
+  CloudDirection,
+  CloudEntryState,
+  CloudPreview,
+  CloudProvider,
+  CloudState,
+  CloudTarget,
+  CloudView
+} from '../../shared/cloud.ts'
+import type {
   RsyncOptions,
   SyncCompareBy,
   SyncEncryption,
@@ -16,6 +29,19 @@ import type {
 } from '../../shared/sync.ts'
 
 export type { ProfileDraft, RemoteProfile } from '../../shared/remote-profile.ts'
+export type {
+  CloudAccount,
+  CloudBinding,
+  CloudBindingStatus,
+  CloudCompareBy,
+  CloudDirection,
+  CloudEntryState,
+  CloudPreview,
+  CloudProvider,
+  CloudState,
+  CloudTarget,
+  CloudView
+} from '../../shared/cloud.ts'
 export type {
   ConflictKind,
   RsyncOptions,
@@ -198,6 +224,8 @@ export type Entry = {
   link?: boolean
   /** forced visible by the parent folder's `.mfm.json` */
   forceShow?: boolean
+  /** inside a cloud binding; `root` draws the provider badge, a child only a state dot */
+  cloud?: { provider: string; state: CloudEntryState; root: boolean }
 }
 export type SearchHit = {
   path: string
@@ -595,6 +623,59 @@ export type Api = {
     onJobs(cb: (jobs: SyncJob[]) => void): () => void
   }
   diffFiles(a: string, b: string): Promise<DiffResult>
+  /** cloud folders: one local folder mirrored with one folder on a WebDAV account */
+  cloud: {
+    list(): Promise<CloudView>
+    accountSave(draft: {
+      provider: string
+      url?: string
+      user?: string
+      password?: string
+      label?: string
+    }): Promise<CloudAccount>
+    accountRemove(id: string): Promise<boolean>
+    browse(accountId: string, path: string): Promise<CloudTarget[]>
+    folderCreate(accountId: string, parent: string, name: string): Promise<string>
+    preview(accountId: string, localPath: string, remoteId: string): Promise<CloudPreview>
+    bindingSave(draft: {
+      id?: string
+      accountId: string
+      localPath: string
+      remoteId: string
+      remoteLabel?: string
+      name?: string
+      compareBy?: CloudCompareBy
+      deleteExtra?: boolean
+      intervalMs?: number
+      direction?: CloudDirection
+    }): Promise<CloudBinding>
+    bindingUpdate(
+      id: string,
+      patch: {
+        name?: string
+        intervalMs?: number
+        deleteExtra?: boolean
+        compareBy?: CloudCompareBy
+        direction?: CloudDirection
+        enabled?: boolean
+        paused?: boolean
+      }
+    ): Promise<CloudBinding>
+    bindingRemove(id: string): Promise<boolean>
+    syncNow(
+      id: string,
+      confirm?: boolean
+    ): Promise<{
+      ok: boolean
+      copied: number
+      removed: number
+      conflicts: number
+      blockedDeletes: number
+      error?: string
+    }>
+    onState(cb: (v: CloudView) => void): () => void
+    onProgress(cb: (p: { bindingId: string; phase: string; done: number; current: string }) => void): () => void
+  }
   readText(p: string): Promise<{ text: string; size: number } | { error: string }>
   /** unsaved editor buffers, restored after a crash or a closed window */
   drafts: {

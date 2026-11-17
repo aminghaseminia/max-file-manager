@@ -15,6 +15,7 @@ import {
 import { fa, isAbsolutePath } from './format'
 import { XIcon } from './Icons'
 import { AgentsPage } from './AgentsPage'
+import { CloudPage } from './CloudPage'
 import { COMMANDS, COMMAND_BY_ID, DEFAULT_SHORTCUTS, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup } from './commands'
 import { accelFromEvent, findConflicts, formatAccel } from './keys'
 import { COLOR_THEMES } from './themes'
@@ -49,6 +50,7 @@ type Page =
   | 'defaultApps'
   | 'archive'
   | 'transfer'
+  | 'cloud'
   | 'operations'
   | 'launch'
   | 'advanced'
@@ -67,6 +69,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'defaultApps', label: 'برنامه‌های پیش‌فرض' },
   { id: 'archive', label: 'بایگانی و گالری' },
   { id: 'transfer', label: 'انتقال' },
+  { id: 'cloud', label: 'ابرها' },
   { id: 'operations', label: 'عملیات فایل' },
   { id: 'launch', label: 'راه‌اندازی' },
   { id: 'advanced', label: 'پیشرفته' }
@@ -78,11 +81,27 @@ type Props = {
   /** jump straight to a page (the column menu opens «columns») */
   openPage?: Page
   searchRoots: string[]
+  /** the folder the cloud dialog starts from */
+  activeDir: string
+  /** open a cloud folder in the active pane and close the settings window */
+  onOpenFolder(path: string): void
+  /** a cloud run touched local files: the caller reloads the visible panes */
+  onCloudChanged(): void
   onChange(patch: Partial<Prefs>): void
   onClose(): void
 }
 
-export function Preferences({ prefs, palette, openPage, searchRoots, onChange, onClose }: Props) {
+export function Preferences({
+  prefs,
+  palette,
+  openPage,
+  searchRoots,
+  activeDir,
+  onOpenFolder,
+  onCloudChanged,
+  onChange,
+  onClose
+}: Props) {
   const [extInput, setExtInput] = useState('')
   const [appExt, setAppExt] = useState('')
   const [appIdDraft, setAppIdDraft] = useState('')
@@ -1559,6 +1578,10 @@ export function Preferences({ prefs, palette, openPage, searchRoots, onChange, o
                   </button>
                 )}
             </>
+          )}
+
+          {page === 'cloud' && (
+            <CloudPage activeDir={activeDir} onOpenFolder={onOpenFolder} onChanged={onCloudChanged} />
           )}
 
           {page === 'advanced' && (

@@ -1,6 +1,6 @@
 import { getLang, setLang, subscribeLang, t } from './i18n.ts'
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { api, type Chrome, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type RemoteProfile, type SearchProgress, type SyncJob, type SyncMode, type SyncProgress } from './api'
+import { api, type Chrome, type CloudView, type DesktopApp, type DirRef, type Drive, type Entry, type FolderMeta, type Job, type RemoteProfile, type SearchProgress, type SyncJob, type SyncMode, type SyncProgress } from './api'
 import { ContextMenu, type MenuAction, type MenuItem } from './ContextMenu'
 import { DrivesPage } from './DrivesPage'
 import { ArchiveDialog, type ArchiveJob } from './ArchiveDialog'
@@ -48,6 +48,7 @@ import { TreePane } from './TreePane'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
 import { RemoteDialog } from './RemoteDialog'
+import { CloudDialog } from './CloudDialog'
 import { SyncWorkspace } from './SyncWorkspace'
 import { SymlinkDialog } from './SymlinkDialog'
 import { WindowButtons } from './WindowButtons'
@@ -279,6 +280,8 @@ export default function App() {
   const [remotes, setRemotes] = useState<RemoteProfile[]>([])
   const [remoteOpen, setRemoteOpen] = useState(false)
   const [remoteInitial, setRemoteInitial] = useState<string | undefined>(undefined)
+  const [clouds, setClouds] = useState<CloudView | null>(null)
+  const [cloudOpen, setCloudOpen] = useState(false)
   const [drivesPageOpen, setDrivesPageOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS)
@@ -610,6 +613,7 @@ export default function App() {
       setRoots(r)
       setHome(home)
       setRemotes(remoteProfiles)
+      void api.cloud.list().then(setClouds, () => undefined)
       void api.labelPalette().then(setPalette)
       const s: any = st ?? {}
       const p = mergePrefs(s.prefs ?? migrateLegacy(s))
@@ -693,6 +697,32 @@ export default function App() {
         }, 350)
       })
   }, [openTarget, booted, panes, active, prefs.showHidden, prefs.columns, prefs.doubleClick])
+
+  /**
+   * Cloud state is pushed from main: a run changes files behind the pane's back, so a finished run
+   * (lastRunAt moved) quietly reloads whatever is on screen. No polling in the renderer.
+   */
+  const cloudRuns = useRef<Record<string, number | null>>({})
+  useEffect(() => {
+    const off = api.cloud.onState((v) => {
+      setClouds(v)
+      const changed = v.status.some((s) => {
+        const prev = cloudRuns.current[s.bindingId]
+        if (s.lastRunAt && s.lastRunAt !== prev) {
+          cloudRuns.current[s.bindingId] = s.lastRunAt
+          return true
+        }
+        return false
+      })
+      if (!changed) return
+      const cur = panesRef.current
+      if (!cur) return
+      cur.forEach((p, i) => {
+        if (!p.archive && !p.virtual) void loadRef.current(i, p.tabs[p.ti], true)
+      })
+    })
+    return () => off()
+  }, [])
 
   // an image in the clipboard becomes a real file in the active folder
   useEffect(() => {
@@ -2328,6 +2358,9 @@ export default function App() {
       case 'sync':
         void openSync()
         break
+      case 'cloud':
+        setCloudOpen(true)
+        break
       case 'diff':
         void openDiff()
         break
@@ -3138,6 +3171,7 @@ export default function App() {
   const RUN: Record<CommandId, () => void> = {
     newItem: () => openNewMenu(),
     sync: () => void openSync(),
+    cloud: () => setCloudOpen(true),
     diff: () => void openDiff(),
     copy: () => void runSel(active, 'copy'),
     move: () => void runSel(active, 'move'),
@@ -3821,6 +3855,19 @@ export default function App() {
           palette={palette}
           openPage={prefsOpenPage ?? undefined}
           searchRoots={searchRoots}
+          activeDir={panes?.[active]?.tabs[panes[active].ti] ?? home}
+          onOpenFolder={(p) => {
+            setSettingsOpen(false)
+            setPrefsOpenPage(null)
+            go(active, p)
+          }}
+          onCloudChanged={() => {
+            const cur = panesRef.current
+            if (!cur) return
+            cur.forEach((p, i) => {
+              if (!p.archive && !p.virtual) void loadRef.current(i, p.tabs[p.ti], true)
+            })
+          }}
           onChange={updatePrefs}
           onClose={() => {
             setSettingsOpen(false)
@@ -3870,6 +3917,9 @@ export default function App() {
               onReorderMarks={handleReorderMarks}
               syncJobs={prefs.syncJobs}
               onSyncJob={openSyncJob}
+              clouds={clouds ?? undefined}
+              onCloud={(b) => go(active, b.localPath)}
+              onManageClouds={() => setCloudOpen(true)}
               drives={prefs.sidebarDrives ? drives : undefined}
               remotes={remotes}
               onRemote={(p) => {
@@ -4214,6 +4264,9 @@ export default function App() {
                 onReorderMarks={handleReorderMarks}
                 syncJobs={prefs.syncJobs}
                 onSyncJob={openSyncJob}
+                clouds={clouds ?? undefined}
+                onCloud={(b) => go(active, b.localPath)}
+                onManageClouds={() => setCloudOpen(true)}
                 drives={prefs.sidebarDrives ? drives : undefined}
                 remotes={remotes}
                 onRemote={(p) => {
@@ -4719,6 +4772,21 @@ export default function App() {
           items={sortMenuItems()}
           onPick={pickSort}
           onClose={() => setSortMenu(null)}
+        />
+      )}
+
+      {cloudOpen && (
+        <CloudDialog
+          activeDir={panes?.[active]?.tabs[panes[active].ti] ?? home}
+          onClose={() => setCloudOpen(false)}
+          onSaved={() => {
+            void api.cloud.list().then(setClouds, () => undefined)
+            const cur = panesRef.current
+            if (!cur) return
+            cur.forEach((p, i) => {
+              if (!p.archive && !p.virtual) void loadRef.current(i, p.tabs[p.ti], true)
+            })
+          }}
         />
       )}
 

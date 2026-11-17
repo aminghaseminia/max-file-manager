@@ -174,6 +174,30 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('sync:jobs', fn)
     }
   },
+  cloud: {
+    list: () => ipcRenderer.invoke('cloud:list'),
+    accountSave: (draft: unknown) => ipcRenderer.invoke('cloud:accountSave', draft),
+    accountRemove: (id: string) => ipcRenderer.invoke('cloud:accountRemove', id),
+    browse: (accountId: string, path: string) => ipcRenderer.invoke('cloud:browse', { accountId, path }),
+    folderCreate: (accountId: string, parent: string, name: string) =>
+      ipcRenderer.invoke('cloud:folderCreate', { accountId, parent, name }),
+    preview: (accountId: string, localPath: string, remoteId: string) =>
+      ipcRenderer.invoke('cloud:preview', { accountId, localPath, remoteId }),
+    bindingSave: (draft: unknown) => ipcRenderer.invoke('cloud:bindingSave', draft),
+    bindingUpdate: (id: string, patch: unknown) => ipcRenderer.invoke('cloud:bindingUpdate', { id, patch }),
+    bindingRemove: (id: string) => ipcRenderer.invoke('cloud:bindingRemove', id),
+    syncNow: (id: string, confirm = false) => ipcRenderer.invoke('cloud:syncNow', { id, confirm }),
+    onState: (cb: (v: unknown) => void) => {
+      const fn = (_e: unknown, v: unknown) => cb(v)
+      ipcRenderer.on('cloud:state', fn)
+      return () => ipcRenderer.removeListener('cloud:state', fn)
+    },
+    onProgress: (cb: (p: unknown) => void) => {
+      const fn = (_e: unknown, p: unknown) => cb(p)
+      ipcRenderer.on('cloud:progress', fn)
+      return () => ipcRenderer.removeListener('cloud:progress', fn)
+    }
+  },
   diffFiles: (a: string, b: string) => ipcRenderer.invoke('fs:diff', { a, b }),
   readText: (p: string) => ipcRenderer.invoke('fs:readText', p),
   drafts: {

@@ -56,6 +56,8 @@ const TOOLS: McpTool[] = [
   { name: 'sync_history', description: 'recent sync runs with direction, stats and conflicts', read: true, input: { limit: 'number?' } },
   { name: 'sync_status', description: 'the run currently in progress, if any', read: true, input: {} },
   { name: 'sync_versions', description: 'restic snapshots for a local one-way destination (repo defaults to <destination>/.mfm-restic)', read: true, input: { left: 'string', right: 'string', mode: 'string?', repo: 'string?', secretId: 'string' } },
+  { name: 'cloud_status', description: 'cloud accounts and folder bindings with state, last run and unresolved conflicts (never returns passwords)', read: true, input: {} },
+  { name: 'cloud_browse', description: 'sub-folders of a cloud account (WebDAV family)', read: true, input: { account: 'string', path: 'string?' } },
   { name: 'tags', description: 'audio/EXIF tags of files, including the embedded cover MIME', read: true, input: { paths: 'string[]' } },
   { name: 'tags_cover', description: 'embedded cover of an mp3 as a data URL, or written to a new image file (never overwrites)', read: true, input: { path: 'string', out: 'string?' } },
 
@@ -128,6 +130,8 @@ const TOOLS: McpTool[] = [
   { name: 'sync_run', description: 'run a sync: dry run, two-way with dry run first, conflicts reported instead of guessed; rsync is local one-way only; remote deletes need confirm:true', read: false, input: { left: 'string', right: 'string', mode: 'string?', compareBy: 'string?', ignore: 'string[]?', ignoreRules: 'object[]?', compress: 'boolean?', deleteExtra: 'boolean?', dryRun: 'boolean?', confirm: 'boolean?', useRsync: 'boolean?', rsync: 'object?', encLeft: 'object?', encRight: 'object?', versions: 'object?' } },
   { name: 'sync_job_save', description: 'create or update a saved sync job (validated in main; no secrets)', read: false, input: { job: 'object' } },
   { name: 'sync_job_remove', description: 'delete a saved sync job', read: false, input: { id: 'string' } },
+  { name: 'cloud_sync', description: 'run one cloud binding now; a remote delete needs confirm:true', read: false, input: { id: 'string', confirm: 'boolean?' } },
+  { name: 'cloud_pause', description: 'pause or resume a cloud binding', read: false, input: { id: 'string', paused: 'boolean?' } },
   { name: 'sync_restore', description: 'reverse the copies of a recorded run; deleted files are reported as unrestorable', read: false, input: { id: 'string', confirm: 'boolean?' } },
   { name: 'sync_cancel', description: 'cancel the running sync', read: false, input: { id: 'string?' } },
   { name: 'sync_versions_restore', description: 'restore a snapshot into a fresh temporary folder and return its path', read: false, input: { repo: 'string', secretId: 'string', id: 'string' } },

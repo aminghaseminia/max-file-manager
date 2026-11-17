@@ -9,6 +9,7 @@ import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { isRemotePath, remoteJoinRel, remoteName } from '../shared/remote-path.ts'
+import { isCloudPath } from '../shared/cloud.ts'
 import type { SyncAction, SyncCompareBy, SyncIgnoreRule, SyncPlan, SyncRow, SyncSide } from '../shared/sync.ts'
 import type { RemoteFs } from './remote-core.ts'
 import { ignored, ignoredBy, planRows, rowOf, sortRows, SYNC_SKIP_NAMES, threeWay, type Baseline } from './sync-core.ts'
@@ -214,10 +215,14 @@ export function remoteOps(remote: RemoteFs, tempRoot = os.tmpdir()): PathOps {
 }
 
 /** Dispatch by path scheme. One object, so `walk`/`copy` never branch on remote vs local. */
-export function createOps(remote?: RemoteFs): PathOps {
+export function createOps(remote?: RemoteFs, cloud?: PathOps): PathOps {
   const local = localOps()
   const remoteSide = remote ? remoteOps(remote) : null
   const pick = (p: string): PathOps => {
+    if (isCloudPath(p)) {
+      if (!cloud) throw new Error('cloud support is not available for this folder')
+      return cloud
+    }
     if (isRemotePath(p)) {
       if (!remoteSide) throw new Error('remote support is not available in this window')
       return remoteSide
@@ -225,7 +230,7 @@ export function createOps(remote?: RemoteFs): PathOps {
     return local
   }
   return {
-    isRemote: isRemotePath,
+    isRemote: (p) => isRemotePath(p) || isCloudPath(p),
     join: (dir, name) => pick(dir).joinRel(dir, name),
     joinRel: (root, rel) => pick(root).joinRel(root, rel),
     stat: async (p) => pick(p).stat(p),
@@ -233,6 +238,10 @@ export function createOps(remote?: RemoteFs): PathOps {
     hash: async (p, ctl) => pick(p).hash(p, ctl),
     copy: async (from, to, ctl) => {
       // either side being remote needs the adapter (it owns download/upload/temp), not local fs
+      if (isCloudPath(from) || isCloudPath(to)) {
+        if (!cloud) throw new Error('cloud support is not available for this folder')
+        return cloud.copy(from, to, ctl)
+      }
       if (isRemotePath(from) || isRemotePath(to)) {
         if (!remoteSide) throw new Error('remote support is not available in this window')
         return remoteSide.copy(from, to, ctl)
@@ -457,7 +466,7 @@ export async function applyPlan(
     const to = ops.joinRel(toRoot, action.rel)
     if (action.kind === 'delete') {
       if (opts.ctl?.cancelled) throw new Error('cancelled')
-      if (isRemotePath(from)) {
+      if (isRemotePath(from) || isCloudPath(from)) {
         await ops.remove(from)
       } else if (opts.trash) {
         await opts.trash(from)
@@ -521,7 +530,7 @@ export async function applyPlan(
   // a remote run pays several round trips per file; a few files in flight hide that latency
   // (one SFTP session multiplexes the requests). Local-to-local stays sequential: the disk is
   // already the bottleneck and parallel copies only add seek noise.
-  const lanes = isRemotePath(left) || isRemotePath(right) ? 4 : 1
+  const lanes = isRemotePath(left) || isRemotePath(right) || isCloudPath(left) || isCloudPath(right) ? 4 : 1
   if (lanes === 1) {
     for (const action of plan.copy) {
       if (ctl?.cancelled) {

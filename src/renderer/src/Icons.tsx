@@ -2,6 +2,8 @@ import type { ReactElement, ReactNode } from 'react'
 import type { Entry } from './api'
 import { kindOf, mediaUrl, type Kind } from './format'
 import { pureIconUrl } from './pure-set'
+import { t } from './i18n.ts'
+import { cloudStateClass, cloudStateLabel } from './cloud-view.ts'
 
 /** One stroke style for every icon: flat, 1.7px, inherits the text colour. */
 const S = ({ children, size = 15, className }: { children: ReactNode; size?: number; className?: string }) => (
@@ -335,6 +337,36 @@ export const CloudIcon = ({ size = 15 }: { size?: number }) => (
     <path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.4 4.3 4.3 0 0 1 16.7 18z" />
   </S>
 )
+
+/**
+ * The mark a row inside a cloud binding draws: the provider glyph on the binding root, a state dot
+ * on everything below it. It is additive — the file's own type icon is never replaced.
+ */
+export const CloudMark = ({
+  cloud,
+  size = 13
+}: {
+  cloud: { provider: string; state: string; root: boolean }
+  size?: number
+}) => {
+  if (!cloud.root) {
+    return (
+      <span
+        className={`cloud-dot ${cloudStateClass(cloud.state)}`}
+        title={t(cloudStateLabel(cloud.state))}
+        aria-label={t(cloudStateLabel(cloud.state))}
+      />
+    )
+  }
+  return (
+    <span
+      className={`cloud-mark ${cloud.provider} ${cloudStateClass(cloud.state)}`}
+      title={t(cloudStateLabel(cloud.state))}
+    >
+      <CloudIcon size={size} />
+    </span>
+  )
+}
 export const MemoryIcon = ({ size = 15 }: { size?: number }) => (
   <S size={size}>
     <rect x="3.5" y="7" width="17" height="10" rx="1.7" />

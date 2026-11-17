@@ -80,6 +80,8 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `sync_history` | `limit?` | recent runs with stats and conflicts |
 | `sync_status` | – | the run currently in progress |
 | `sync_versions` | `left`, `right`, `mode?`, `repo?`, `secretId` | restic snapshots for a local one-way destination |
+| `cloud_status` | – | cloud accounts and bindings with state, last run and unresolved conflicts (no passwords) |
+| `cloud_browse` | `account`, `path?` | sub-folders of a cloud account (WebDAV family) |
 | `tags` | `paths[]` | ID3 / EXIF tags, including `coverMime` for an embedded picture |
 | `tags_cover` | `path`, `out?` | embedded cover: `{mime, size, dataUrl}` (max 4 MB), or with an absolute `out` the image is written to a free name and `{path, size}` comes back |
 | `meta_get` | `dir` | `{color, icon, pins, labels, colors, ratings, notes, format}` |
@@ -137,6 +139,8 @@ the UI uses (`name, path, dir, size, mtime, ext, mode, uid, gid, nlink, w, h`).
 | `sync_run` | `left`, `right`, `mode?`, `compareBy?`, `ignore[]?`, `ignoreRules[]?`, `compress?`, `deleteExtra?`, `dryRun?`, `confirm?`, `useRsync?`, `rsync?`, `encLeft?`, `encRight?`, `versions?` | one run; two-way reports conflicts instead of guessing, rsync is local one-way, remote deletes need `confirm:true` |
 | `sync_job_save` | `job` | create/update a validated job (no secrets) |
 | `sync_job_remove` | `id` | delete a job |
+| `cloud_sync` | `id`, `confirm?` | run one cloud binding now; a remote delete needs `confirm: true` |
+| `cloud_pause` | `id`, `paused?` | pause or resume a cloud binding |
 | `sync_restore` | `id`, `confirm?` | reverse the copies of a run; deleted files are reported unrestorable |
 | `sync_cancel` | `id?` | cancel the active run |
 | `sync_versions_restore` | `repo`, `secretId`, `id` | restore a snapshot into a fresh temp folder and return its path |

@@ -1,3 +1,5 @@
+import type { CloudEntryState } from '../shared/cloud.ts'
+
 export type Entry = {
   name: string
   path: string
@@ -24,6 +26,8 @@ export type Entry = {
   link?: boolean
   /** the parent folder's marker forces this name visible even with hidden files off */
   forceShow?: boolean
+  /** the entry lives inside a cloud-synced folder; filled by main, never by the renderer */
+  cloud?: { provider: string; state: CloudEntryState; root: boolean }
 }
 export type DirRef = { name: string; path: string; /** the entry itself is a symbolic link */ link?: boolean }
 export type Listing = { path: string; parent: string | null; entries: Entry[] }

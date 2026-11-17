@@ -23,7 +23,7 @@ import {
   type SortKey
 } from './format'
 import { PreviewPanel } from './PreviewPanel'
-import { EntryIcon, EyeIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon, SortIcon } from './Icons'
+import { CloudMark, EntryIcon, EyeIcon, EyeOffIcon, FilterIcon, LinkIcon, LockIcon, SortIcon } from './Icons'
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -1076,6 +1076,7 @@ export function Pane(props: Props) {
                               </span>
                             )}
                             <EntryIcon entry={e} iconSet={props.iconSet} />
+                            {e.cloud && <CloudMark cloud={e.cloud} />}
                             <span dir="auto" className="trunc">{e.name}</span>
                             {props.showSymlink && e.link && (
                               <span className="symmark" title={t('پیوند نمادین')}>
@@ -1173,6 +1174,7 @@ export function Pane(props: Props) {
                               </span>
                             )}
                             <EntryIcon entry={e} iconSet={props.iconSet} />
+                            {e.cloud && <CloudMark cloud={e.cloud} />}
                             <span dir="auto" className="trunc">{e.name}</span>
                             {props.showSymlink && e.link && (
                               <span className="symmark" title={t('پیوند نمادین')}>
@@ -1269,6 +1271,7 @@ export function Pane(props: Props) {
                             ) : (
                               <EntryIcon entry={e} size={TILE.glyph} iconSet={props.iconSet} />
                             )}
+                            {e.cloud && <CloudMark cloud={e.cloud} size={16} />}
                             {labelColor(e.name) && (
                               <span
                                 className="lbl tile-lbl"

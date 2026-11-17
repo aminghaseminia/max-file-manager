@@ -123,6 +123,12 @@ import {
   type SyncIgnoreRule
 } from '../shared/sync.ts'
 import { createSyncService } from './sync-service.ts'
+import {
+  createCloudService,
+  type CloudAccountDraft,
+  type CloudBindingDraft,
+  type CloudBindingPatch
+} from './cloud-service.ts'
 import { generateKeypair, looksLikeIdentity, recipientOf } from './sync-crypt.ts'
 import { getSyncSecret, hasSyncSecret, removeSyncSecret, setSyncSecret } from './sync-secrets.ts'
 import { resticAvailable } from './sync-versions.ts'
@@ -231,6 +237,7 @@ try {
 const boot = bootState()
 const bootPrefs = boot.prefs ?? {}
 
+// frame/transparent are window-construction options, so the chrome choice is read before the window exists
 /**
  * One sync service for the app: saved jobs, the queue and the scheduler. It reads the jobs from the
  * same prefs blob the renderer writes, so a job is never duplicated in a second store.
@@ -238,6 +245,21 @@ const bootPrefs = boot.prefs ?? {}
 const syncService = createSyncService({
   remote: remoteFs,
   remoteCompressed: remoteFsCompressed,
+  trash: (p) => shell.trashItem(p),
+  emit: (channel, payload) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(channel, payload)
+    }
+  }
+})
+
+/**
+ * Cloud folders: accounts and bindings in the same SQLite store, the existing sync engine for the
+ * actual work. Started with the window; the scheduler is a single 30 s tick, never a timer per
+ * folder.
+ */
+const cloudService = createCloudService({
+  remote: remoteFs,
   trash: (p) => shell.trashItem(p),
   emit: (channel, payload) => {
     for (const w of BrowserWindow.getAllWindows()) {
@@ -1015,6 +1037,7 @@ function createWindow(): BrowserWindow {
 app.on('will-quit', () => {
   syncService.cancel()
   syncService.stopScheduler()
+  cloudService.stop()
   stopPlayerJobs()
   globalShortcut.unregisterAll()
   stopWinETakeover()
@@ -1186,6 +1209,38 @@ app.whenReady().then(async () => {
     return true
   })
 
+  // ── cloud folders: metadata + run control; the password never crosses this boundary ────────
+  ipcMain.handle('cloud:list', () => cloudService.view())
+  ipcMain.handle('cloud:accountSave', (_e, draft: CloudAccountDraft) => cloudService.saveAccount(draft ?? {}))
+  ipcMain.handle('cloud:accountRemove', (_e, id: string) => {
+    cloudService.removeAccount(String(id ?? ''))
+    return true
+  })
+  ipcMain.handle('cloud:browse', (_e, a: { accountId?: string; path?: string }) =>
+    cloudService.browse(String(a?.accountId ?? ''), String(a?.path ?? '/'))
+  )
+  ipcMain.handle('cloud:folderCreate', (_e, a: { accountId?: string; parent?: string; name?: string }) =>
+    cloudService.createFolder(String(a?.accountId ?? ''), String(a?.parent ?? '/'), String(a?.name ?? ''))
+  )
+  ipcMain.handle('cloud:preview', (_e, a: { accountId?: string; localPath?: string; remoteId?: string }) =>
+    cloudService.preview({
+      accountId: String(a?.accountId ?? ''),
+      localPath: String(a?.localPath ?? ''),
+      remoteId: String(a?.remoteId ?? '/')
+    })
+  )
+  ipcMain.handle('cloud:bindingSave', (_e, draft: CloudBindingDraft) => cloudService.saveBinding(draft ?? {}))
+  ipcMain.handle('cloud:bindingUpdate', (_e, a: { id?: string; patch?: CloudBindingPatch }) =>
+    cloudService.updateBinding(String(a?.id ?? ''), a?.patch ?? {})
+  )
+  ipcMain.handle('cloud:bindingRemove', (_e, id: string) => {
+    cloudService.removeBinding(String(id ?? ''))
+    return true
+  })
+  ipcMain.handle('cloud:syncNow', (_e, a: { id?: string; confirm?: boolean }) =>
+    cloudService.run(String(a?.id ?? ''), { confirmDelete: a?.confirm === true })
+  )
+
   /**
    * One fs.watch per folder that is on screen, event-driven (no polling). A save or rename fires
    * several events, so each folder is debounced before the renderer is told to reload it. Folders
@@ -1241,6 +1296,7 @@ app.whenReady().then(async () => {
   if (!portalOnly) win = createWindow()
   if (!portalOnly) installMacMenu()
   if (!portalOnly) syncService.startScheduler()
+  if (!portalOnly) cloudService.start()
   const engine = createEngine((job) => {
     if (win && !win.isDestroyed()) win.webContents.send('job:update', job)
   }, remoteFs)
@@ -1251,6 +1307,11 @@ app.whenReady().then(async () => {
     // file colours live in the parent folder's marker; folders carry their own colour already
     if (meta?.colors) {
       for (const e of l.entries) if (!e.dir && meta.colors[e.name]) e.color = meta.colors[e.name]
+    }
+    // a cloud binding is a path prefix, so the badge is one lookup per row (no fs, no network)
+    for (const e of l.entries) {
+      const c = cloudService.forPath(e.path)
+      if (c) e.cloud = c
     }
     return {
       ...l,
@@ -2020,6 +2081,14 @@ app.whenReady().then(async () => {
         return syncService.cancel(typeof args.id === 'string' ? args.id : undefined)
       case 'sync_status':
         return syncService.status()
+      case 'cloud_status':
+        return cloudService.view()
+      case 'cloud_browse':
+        return cloudService.browse(String(args.account ?? ''), String(args.path ?? '/'))
+      case 'cloud_sync':
+        return cloudService.run(String(args.id ?? ''), { confirmDelete: args.confirm === true })
+      case 'cloud_pause':
+        return cloudService.updateBinding(String(args.id ?? ''), { paused: args.paused !== false })
       case 'sync_versions':
         return syncService.versionsQuery({
           left: needPath(args.left),

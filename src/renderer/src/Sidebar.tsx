@@ -1,6 +1,7 @@
 import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DirRef, type Drive, type RemoteProfile, type SyncJob } from './api'
+import { api, type DirRef, type CloudBinding, type CloudView, type Drive, type RemoteProfile, type SyncJob } from './api'
+import { bindingSubtitle } from './cloud-view'
 import { baseName, fa } from './format'
 import { clearDragPaths, dragOutPaths, keepDragPaths, lastDragPaths, pathsOf, releaseDragOut } from './drag'
 import { dragLog } from './draglog'
@@ -55,6 +56,10 @@ type Props = {
   /** saved sync jobs; undefined/empty hides the section entirely */
   syncJobs?: SyncJob[]
   onSyncJob?(job: SyncJob): void
+  /** cloud bindings; undefined hides the section */
+  clouds?: CloudView
+  onCloud?(binding: CloudBinding): void
+  onManageClouds?(): void
 }
 
 export function Sidebar({
@@ -92,7 +97,10 @@ export function Sidebar({
   onToggleSection,
   onReorderMarks,
   syncJobs,
-  onSyncJob
+  onSyncJob,
+  clouds,
+  onCloud,
+  onManageClouds
 }: Props) {
   const [dragMarkIdx, setDragMarkIdx] = useState<number | null>(null)
   /** path of the bookmark whose title is being edited inline */
@@ -488,6 +496,60 @@ export function Sidebar({
                 {r.protocol === 's3' ? <CloudIcon size={13} /> : <ServerIcon size={13} />}
                 <span>{r.name}</span>
                 <span className="remote-proto">{r.protocol === 's3' ? 'S3' : r.protocol.toUpperCase()}</span>
+              </button>
+            </div>
+          )
+        })}
+
+      {clouds && (
+        <div className="side-section-head">
+          <button
+            type="button"
+            className="side-section-toggle"
+            onClick={() => toggleSection('cloud')}
+            aria-expanded={!isCollapsed('cloud')}
+          >
+            <span className="side-twisty">
+              {!isCollapsed('cloud') ? <ChevronDownIcon size={11} /> : <ChevronLeftIcon size={11} />}
+            </span>
+            <span className="side-title">{t('ابرها')}</span>
+            {clouds.bindings.length > 0 && <span className="side-section-badge">{fa(clouds.bindings.length)}</span>}
+          </button>
+          {onManageClouds && (
+            <button
+              type="button"
+              className="side-add"
+              title={t('مدیریت ابرها')}
+              aria-label={t('مدیریت ابرها')}
+              onClick={onManageClouds}
+            >
+              <PlusIcon size={12} />
+            </button>
+          )}
+        </div>
+      )}
+      {clouds &&
+        !isCollapsed('cloud') &&
+        clouds.bindings.map((b) => {
+          const account = clouds.accounts.find((a) => a.id === b.accountId)
+          const st = clouds.status.find((s) => s.bindingId === b.id)
+          return (
+            <div key={b.id} className="tree-row side-cloud">
+              <span className="twisty" />
+              <button
+                type="button"
+                className="tree-name"
+                dir="auto"
+                title={`${b.localPath}\n${account?.label ?? ''} · ${b.remoteLabel}`}
+                onClick={() => onCloud?.(b)}
+              >
+                <span className={`cloud-mark ${account?.provider ?? 'webdav'}`}>
+                  <CloudIcon size={13} />
+                </span>
+                <span>{b.name}</span>
+                <span className="side-cloud-sub" dir="auto">
+                  {bindingSubtitle(st?.state ?? 'idle', st?.lastRunAt ?? null, st?.conflicts.length ?? 0)}
+                </span>
               </button>
             </div>
           )
