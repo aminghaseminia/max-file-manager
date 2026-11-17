@@ -259,12 +259,21 @@ export const spawnDetached = (cmd: string, args: string[]): Promise<boolean> =>
     }
   })
 
+/** Windows has no exec bit: the extension is the bit. Only the two shapes «Run» covers. */
+export const winRunnableExt = (file: string): boolean => /\.(exe|msi)$/i.test(file)
+
+/** A `.msi` is not an executable; the Windows installer owns it. */
+export function runCommand(file: string): { bin: string; args: string[] } {
+  return /\.msi$/i.test(file) ? { bin: 'msiexec.exe', args: ['/i', file] } : { bin: file, args: [] }
+}
+
 /**
  * An executable script or AppImage: the user asked the file manager to run it, not to hand it to a
  * text editor. Only those two shapes are claimed; a `.desktop` file or another binary keeps its
- * normal handler.
+ * normal handler. On Windows the extension decides instead: `.exe`/`.msi` are recognized there.
  */
 export async function isRunnableFile(file: string): Promise<boolean> {
+  if (process.platform === 'win32') return winRunnableExt(file)
   try {
     const st = await fs.stat(file)
     if (!st.isFile() || (st.mode & 0o111) === 0) return false
@@ -287,7 +296,8 @@ export async function isRunnableFile(file: string): Promise<boolean> {
 export const runFile = (file: string): Promise<{ ok: true } | { error: string }> =>
   new Promise((resolve) => {
     try {
-      const child = spawn(file, [], { cwd: path.dirname(file), detached: true, stdio: 'ignore' })
+      const { bin, args } = runCommand(file)
+      const child = spawn(bin, args, { cwd: path.dirname(file), detached: true, stdio: 'ignore' })
       child.once('error', (e: Error) => resolve({ error: e.message }))
       child.once('spawn', () => {
         child.unref()

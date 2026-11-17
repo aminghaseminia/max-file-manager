@@ -14,8 +14,10 @@ import {
   parseMacOpenWith,
   parseAssocHandlers,
   parseWindowsOpenWith,
+  runCommand,
   runFile,
   systemOpenCommand,
+  winRunnableExt,
   windowsArgv,
   windowsFileManagerCommand
 } from './apps.ts'
@@ -210,6 +212,15 @@ test('only an executable script or AppImage counts as runnable', async () => {
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('on Windows the extension decides, and an msi goes through msiexec', () => {
+  assert.equal(winRunnableExt('setup.exe'), true)
+  assert.equal(winRunnableExt('Setup.MSI'), true)
+  assert.equal(winRunnableExt('run.sh'), false, 'a script is not an exe')
+  assert.equal(winRunnableExt('notes.exe.txt'), false, 'the extension must be the last one')
+  assert.deepEqual(runCommand('C:\\dl\\tool.msi'), { bin: 'msiexec.exe', args: ['/i', 'C:\\dl\\tool.msi'] })
+  assert.deepEqual(runCommand('C:\\dl\\tool.exe'), { bin: 'C:\\dl\\tool.exe', args: [] })
 })
 
 test('runFile really starts the file, in its own folder', async () => {
