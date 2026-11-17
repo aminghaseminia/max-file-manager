@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import {
   appHandles,
   execFor,
+  isRunnableFile,
   macAppName,
   mimeForPath,
   parseDesktopEntry,
@@ -10,6 +14,7 @@ import {
   parseMacOpenWith,
   parseAssocHandlers,
   parseWindowsOpenWith,
+  runFile,
   systemOpenCommand,
   windowsArgv,
   windowsFileManagerCommand
@@ -172,4 +177,57 @@ test('macOS handlers come from LaunchServices JSON, bundles only and de-duplicat
   // a failed or empty osascript run must not throw or invent handlers
   assert.deepEqual(parseMacOpenWith(''), { apps: [], def: '' })
   assert.deepEqual(parseMacOpenWith('execution error'), { apps: [], def: '' })
+})
+
+test('only an executable script or AppImage counts as runnable', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'mfm-run-'))
+  try {
+    const script = path.join(dir, 'go.sh')
+    await writeFile(script, '#!/bin/sh\nexit 0\n')
+    await chmod(script, 0o755)
+    assert.equal(await isRunnableFile(script), true, 'shebang + exec bit')
+
+    const plain = path.join(dir, 'plain.sh')
+    await writeFile(plain, '#!/bin/sh\nexit 0\n')
+    await chmod(plain, 0o644)
+    assert.equal(await isRunnableFile(plain), false, 'no exec bit')
+
+    const notes = path.join(dir, 'notes.txt')
+    await writeFile(notes, 'just text, no shebang\n')
+    await chmod(notes, 0o755)
+    assert.equal(await isRunnableFile(notes), false, 'exec bit alone is not a script')
+
+    const appimage = path.join(dir, 'tool.AppImage')
+    const elf = Buffer.alloc(12)
+    elf[0] = 0x7f; elf[1] = 0x45; elf[8] = 0x41; elf[9] = 0x49
+    await writeFile(appimage, elf)
+    await chmod(appimage, 0o755)
+    assert.equal(await isRunnableFile(appimage), true, 'AppImage magic')
+
+    await chmod(appimage, 0o644)
+    assert.equal(await isRunnableFile(appimage), false, 'AppImage without exec bit')
+    assert.equal(await isRunnableFile(dir), false, 'a folder is not runnable')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('runFile really starts the file, in its own folder', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'mfm-run2-'))
+  const stamp = path.join(dir, 'ran.txt')
+  const script = path.join(dir, 'write.sh')
+  try {
+    await writeFile(script, `#!/bin/sh\npwd > '${stamp}'\n`)
+    await chmod(script, 0o755)
+    const r = await runFile(script)
+    assert.deepEqual(r, { ok: true })
+    let seen = ''
+    for (let i = 0; i < 40 && !seen; i++) {
+      await new Promise((res) => setTimeout(res, 50))
+      seen = await readFile(stamp, 'utf8').catch(() => '')
+    }
+    assert.equal(seen.trim(), dir, 'the script ran with its own folder as cwd')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

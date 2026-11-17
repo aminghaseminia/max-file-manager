@@ -64,11 +64,13 @@ import {
   clearDefaultFileManagerWindows,
   defaultApp,
   isDefaultFileManager,
+  isRunnableFile,
   launchApp,
   listApps,
   mimeForPath,
   openWithDefault,
   openWithInfo,
+  runFile,
   setDefaultApp,
   setDefaultFileManager,
   type DesktopApp
@@ -2450,10 +2452,12 @@ app.whenReady().then(async () => {
   /**
    * `shell.openPath` resolves to '' even when the hand-off failed, so the default app is
    * looked up and spawned directly — the same path «Open with» proves works.
+   * An executable script/AppImage with the exec bit is run instead; a remote file never is.
    */
   ipcMain.handle('shell:open', async (_e, p: string) => {
     if (!isRemotePath(p) && !path.isAbsolute(p)) return { error: 'bad_path' }
     try {
+      if (!isRemotePath(p) && (await isRunnableFile(p))) return await runFile(p)
       const local = isRemotePath(p) ? await localCopyOf(p, await remoteVersionOf(p)) : p
       return await openWithDefault(local)
     } catch (e) {

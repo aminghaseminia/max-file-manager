@@ -259,6 +259,45 @@ export const spawnDetached = (cmd: string, args: string[]): Promise<boolean> =>
     }
   })
 
+/**
+ * An executable script or AppImage: the user asked the file manager to run it, not to hand it to a
+ * text editor. Only those two shapes are claimed; a `.desktop` file or another binary keeps its
+ * normal handler.
+ */
+export async function isRunnableFile(file: string): Promise<boolean> {
+  try {
+    const st = await fs.stat(file)
+    if (!st.isFile() || (st.mode & 0o111) === 0) return false
+    const fh = await fs.open(file, 'r')
+    try {
+      const buf = Buffer.alloc(12)
+      const { bytesRead } = await fh.read(buf, 0, 12, 0)
+      if (bytesRead >= 2 && buf[0] === 0x23 && buf[1] === 0x21) return true // #!
+      // AppImage: an ELF whose offset 8 carries the "AI" magic
+      return bytesRead >= 10 && buf[0] === 0x7f && buf[1] === 0x45 && buf[8] === 0x41 && buf[9] === 0x49
+    } finally {
+      await fh.close()
+    }
+  } catch {
+    return false
+  }
+}
+
+/** Start the file itself, detached and without a console: the same hand-off «Run» means. */
+export const runFile = (file: string): Promise<{ ok: true } | { error: string }> =>
+  new Promise((resolve) => {
+    try {
+      const child = spawn(file, [], { cwd: path.dirname(file), detached: true, stdio: 'ignore' })
+      child.once('error', (e: Error) => resolve({ error: e.message }))
+      child.once('spawn', () => {
+        child.unref()
+        resolve({ ok: true })
+      })
+    } catch (e) {
+      resolve({ error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
 const appDirs = (): string[] => {
   const dirs = [path.join(os.homedir(), '.local/share/applications'), '/usr/share/applications']
   for (const base of (process.env['XDG_DATA_DIRS'] ?? '').split(':')) {
