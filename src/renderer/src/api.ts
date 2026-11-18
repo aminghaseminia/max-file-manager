@@ -632,11 +632,15 @@ export type Api = {
       user?: string
       password?: string
       label?: string
+      clientId?: string
+      clientSecret?: string
     }): Promise<CloudAccount>
     accountRemove(id: string): Promise<boolean>
     browse(accountId: string, path: string): Promise<CloudTarget[]>
     folderCreate(accountId: string, parent: string, name: string): Promise<string>
     preview(accountId: string, localPath: string, remoteId: string): Promise<CloudPreview>
+    /** open the provider's «create an OAuth app» page in the system browser */
+    docs(provider: string): Promise<boolean>
     bindingSave(draft: {
       id?: string
       accountId: string

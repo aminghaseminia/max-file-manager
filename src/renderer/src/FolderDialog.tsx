@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { api, type Entry, type FolderMeta, type IconTheme } from './api'
 import { fa, mediaUrl } from './format'
 import { ArchiveIcon, FolderGlyph, FolderIcon, HomeIcon, ImageIcon, SearchIcon, StarIcon } from './Icons'
+import { SheetHead } from './Sheet'
 import { PURE_PACK, PURE_CATEGORIES } from './pure-set'
 
 type Props = {
@@ -94,12 +95,7 @@ export function FolderDialog({ dirs, name, meta, iconDirs, onSave, onAddIconDir,
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog wide folder-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">
-          <span>{t('آیکون پوشه')}</span>
-          <span className="dialog-sub" dir="auto" title={dir}>
-            {name}
-          </span>
-        </div>
+        <SheetHead icon={<FolderIcon size={17} />} title={t('آیکون پوشه')} sub={name} subTitle={dir} />
 
         <div className="folder-body">
           <div className="look-preview">

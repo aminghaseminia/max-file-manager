@@ -4,6 +4,7 @@ import { api, type ProfileDraft, type RemoteProfile, type SshConfigHost } from '
 import type { RemoteProtocol } from '../../shared/remote-profile.ts'
 import { fa } from './format'
 import { CloudIcon, LockIcon, PlusIcon, ServerIcon, XIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   profiles: RemoteProfile[]
@@ -360,9 +361,12 @@ export function RemoteDialog({ profiles, initialId, onProfiles, onOpen, onClose 
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog remote-dialog wide" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">
-          <span>{t('اتصال‌های دور')}</span>
-          <span className="dialog-sub">FTP · FTPS · SFTP · S3</span>
+        <div className="remote-head">
+          <SheetHead
+            icon={<ServerIcon size={17} />}
+            title={t('اتصال‌های دور')}
+            sub="FTP · FTPS · SFTP · S3"
+          />
           <button type="button" className="dialog-x" title={t('بستن')} onClick={onClose}>
             <XIcon />
           </button>

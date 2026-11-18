@@ -7416,7 +7416,6 @@ html.vp-cinema body {
 .cld-modal {
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(3px);
 }
 .cld-sheet {
   width: 780px;
@@ -7431,10 +7430,11 @@ html.vp-cinema body {
   box-shadow:
     0 32px 90px rgba(0, 0, 0, 0.45),
     0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
-  animation: cld-in 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+  /* no entry animation, for the same reason */
 }
+/* transform only: a frozen animation must never leave a dialog at opacity 0 */
 @keyframes cld-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  from { transform: translateY(10px) scale(0.985); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cld-sheet { animation: none; }
@@ -8091,3 +8091,266 @@ html.vp-cinema body {
 }
 .cloud-bind .check { font-size: 11.5px; }
 .cloud-bind .hint { margin: 0; }
+
+/* ── shared sheet language ─────────────────────────────────────────────────── */
+/* Every modal dialog borrows the cloud sheet's shape: soft icon tile, one title line, calm
+   inputs and a footer with a single primary action. Appending here overrides the older rules. */
+.modal:has(.dialog) {
+  /* no backdrop-filter: software compositing under Xvfb/remote desktops froze the frame */
+  background: rgba(8, 10, 14, 0.48);
+}
+.dialog {
+  width: 380px;
+  padding: 18px;
+  gap: 13px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.42),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  /* no entry animation: a frozen animation on a software-composited frame hid the dialog */
+}
+@keyframes sheet-in {
+  from { transform: translateY(8px) scale(0.988); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog { animation: none; }
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: -2px -2px 1px;
+  min-width: 0;
+}
+.sheet-logo {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 10px;
+}
+.sheet-titles { min-width: 0; }
+.sheet-titles h2 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.sheet-titles p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dialog-title {
+  align-items: center;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.dlg-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.dialog input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.dialog select,
+.dialog textarea {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.dialog textarea { padding: 8px 10px; }
+.dialog input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+.dialog select:focus,
+.dialog textarea:focus {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.dialog-actions {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+.dialog-actions .btn,
+.dlg-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1;
+}
+.dialog-actions .btn.ghost {
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.dialog-actions .btn.ghost:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.dialog .check {
+  font-size: 12px;
+}
+.dialog .hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* the settings window shares the same silhouette */
+.prefs {
+  border-radius: 16px;
+  box-shadow:
+    0 32px 90px rgba(0, 0, 0, 0.48),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+}
+.prefs-title {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  padding: 6px 9px 10px;
+}
+.prefs-tab {
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+.prefs-tab.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+}
+.remote-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.remote-head .sheet-head { flex: 1; min-width: 0; }
+.remote-head .dialog-x { margin-top: 3px; }
+
+/* ── Office-style ribbon ───────────────────────────────────────────────────── */
+/* The grouped variant of the command bar: whole groups in labelled sections, icons over a
+   short label, and anything that does not fit lands in the same ⋯ menu as the compact bar. */
+.cmdbar.ribbon {
+  align-items: stretch;
+  gap: 0;
+  padding: 3px 8px 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 72%),
+    var(--panel-2);
+}
+.cmdbar.ribbon .rb-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3px 7px 1px;
+  border-inline-end: 1px solid var(--line-soft);
+}
+.cmdbar.ribbon .rb-group:last-of-type { border-inline-end: 0; }
+.rb-row { display: flex; align-items: flex-start; gap: 1px; }
+.rb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 60px;
+  flex: none;
+  padding: 5px 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.rb svg {
+  width: 17px;
+  height: 17px;
+  color: var(--dim);
+  transition: color 0.12s;
+}
+.rb:hover:not(:disabled) {
+  background: var(--hover, var(--panel-3));
+  border-color: var(--line);
+}
+.rb:hover:not(:disabled) svg { color: var(--accent); }
+.rb:disabled { opacity: 0.4; cursor: default; }
+.rb-label {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-group-label {
+  padding: 2px 0 3px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.rb-more {
+  align-self: center;
+  width: 34px;
+  padding: 7px 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text);
+  border-radius: 8px;
+}
+.cmdbar-probe.ribbon { align-items: stretch; gap: 0; }
+.cld-doclink {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cld-doclink:hover { filter: brightness(1.15); }
+
+.cld-redirect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.cld-redirect code {
+  font-size: 11px;
+  color: var(--text);
+  word-break: break-all;
+}
+.cld-redirect .cld-mini { margin-inline-start: auto; }

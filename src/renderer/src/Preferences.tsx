@@ -712,17 +712,35 @@ export function Preferences({
                 </label>
               )}
               {row(
-                t('ظاهر دکمه‌ها'),
-                t('فقط آیکون جا بیشتری می‌دهد؛ فقط متن ساده‌تر است'),
+                t('سبک نوار ابزار'),
+                t('نوار فشرده یک ردیف است؛ سبک آفیس دکمه‌ها را در گروه‌های برچسب‌دار می‌چیند'),
                 seg(
-                  prefs.toolbarMode,
+                  prefs.toolbarStyle,
                   [
-                    { v: 'icon', label: t('فقط آیکون') },
-                    { v: 'icon-text', label: t('آیکون و متن') },
-                    { v: 'text', label: t('فقط متن') }
+                    { v: 'compact', label: t('فشرده (فعلی)') },
+                    { v: 'office', label: t('آفیس (گروه‌بندی)') }
                   ],
-                  'toolbarMode'
+                  'toolbarStyle'
                 )
+              )}
+              {prefs.toolbarStyle === 'compact' &&
+                row(
+                  t('ظاهر دکمه‌ها'),
+                  t('فقط آیکون جا بیشتری می‌دهد؛ فقط متن ساده‌تر است'),
+                  seg(
+                    prefs.toolbarMode,
+                    [
+                      { v: 'icon', label: t('فقط آیکون') },
+                      { v: 'icon-text', label: t('آیکون و متن') },
+                      { v: 'text', label: t('فقط متن') }
+                    ],
+                    'toolbarMode'
+                  )
+                )}
+              {prefs.toolbarStyle === 'office' && (
+                <div className="hint">
+                  {t('در سبک آفیس، گروه هر فرمان از ستون کنار همین فهرست خوانده می‌شود (فایل، انتقال، نمایش، تب، پنجره).')}
+                </div>
               )}
               {COMMANDS.map((c) => {
                 const on = prefs.toolbar.includes(c.id)

@@ -1,7 +1,8 @@
 import { t } from './i18n.ts'
 import { useState } from 'react'
 import { baseName, fa } from './format'
-import { XIcon } from './Icons'
+import { XIcon, ArchiveIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 export type ArchiveJob = {
   mode: 'compress' | 'extract'
@@ -33,14 +34,12 @@ export function ArchiveDialog({ job, busy, result, onRun, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog wide archive-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">
-          <span>{compress ? t('فشرده‌سازی') : t('استخراج')}</span>
-          <span className="dialog-sub" dir="auto" title={compress ? job.files[0] : job.path}>
-            {compress
-              ? t('{n} مورد', { n: fa(job.files.length) })
-              : baseName(job.path)}
-          </span>
-        </div>
+        <SheetHead
+          icon={<ArchiveIcon size={17} />}
+          title={compress ? t('فشرده‌سازی') : t('استخراج')}
+          sub={compress ? t('{n} مورد', { n: fa(job.files.length) }) : baseName(job.path)}
+          subTitle={compress ? job.files[0] : job.path}
+        />
 
         {compress ? (
           <>

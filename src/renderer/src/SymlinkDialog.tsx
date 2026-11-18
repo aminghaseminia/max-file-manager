@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { t } from './i18n.ts'
 import { api } from './api'
 import { baseName, dirOf, joinPath } from './format'
+import { LinkIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   /** the file/folder the link points at */
@@ -38,7 +40,7 @@ export function SymlinkDialog({ target, onDone, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dlg-title">{t('ایجاد پیوند نمادین')}</div>
+        <SheetHead icon={<LinkIcon size={16} />} title={t('ایجاد پیوند نمادین')} />
 
         <label className="field">
           <span>{t('مقصد پیوند')}</span>

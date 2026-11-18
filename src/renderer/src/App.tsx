@@ -47,6 +47,7 @@ import { PaneTree } from './PaneTree'
 import { TreePane } from './TreePane'
 import { SearchOverlay } from './SearchOverlay'
 import { Sidebar } from './Sidebar'
+import { SheetHead } from './Sheet'
 import { RemoteDialog } from './RemoteDialog'
 import { CloudDialog } from './CloudDialog'
 import { SyncWorkspace } from './SyncWorkspace'
@@ -117,6 +118,7 @@ import {
   EyeOffIcon,
   EntryIcon,
   FolderIcon,
+  FilePlusIcon,
   FolderPlusIcon,
   GaugeIcon,
   GridIcon,
@@ -3828,6 +3830,7 @@ export default function App() {
         <CommandBar
           items={prefs.toolbar as CommandId[]}
           mode={prefs.toolbarMode}
+          variant={prefs.toolbarStyle}
           shortcuts={prefs.shortcuts}
           disabled={toolbarDisabled}
           onRun={runBarCommand}
@@ -4898,7 +4901,7 @@ export default function App() {
       {tabPrompt && (
         <div className="modal" onMouseDown={() => setTabPrompt(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="dlg-title">{t('نام تازهٔ تب')}</div>
+            <SheetHead icon={<RenameIcon />} title={t('نام تازهٔ تب')} />
             <input
               autoFocus
               dir="auto"
@@ -4920,13 +4923,30 @@ export default function App() {
       {prompt && (
         <div className="modal" onMouseDown={() => setPrompt(null)}>
           <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="dlg-title">
-              {prompt.kind === 'mkdir'
-                ? t('نام پوشهٔ نو')
-                : prompt.kind === 'createFile'
-                  ? t('نام فایل جدید')
-                  : t('نام تازه')}
-            </div>
+            <SheetHead
+              icon={
+                prompt.kind === 'mkdir' ? (
+                  <FolderPlusIcon />
+                ) : prompt.kind === 'createFile' ? (
+                  <FilePlusIcon />
+                ) : (
+                  <RenameIcon />
+                )
+              }
+              title={
+                prompt.kind === 'mkdir'
+                  ? t('نام پوشهٔ نو')
+                  : prompt.kind === 'createFile'
+                    ? t('نام فایل جدید')
+                    : t('نام تازه')
+              }
+              sub={
+                prompt.kind === 'rename'
+                  ? baseName(panes?.[active]?.sel[0] ?? '') || undefined
+                  : curPath
+              }
+              subTitle={prompt.kind === 'rename' ? (panes?.[active]?.sel[0] ?? '') : curPath}
+            />
             <input
               ref={promptInputRef}
               autoFocus

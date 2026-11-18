@@ -137,7 +137,7 @@ export function deleteBinding(id: string): void {
   write({ ...cur, bindings: cur.bindings.filter((b) => b.id !== id), runtime })
 }
 
-export function setSecret(id: string, plain: string): { sessionOnly: boolean } {
+function storeRawSecret(id: string, plain: string): { sessionOnly: boolean } {
   const cur = db()
   const secrets = { ...cur.secrets }
   if (encryptionAvailable()) {
@@ -159,6 +159,10 @@ export function setSecret(id: string, plain: string): { sessionOnly: boolean } {
   delete secrets[id]
   write({ ...cur, secrets })
   return { sessionOnly: true }
+}
+
+export function setSecret(id: string, plain: string): { sessionOnly: boolean } {
+  return storeRawSecret(id, plain)
 }
 
 export function getSecret(id: string): string | null {
@@ -194,4 +198,36 @@ export function patchRuntime(id: string, patch: Partial<RuntimeStored>): Runtime
 export function wipeCloud(): void {
   sessionSecrets.clear()
   write(empty())
+}
+
+/** What one account keeps in the keyring: a DAV password, or the OAuth tokens and client. */
+export type CloudSecretBundle =
+  | { kind: 'password'; password: string }
+  | {
+      kind: 'oauth'
+      access: string
+      refresh?: string
+      /** unix ms */
+      expiresAt: number
+      clientId: string
+      clientSecret?: string
+    }
+
+export function setSecretBundle(id: string, bundle: CloudSecretBundle): { sessionOnly: boolean } {
+  return storeRawSecret(id, JSON.stringify(bundle))
+}
+
+/** A bundle, or a legacy raw password written by the DAV flow before OAuth existed. */
+export function getSecretBundle(id: string): CloudSecretBundle | null {
+  const raw = getSecret(id)
+  if (!raw) return null
+  if (raw.startsWith('{"kind":"')) {
+    try {
+      const parsed = JSON.parse(raw) as CloudSecretBundle
+      if (parsed && (parsed.kind === 'password' || parsed.kind === 'oauth')) return parsed
+    } catch {
+      // fall through to the password shape
+    }
+  }
+  return { kind: 'password', password: raw }
 }

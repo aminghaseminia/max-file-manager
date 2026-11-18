@@ -12,13 +12,13 @@ import path from 'node:path'
 import { hashFile } from './hash.ts'
 import { cloudOf, cloudPath, isCloudPath, type CloudBinding } from '../shared/cloud.ts'
 import { remoteJoin } from './cloud-core.ts'
-import type { DavClient } from './cloud-dav.ts'
+import type { CloudClient } from './cloud-client.ts'
 import type { PathOps } from './sync-engine.ts'
 import type { Entry } from './types.ts'
 
 const normRel = (rel: string): string => rel.replace(/^\/+/, '').replace(/\/+$/, '')
 
-export function cloudOps(binding: CloudBinding, dav: DavClient, tempRoot = os.tmpdir()): PathOps {
+export function cloudOps(binding: CloudBinding, dav: CloudClient, tempRoot = os.tmpdir()): PathOps {
   /** The DAV path of a binding-relative path. '' is the binding's own folder. */
   const davPath = (rel: string): string => {
     const clean = normRel(rel)

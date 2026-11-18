@@ -181,6 +181,7 @@ contextBridge.exposeInMainWorld('api', {
     browse: (accountId: string, path: string) => ipcRenderer.invoke('cloud:browse', { accountId, path }),
     folderCreate: (accountId: string, parent: string, name: string) =>
       ipcRenderer.invoke('cloud:folderCreate', { accountId, parent, name }),
+    docs: (provider: string) => ipcRenderer.invoke('cloud:docs', provider),
     preview: (accountId: string, localPath: string, remoteId: string) =>
       ipcRenderer.invoke('cloud:preview', { accountId, localPath, remoteId }),
     bindingSave: (draft: unknown) => ipcRenderer.invoke('cloud:bindingSave', draft),

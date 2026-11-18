@@ -57,7 +57,7 @@ test('accounts need a usable WebDAV url and a user', () => {
   assert.equal(cleanCloudAccount({ ...account, url: 'https://a:b@cloud.example' }), null)
   assert.equal(cleanCloudAccount({ ...account, user: '' }), null)
   // a provider that is not shipped yet may not be stored
-  assert.equal(cleanCloudAccount({ ...account, provider: 'gdrive', url: undefined }), null)
+  assert.equal(cleanCloudAccount({ ...account, provider: 'protondrive', url: undefined }), null)
   assert.equal(cleanCloudAccount({ ...account, id: 'x' }), null)
 })
 

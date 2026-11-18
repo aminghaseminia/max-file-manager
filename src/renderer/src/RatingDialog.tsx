@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { api } from './api'
 import { encodeBmp } from '../../shared/bmp.ts'
 import { baseName, fa } from './format'
-import { XIcon } from './Icons'
+import { XIcon, StarIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   name: string
@@ -21,12 +22,7 @@ export function RatingDialog({ name, stars, note, onSave, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog rating-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">
-          <span>{t('امتیاز و توضیح')}</span>
-          <span className="dialog-sub" dir="auto" title={name}>
-            {name}
-          </span>
-        </div>
+        <SheetHead icon={<StarIcon size={17} />} title={t('امتیاز و توضیح')} sub={name} subTitle={name} />
         <div className="stars" dir="ltr">
           {[1, 2, 3, 4, 5].map((n) => (
             <button

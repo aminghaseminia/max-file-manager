@@ -15,7 +15,13 @@ import { makePlan } from './sync-engine.ts'
 import { nextBaseline } from './sync-core.ts'
 import { conflictPaths, entryState, nextRunAt } from './cloud-core.ts'
 import { cloudOps } from './cloud-engine.ts'
-import { createDav, davAccountLabel, nextcloudRoot, type DavClient } from './cloud-dav.ts'
+import { shell } from 'electron'
+import { createDav, davAccountLabel, nextcloudRoot } from './cloud-dav.ts'
+import { createDrive } from './cloud-drive.ts'
+import { createDropbox } from './cloud-dropbox.ts'
+import { createOneDrive } from './cloud-onedrive.ts'
+import type { CloudClient } from './cloud-client.ts'
+import { oauthDocs, oauthLogin, oauthRefresh, type OAuthProviderId } from './cloud-oauth.ts'
 import {
   cloudBindings,
   cloudAccounts,
@@ -23,12 +29,13 @@ import {
   deleteBinding,
   findAccount,
   findBinding,
-  getSecret,
   patchRuntime,
   putAccount,
   putBinding,
   runtimeOf,
+  getSecretBundle,
   setSecret,
+  setSecretBundle,
   wipeCloud
 } from './cloud-store.ts'
 import {
@@ -76,6 +83,9 @@ export type CloudAccountDraft = {
   user?: string
   password?: string
   label?: string
+  /** OAuth providers: the user's own registered app (this repository ships no client id) */
+  clientId?: string
+  clientSecret?: string
 }
 
 export type CloudBindingDraft = {
@@ -173,11 +183,42 @@ export function createCloudService(deps: CloudDeps) {
     })
   }
 
-  const davFor = (account: CloudAccount): DavClient => {
-    const secret = getSecret(account.id)
-    if (!secret) throw new Error('the stored password is not available; reconnect this account')
-    if (!account.url) throw new Error('this account has no server address')
-    return createDav({ base: account.url, user: account.user ?? '', pass: secret })
+  const makeClient = (provider: string, access: string): CloudClient => {
+    if (provider === 'gdrive') return createDrive(access)
+    if (provider === 'dropbox') return createDropbox(access)
+    if (provider === 'onedrive') return createOneDrive(access)
+    throw new Error('this provider is not supported yet')
+  }
+
+  /**
+   * One client for every family. OAuth tokens are refreshed here (and written back to the keyring)
+   * so no adapter has to know about expiry.
+   */
+  const clientFor = async (account: CloudAccount): Promise<CloudClient> => {
+    const bundle = getSecretBundle(account.id)
+    if (!bundle) throw new Error('the stored sign-in is not available; reconnect this account')
+    if (bundle.kind === 'password') {
+      if (!account.url) throw new Error('this account has no server address')
+      return createDav({ base: account.url, user: account.user ?? '', pass: bundle.password })
+    }
+    let access = bundle.access
+    if (bundle.expiresAt - 60_000 <= Date.now()) {
+      if (!bundle.refresh) throw new Error('the sign-in expired; reconnect this account')
+      const next = await oauthRefresh(
+        account.provider as OAuthProviderId,
+        { clientId: bundle.clientId, clientSecret: bundle.clientSecret },
+        bundle.refresh,
+        { access: bundle.access, refresh: bundle.refresh, expiresAt: bundle.expiresAt }
+      )
+      access = next.access
+      setSecretBundle(account.id, {
+        kind: 'oauth',
+        clientId: bundle.clientId,
+        ...(bundle.clientSecret ? { clientSecret: bundle.clientSecret } : {}),
+        ...next
+      })
+    }
+    return makeClient(account.provider, access)
   }
 
   const bindingsFor = (accountId: string): CloudBinding[] => cloudBindings().filter((b) => b.accountId === accountId)
@@ -188,25 +229,60 @@ export function createCloudService(deps: CloudDeps) {
     const provider = cloudProvider(String(draft.provider ?? ''))
     if (!provider) throw new Error('unknown provider')
     if (!provider.ready) throw new Error('this provider is not available yet')
-    if (provider.family !== 'dav') throw new Error('this provider is not available yet')
-    const user = String(draft.user ?? '').trim()
-    if (!user) throw new Error('a user name is required')
-    const password = String(draft.password ?? '')
-    if (!password) throw new Error(' an app password is required')
-    const base = cleanCloudUrl(draft.url)
-    if (!base) throw new Error('a valid http(s) URL is required')
-    const url = provider.id === 'nextcloud' || provider.id === 'owncloud' ? nextcloudRoot(base, user) : base.replace(/\/+$/, '')
-    const dav = createDav({ base: url, user, pass: password })
-    await dav.test()
-    // the id is only minted once the connection is proven, so a failed attempt leaves nothing behind
+    const label = String(draft.label ?? '').trim().slice(0, 120)
     const id = newCloudId([...cloudAccounts().map((a) => a.id), ...cloudBindings().map((b) => b.accountId)])
-    const { sessionOnly } = setSecret(id, password)
+
+    if (provider.family === 'dav') {
+      const user = String(draft.user ?? '').trim()
+      if (!user) throw new Error('a user name is required')
+      const password = String(draft.password ?? '')
+      if (!password) throw new Error('an app password is required')
+      const base = cleanCloudUrl(draft.url)
+      if (!base) throw new Error('a valid http(s) URL is required')
+      const url =
+        provider.id === 'nextcloud' || provider.id === 'owncloud'
+          ? nextcloudRoot(base, user)
+          : base.replace(/\/+$/, '')
+      const dav = createDav({ base: url, user, pass: password })
+      await dav.test()
+      // the id is only minted once the connection is proven, so a failed attempt leaves nothing behind
+      const { sessionOnly } = setSecret(id, password)
+      const account: CloudAccount = {
+        id,
+        provider: provider.id,
+        label: label || davAccountLabel(url, user),
+        url,
+        user,
+        sessionOnly,
+        createdAt: Date.now()
+      }
+      putAccount(account)
+      setLive(account.id, { ...liveOf(account.id), state: 'idle', lastError: null })
+      broadcast()
+      return account
+    }
+
+    // OAuth: the consent page opens in the system browser and the code returns to 127.0.0.1
+    const clientId = String(draft.clientId ?? '').trim()
+    const clientSecret = String(draft.clientSecret ?? '').trim() || undefined
+    if (!clientId) throw new Error('a client id is required')
+    const result = await oauthLogin(
+      provider.id as OAuthProviderId,
+      { clientId, clientSecret },
+      (url) => void shell.openExternal(url)
+    )
+    const probe = makeClient(provider.id, result.tokens.access)
+    await probe.list('/')
+    const { sessionOnly } = setSecretBundle(id, {
+      kind: 'oauth',
+      clientId,
+      ...(clientSecret ? { clientSecret } : {}),
+      ...result.tokens
+    })
     const account: CloudAccount = {
       id,
       provider: provider.id,
-      label: String(draft.label ?? '').trim().slice(0, 120) || davAccountLabel(url, user),
-      url,
-      user,
+      label: label || result.label,
       sessionOnly,
       createdAt: Date.now()
     }
@@ -233,7 +309,7 @@ export function createCloudService(deps: CloudDeps) {
 
   async function browse(accountId: string, remotePath = '/'): Promise<CloudTarget[]> {
     const account = accountById(accountId)
-    const dav = davFor(account)
+    const dav = await clientFor(account)
     const p = remotePath.startsWith('/') ? remotePath.replace(/\/+$/, '') || '/' : `/${remotePath}`
     const rows = await dav.list(p)
     return rows
@@ -246,7 +322,7 @@ export function createCloudService(deps: CloudDeps) {
     const account = accountById(accountId)
     const clean = cleanRemoteName(name)
     if (!clean) throw new Error('a folder name is required')
-    const dav = davFor(account)
+    const dav = await clientFor(account)
     return dav.createFolder(parent.startsWith('/') ? parent : `/${parent}`, clean)
   }
 
@@ -263,7 +339,7 @@ export function createCloudService(deps: CloudDeps) {
     if (!st || !st.isDirectory()) throw new Error('the local folder does not exist')
     const remoteId = String(draft.remoteId ?? '/').trim()
     if (!remoteId.startsWith('/')) throw new Error('a remote folder is required')
-    const dav = davFor(account)
+    const dav = await clientFor(account)
     const remoteStat = await dav.stat(remoteId)
     if (!remoteStat || !remoteStat.dir) throw new Error('the remote folder does not exist')
     const provider = cloudProvider(account.provider)
@@ -322,16 +398,13 @@ export function createCloudService(deps: CloudDeps) {
 
   async function saveBinding(draft: CloudBindingDraft): Promise<CloudBinding> {
     const account = accountById(draft.accountId)
-    if (account.provider !== 'nextcloud' && account.provider !== 'owncloud' && account.provider !== 'webdav' && account.provider !== 'qsync') {
-      throw new Error('this provider is not available yet')
-    }
     const localPath = String(draft.localPath ?? '').trim()
     if (!isAbsoluteFolder(localPath)) throw new Error('an absolute local folder is required')
     const st = await fs.stat(localPath).catch(() => null)
     if (!st || !st.isDirectory()) throw new Error('the local folder does not exist')
     const remoteId = String(draft.remoteId ?? '/').trim()
     if (!remoteId.startsWith('/')) throw new Error('a remote folder is required')
-    const dav = davFor(account)
+    const dav = await clientFor(account)
     const remoteStat = await dav.stat(remoteId)
     if (!remoteStat || !remoteStat.dir) throw new Error('the remote folder does not exist')
     const others = cloudBindings().filter((b) => b.id !== draft.id)
@@ -493,7 +566,7 @@ export function createCloudService(deps: CloudDeps) {
     broadcast()
     const ctl: SyncControl = { cancelled: false, paused: false }
     try {
-      const dav = davFor(account)
+      const dav = await clientFor(account)
       const ops = createOps(deps.remote, cloudOps(binding, dav))
       const root = cloudPath(binding.id)
       const pair = pairKey(binding.localPath, root)
@@ -645,6 +718,7 @@ export function createCloudService(deps: CloudDeps) {
     wake,
     forPath,
     wipe: wipeCloud,
+    docs: (provider: string): string => oauthDocs(provider as OAuthProviderId),
     bindingRoot: (id: string): string | null => findBinding(id)?.localPath ?? null,
     remotePathOf: (id: string): string | null => {
       const b = findBinding(id)

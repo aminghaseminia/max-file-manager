@@ -42,9 +42,18 @@ export type CloudProvider = {
   preservesMtime: boolean
   /** the row that carries the badge; brand names stay in Latin, as on the desktop */
   note?: string
+  /** why a not-ready provider is not available; shown instead of the protocol line */
+  soonReason?: string
 }
 
 export const MINUTE = 60_000
+
+/**
+ * OAuth returns to this loopback port. A fixed port is deliberate: Dropbox matches the redirect
+ * URI exactly, so the connect form can tell the user the one string to register in its console.
+ */
+export const OAUTH_REDIRECT_PORT = 53682
+export const OAUTH_REDIRECT_URI = `http://127.0.0.1:${OAUTH_REDIRECT_PORT}/callback`
 const HOUR = 60 * MINUTE
 
 /**
@@ -57,7 +66,7 @@ export const CLOUD_PROVIDERS: readonly CloudProvider[] = [
     id: 'gdrive',
     label: 'Google Drive',
     family: 'oauth',
-    ready: false,
+    ready: true,
     defaultIntervalMs: 5 * MINUTE,
     minIntervalMs: MINUTE,
     trash: true,
@@ -70,7 +79,7 @@ export const CLOUD_PROVIDERS: readonly CloudProvider[] = [
     id: 'dropbox',
     label: 'Dropbox',
     family: 'oauth',
-    ready: false,
+    ready: true,
     defaultIntervalMs: 5 * MINUTE,
     minIntervalMs: MINUTE,
     trash: true,
@@ -80,17 +89,19 @@ export const CLOUD_PROVIDERS: readonly CloudProvider[] = [
     id: 'onedrive',
     label: 'OneDrive',
     family: 'oauth',
-    ready: false,
+    ready: true,
     defaultIntervalMs: 5 * MINUTE,
     minIntervalMs: MINUTE,
     trash: true,
-    preservesMtime: true
+    // Graph stamps its own timestamp on upload, so the binding compares by hash
+    preservesMtime: false
   },
   {
     id: 'protondrive',
     label: 'Proton Drive',
     family: 'oauth',
     ready: false,
+    soonReason: 'بدون API عمومی؛ منتظر API رسمی',
     defaultIntervalMs: 10 * MINUTE,
     minIntervalMs: 5 * MINUTE,
     trash: true,

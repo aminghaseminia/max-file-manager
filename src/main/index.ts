@@ -1240,6 +1240,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('cloud:syncNow', (_e, a: { id?: string; confirm?: boolean }) =>
     cloudService.run(String(a?.id ?? ''), { confirmDelete: a?.confirm === true })
   )
+  ipcMain.handle('cloud:docs', (_e, provider: string) => {
+    const url = cloudService.docs(String(provider ?? ''))
+    if (!/^https:\/\//.test(url)) return false
+    void shell.openExternal(url)
+    return true
+  })
 
   /**
    * One fs.watch per folder that is on screen, event-driven (no polling). A save or rename fires

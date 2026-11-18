@@ -1,6 +1,6 @@
 import { t } from './i18n.ts'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { COMMAND_BY_ID, labelOf, type CommandId } from './commands'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { COMMAND_BY_ID, GROUP_ORDER, groupLabelOf, labelOf, type CommandGroup, type CommandId } from './commands'
 import { CMD_ICON } from './commandIcons'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { formatAccel } from './keys'
@@ -10,6 +10,8 @@ export type ToolbarMode = 'icon' | 'icon-text' | 'text'
 type Props = {
   items: CommandId[]
   mode: ToolbarMode
+  /** `office` draws the grouped ribbon; `compact` keeps the single measured row */
+  variant?: 'compact' | 'office'
   shortcuts: Record<string, string>
   /** commands that exist but do not apply to what the active pane shows (e.g. a remote folder) */
   disabled?: CommandId[]
@@ -24,11 +26,26 @@ const MORE = 34
  * The command bar. Every item is measured in an off-screen copy first, so a narrow window shows
  * a `…` button instead of silently cutting (or scrolling) the tail of the toolbar.
  */
-export function CommandBar({ items, mode, shortcuts, disabled = [], collapsed, onRun }: Props) {
+export function CommandBar({ items, mode, variant = 'compact', shortcuts, disabled = [], collapsed, onRun }: Props) {
+  const ribbon = variant === 'office'
   const bar = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
   const [shown, setShown] = useState(items.length)
+  const [shownGroups, setShownGroups] = useState(99)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+
+  /** The ribbon keeps whole groups together, in the same order the settings page lists them. */
+  const groups = useMemo(() => {
+    const by = new Map<CommandGroup, CommandId[]>()
+    for (const id of items) {
+      const def = COMMAND_BY_ID[id]
+      if (!def) continue
+      const list = by.get(def.group)
+      if (list) list.push(id)
+      else by.set(def.group, [id])
+    }
+    return GROUP_ORDER.filter((g) => by.has(g)).map((g) => ({ id: g, items: by.get(g)! }))
+  }, [items])
 
   const fit = () => {
     const el = bar.current
@@ -46,11 +63,30 @@ export function CommandBar({ items, mode, shortcuts, disabled = [], collapsed, o
     setShown(n >= widths.length ? widths.length : n)
   }
 
-  useLayoutEffect(fit)
+  const fitRibbon = () => {
+    const el = bar.current
+    const m = probe.current
+    if (!el || !m) return
+    const avail = el.clientWidth - 12 - MORE
+    let total = 0
+    let n = 0
+    for (const child of [...m.children] as HTMLElement[]) {
+      const w = child.offsetWidth
+      if (total + w > avail) break
+      total += w
+      n++
+    }
+    setShownGroups(n)
+  }
+
+  useLayoutEffect(() => {
+    if (ribbon) fitRibbon()
+    else fit()
+  })
   useEffect(() => {
     const el = bar.current
     if (!el) return
-    const ro = new ResizeObserver(fit)
+    const ro = new ResizeObserver(() => (ribbon ? fitRibbon() : fit()))
     ro.observe(el)
     return () => ro.disconnect()
   })
@@ -118,6 +154,69 @@ export function CommandBar({ items, mode, shortcuts, disabled = [], collapsed, o
         {CMD_ICON[id]}
         <span>{labelOf(c)}</span>
       </button>
+    )
+  }
+
+  const ribbonButton = (id: CommandId) => {
+    const c = COMMAND_BY_ID[id]
+    if (!c) return null
+    const off = disabled.includes(id)
+    return (
+      <button
+        key={id}
+        className="rb"
+        disabled={off}
+        title={`${labelOf(c)} (${formatAccel(shortcuts[id] ?? c.key)})${off ? ' — ' + t('برای پوشهٔ دور در دسترس نیست') : ''}`}
+        onClick={(ev) => {
+          const r = ev.currentTarget.getBoundingClientRect()
+          press(id, { x: r.left, y: r.bottom + 2 })
+        }}
+      >
+        {CMD_ICON[id]}
+        <span className="rb-label">{t(c.short ?? c.label)}</span>
+      </button>
+    )
+  }
+
+  const group = (g: { id: CommandGroup; items: CommandId[] }, probeCopy = false) => (
+    <section className="rb-group" key={(probeCopy ? 'p:' : '') + g.id}>
+      <div className="rb-row">{g.items.map(ribbonButton)}</div>
+      <div className="rb-group-label">{groupLabelOf(g.id)}</div>
+    </section>
+  )
+
+  if (ribbon) {
+    const hidden = groups.slice(shownGroups).flatMap((g) => g.items)
+    return (
+      <>
+        <div className="cmdbar ribbon" ref={bar}>
+          {groups.slice(0, shownGroups).map((g) => group(g))}
+          {hidden.length > 0 && (
+            <button
+              className="rb rb-more"
+              title={t('بیشتر')}
+              onClick={(ev) => {
+                const r = ev.currentTarget.getBoundingClientRect()
+                setMenu({ x: r.left, y: r.bottom + 2 })
+              }}
+            >
+              ⋯
+            </button>
+          )}
+          <div className="cmdbar-probe ribbon" ref={probe} aria-hidden>
+            {groups.map((g) => group(g, true))}
+          </div>
+        </div>
+        {menu && (
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            items={menuItems(hidden)}
+            onPick={(id) => press(id as CommandId, menu ?? undefined)}
+            onClose={() => setMenu(null)}
+          />
+        )}
+      </>
     )
   }
 

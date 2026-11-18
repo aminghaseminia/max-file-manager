@@ -150,7 +150,8 @@
 - [ ] پیمایش درختی داخل بایگانی (پوشه‌های آرشیو مثل پوشه باز شوند)
 - [x] FTP، FTPS، SFTP و S3 به‌عنوان محل (`ftp://`، `ftps://`، `sftp://`، `s3://bucket/prefix`) با صف انتقال، پیش‌نمایش/ویرایشگر، بندانگشتی و کش محلی؛ ایمپورت `~/.ssh/config` و ورود با کلید/عامل SSH؛ FTPS صریح/ضمنی و S3 سازگار با MinIO/Ceph — [docs/REMOTE.md](REMOTE.md)
 - [x] پوشهٔ ابری دوطرفه: Nextcloud، ownCloud، WebDAV و Qsync (QNAP) با WebDAV؛ اتصال از سایدبار و تنظیمات، انتخاب پوشهٔ راه‌دور/لوکال، بج ارائه‌دهنده و نقطهٔ وضعیت در فهرست، تعارض فقط با اعلان، فاصلهٔ بررسی و «همین حالا» — [docs/CLOUD.md](CLOUD.md)
-- [ ] Google Drive، Dropbox، OneDrive و Proton Drive (ردیف «به‌زودی» در انتخابگر؛ Drive به اسکوپ کامل `drive` و تأیید گوگل نیاز دارد)
+- [x] Google Drive، Dropbox و OneDrive با OAuth + PKCE (Client ID خود کاربر)؛ Drive با اسکوپ کامل `drive` و الزام تأیید گوگل برای انتشار عمومی
+- [ ] Proton Drive (بدون API عمومی پایدار)
 - [ ] کپی مستقیم به گوشی/دستگاه (MTP) — در لینوکس از gvfs
 - [ ] Google Drive / OneDrive به‌عنوان محل مجازی
 

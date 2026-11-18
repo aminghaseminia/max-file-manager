@@ -2,6 +2,8 @@ import { getLang, t } from './i18n.ts'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { baseName, dirOf, fa, joinPath, planRename, type RenameMode } from './format'
+import { RenameIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   paths: string[]
@@ -51,9 +53,10 @@ export function RenameDialog({ paths, onApply, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dlg-title">
-          {t('تغییر نام گروهی')} · {t('{n} مورد', { n: fa(paths.length) })}
-        </div>
+        <SheetHead
+          icon={<RenameIcon />}
+          title={`${t('تغییر نام گروهی')} · ${t('{n} مورد', { n: fa(paths.length) })}`}
+        />
 
         <div className="seg">
           <button className={mode === 'template' ? 'on' : ''} onClick={() => setMode('template')}>

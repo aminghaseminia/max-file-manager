@@ -2,7 +2,8 @@ import { t } from './i18n.ts'
 import { useState } from 'react'
 import type { NamedLayout } from './prefs'
 import { fa } from './format'
-import { XIcon } from './Icons'
+import { XIcon, LayersIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   layouts: Record<string, NamedLayout>
@@ -38,7 +39,7 @@ export function PresetsDialog({
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog presets-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">{t(t('چیدمان‌ها و فیلترها'))}</div>
+        <SheetHead icon={<LayersIcon />} title={t(t('چیدمان‌ها و فیلترها'))} />
         <div className="seg">
           <button className={tab === 'layouts' ? 'on' : ''} onClick={() => setTab('layouts')}>
             {t('چیدمان‌ها')}

@@ -1,6 +1,7 @@
 import { t } from './i18n.ts'
 import { fa } from './format'
-import { XIcon } from './Icons'
+import { XIcon, SplitIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 export type DiffLine = { kind: 'same' | 'add' | 'del' | 'change'; a?: number; b?: number; text: string }
 export type DiffResult = { lines: DiffLine[]; added: number; removed: number; binary: boolean; coarse: boolean }
@@ -18,7 +19,7 @@ export function DiffDialog({ a, b, result, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={onClose}>
       <div className="dialog diff-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">{t(t('مقایسهٔ دو فایل'))}</div>
+        <SheetHead icon={<SplitIcon />} title={t(t('مقایسهٔ دو فایل'))} sub={`${a} ↔ ${b}`} />
         <div className="sync-paths">
           <span dir="auto">{a}</span>
           <span className="dim">↔</span>

@@ -1,8 +1,8 @@
 # Cloud folders
 
 Status: **implemented** for the WebDAV family (Nextcloud, ownCloud, generic WebDAV and QNAP over
-WebDAV). Google Drive, Dropbox, OneDrive and Proton Drive are listed in the picker as *soon*; the
-account model and the picker do not change when their adapters land.
+WebDAV) and for Google Drive, Dropbox and OneDrive over OAuth. Proton Drive stays *soon* (no stable
+public API).
 
 A cloud folder is a **local folder mirrored with one folder on a cloud account** — not a virtual
 mount. The app's preview, editor, index, thumbnails, `.mfm.json` and archives all assume a real file
@@ -34,15 +34,38 @@ engine.
 | ownCloud | WebDAV + app password | ready |
 | WebDAV | URL + user + password | ready |
 | Qsync | QNAP's WebDAV (the Qsync client protocol is not public) | ready |
-| Google Drive | OAuth + `changes.list` | soon |
-| Dropbox | OAuth + `list_folder/continue` + long-poll | soon |
-| OneDrive | OAuth + `delta` | soon |
+| Google Drive | OAuth + Drive v3 (path→id resolution) | ready |
+| Dropbox | OAuth + `files/list_folder` | ready |
+| OneDrive | OAuth + Microsoft Graph path API | ready |
 | Proton Drive | no stable public API | soon |
 
 Google Drive needs the **full `drive` scope**, because the picker must list folders that already
 exist in the account. That means Google's restricted-scope verification is a prerequisite before a
 public release; `drive.file` was rejected on purpose (it can only see folders the app itself
 created).
+
+### OAuth (Drive, Dropbox, OneDrive)
+
+- **No client id is shipped.** The connect form asks for the user's own OAuth app (Client ID, and for
+  Google the Client Secret), with a link to the provider's page for creating one. Shipping someone
+  else's client would break the providers' terms and their rate limits.
+- Authorization Code + PKCE (S256). The consent page opens in the system browser; the code returns
+  to a loopback listener on the **fixed** `http://127.0.0.1:53682/callback` (a random port only when
+  53682 is taken, so Dropbox's exact-match redirect can be registered once). The server closes right
+  after the callback, and a mismatched `state` is rejected. The connect form shows and copies the
+  redirect URI.
+- Access and refresh tokens (and the client id/secret needed for a later refresh) are encrypted with
+  `safeStorage` in the account's keyring entry. A token is refreshed 60 seconds before expiry, or on
+  the next run after a restart; a missing refresh token parks the binding with a clear error.
+- Scopes: Drive `drive openid email`; Dropbox `account_info.read files.metadata.read
+  files.content.read files.content.write`; Microsoft `offline_access Files.ReadWrite User.Read`.
+- OneDrive compares by **hash**: Graph stamps its own timestamp on upload, so mtime would bounce.
+  Dropbox sends `client_modified`, Drive sends `modifiedTime`, so those two keep the timestamp.
+- Drive has no path API: the adapter resolves each path segment by name and caches path→id for the
+  run. OneDrive and Dropbox are path-addressed natively.
+- Limits: OneDrive's single-request upload cap is 250 MB (an upload session is a later phase); Drive
+  multipart upload streams the file, so it is not memory-bound. Remote deletes go to the provider's
+  own trash (Drive `trashed`, Dropbox deleted files, OneDrive recycle bin).
 
 Credentials never cross the IPC boundary: the password is encrypted with `safeStorage`
 (KWallet / GNOME Keyring / DPAPI). If the OS has no real keyring, it lives in memory for this
@@ -86,8 +109,9 @@ cloud); no `.conflict` copies are invented.
   daemon; if it is closed, nothing syncs.
 
 Local changes reach the cloud within seconds via the watcher. Remote changes are bounded by the
-interval, because WebDAV has no change feed. The OAuth adapters will use their delta cursors (and
-Dropbox its long-poll) behind the same interface.
+interval: this phase walks the tree again on each run (`list` only; hashing still downloads). Delta
+cursors (`changes.list`, `list_folder/continue`, Graph `delta`) and Dropbox's long-poll are the next
+optimization behind the same `CloudClient` interface.
 
 ## Compare modes
 
@@ -111,7 +135,8 @@ Both are per-binding in settings.
 
 ## Limits
 
-- No resumable upload yet; a large file is one PUT (Nextcloud's chunked upload is a later phase).
+- No resumable upload yet; a large file is one PUT (Nextcloud chunking / Drive resumable / Graph
+  upload sessions are a later phase). OneDrive refuses above 250 MB with a clear message.
 - A remote move is a copy + delete; the engine's plan has no rename action.
 - `.mfm.json` and `.mfm-*` folders are excluded from every cloud walk, like every other sync.
 - A plain WebDAV delete is permanent; a scheduled run never deletes on the cloud side without
@@ -124,6 +149,12 @@ Both are per-binding in settings.
 - `src/main/cloud-dav.test.ts` — Multi-Status parsing (namespaces, encoded names, depth 1).
 - `src/main/cloud-engine.test.ts` — a real loopback WebDAV stub and a full two-way run through
   `compareTrees`/`applyPlan`: upload, nested MKCOL, download, delete, and the redirect refusal.
+
+## Tests
+
+OAuth URL/PKCE/token-body and the Drive name query have their own tests (`cloud-oauth.test.ts`);
+the adapters take an injected `fetch`, so a provider can be exercised against a stub without a
+network. A live sign-in needs a registered app and a real account.
 
 ## MCP
 

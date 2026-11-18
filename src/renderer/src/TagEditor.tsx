@@ -3,7 +3,8 @@ import { api, type AudioRead, type AudioWriteRequest, type Id3Fields } from './a
 import { t } from './i18n.ts'
 import { baseName, fa } from './format'
 import { TAG_FIELDS, TAG_SINGLE_FIELDS, autoTracks, commonValues, tagPlan, type TagFieldKey } from './tags'
-import { XIcon } from './Icons'
+import { XIcon, AudioIcon } from './Icons'
+import { SheetHead } from './Sheet'
 
 type Props = {
   paths: string[]
@@ -151,18 +152,16 @@ export function TagEditor({ paths, onSave, onClose }: Props) {
   return (
     <div className="modal" onMouseDown={() => !busy && onClose()}>
       <div className="dialog tag-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">
-          {single ? (
-            <>
-              <span>{t('برچسب‌های صوتی —')}</span>
-              <span className="dialog-sub" dir="auto" title={paths[0]}>
-                {paths[0] ? baseName(paths[0]) : ''}
-              </span>
-            </>
-          ) : (
-            <span>{t('برچسب‌های صوتی — {n} فایل', { n: fa(paths.length) })}</span>
-          )}
-        </div>
+        <SheetHead
+          icon={<AudioIcon size={17} />}
+          title={
+            single
+              ? t('برچسب‌های صوتی —')
+              : t('برچسب‌های صوتی — {n} فایل', { n: fa(paths.length) })
+          }
+          sub={single && paths[0] ? baseName(paths[0]) : undefined}
+          subTitle={single ? paths[0] : undefined}
+        />
 
         {loadError && <div className="hint">{loadError}</div>}
         {!read && !loadError && <div className="hint">{t('در حال خواندن…')}</div>}

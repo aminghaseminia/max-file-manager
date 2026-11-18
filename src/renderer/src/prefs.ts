@@ -110,6 +110,8 @@ export type Prefs = {
   toolbar: string[]
   /** toolbar button look: icon only, icon with its label, or the label alone */
   toolbarMode: 'icon' | 'icon-text' | 'text'
+  /** `office` is the grouped ribbon; `compact` is the single measured row */
+  toolbarStyle: 'compact' | 'office'
   /** the command bar is hidden; the header ⋮ menu carries the same commands */
   toolbarVisible: boolean
   /** show the bookmark bar under the command bar (the sidebar's bookmarks as a strip) */
@@ -323,6 +325,7 @@ export const DEFAULTS: Prefs = {
   shortcuts: DEFAULT_SHORTCUTS,
   toolbar: DEFAULT_TOOLBAR,
   toolbarMode: 'icon-text',
+  toolbarStyle: 'compact',
   toolbarVisible: true,
   bookmarkBar: true,
   newTabPos: 'next',
@@ -636,6 +639,7 @@ export function mergePrefs(raw: (Partial<Prefs> & { showTypeColumn?: boolean }) 
     toolbar: normalToolbar(p.toolbar),
     toolbarMode:
       p.toolbarMode === 'icon' || p.toolbarMode === 'text' ? p.toolbarMode : 'icon-text',
+    toolbarStyle: p.toolbarStyle === 'office' ? 'office' : 'compact',
     toolbarVisible: p.toolbarVisible !== false,
     bookmarkBar: p.bookmarkBar !== false,
     newTabPos: p.newTabPos === 'end' ? 'end' : 'next',

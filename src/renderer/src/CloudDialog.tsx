@@ -7,7 +7,7 @@ import {
   type CloudProvider,
   type CloudTarget
 } from './api'
-import { CLOUD_PROVIDERS, MINUTE, cloudProvider } from '../../shared/cloud.ts'
+import { CLOUD_PROVIDERS, MINUTE, OAUTH_REDIRECT_URI, cloudProvider } from '../../shared/cloud.ts'
 import { t } from './i18n.ts'
 import { fa, fmtSize, isAbsolutePath } from './format'
 import {
@@ -53,6 +53,8 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
   const [url, setUrl] = useState('')
   const [user, setUser] = useState('')
   const [password, setPassword] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
   const [label, setLabel] = useState('')
   const [account, setAccount] = useState<CloudAccount | null>(null)
   const [remotePath, setRemotePath] = useState('/')
@@ -112,13 +114,21 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
   const connect = (): Promise<void> =>
     run(async () => {
       if (!provider) return
-      const acc = await api.cloud.accountSave({
-        provider: provider.id,
-        url,
-        user,
-        password,
-        label: label || undefined
-      })
+      const acc = await api.cloud.accountSave(
+        provider.family === 'oauth'
+          ? {
+              provider: provider.id,
+              clientId: clientId.trim(),
+              clientSecret: clientSecret.trim() || undefined
+            }
+          : {
+              provider: provider.id,
+              url,
+              user,
+              password,
+              label: label || undefined
+            }
+      )
       setAccount(acc)
       setStep('folder')
       const rows = await api.cloud.browse(acc.id, '/')
@@ -186,6 +196,8 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
     setUrl('')
     setUser('')
     setPassword('')
+    setClientId('')
+    setClientSecret('')
     setLabel('')
     setIntervalMs(p.defaultIntervalMs)
     setError('')
@@ -213,8 +225,18 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
         : step === 'folder'
           ? t('پوشه‌ای در ابر انتخاب کن یا همان‌جا بساز.')
           : t('پوشهٔ لوکال و فاصلهٔ بررسی را انتخاب کن.')
+  const oauth = activeProvider?.family === 'oauth'
   const primary =
-    step === 'auth' ? t('اتصال و آزمایش') : step === 'folder' ? t('همین پوشه') : t('ایجاد همگام‌سازی')
+    step === 'auth'
+      ? oauth
+        ? t('ورود در مرورگر')
+        : t('اتصال و آزمایش')
+      : step === 'folder'
+        ? t('همین پوشه')
+        : t('ایجاد همگام‌سازی')
+  const authReady = oauth
+    ? !!clientId.trim() && (activeProvider?.id !== 'gdrive' || !!clientSecret.trim())
+    : !!url && !!user && !!password
 
   return (
     <div className="modal cld-modal" onMouseDown={onClose}>
@@ -259,7 +281,7 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
                     </span>
                     <span className="cld-ptext">
                       <strong>{p.label}</strong>
-                      <em dir="auto">{t(familyLabel(p))}</em>
+                      <em dir="auto">{t(p.soonReason ?? familyLabel(p))}</em>
                     </span>
                     <span className="cld-chev">
                       <ChevronLeftIcon size={14} />
@@ -276,7 +298,7 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
                     </span>
                     <span className="cld-ptext">
                       <strong>{p.label}</strong>
-                      <em dir="auto">{t(familyLabel(p))}</em>
+                      <em dir="auto">{t(p.soonReason ?? familyLabel(p))}</em>
                     </span>
                     <span className="cld-soon">{t('به‌زودی')}</span>
                   </button>
@@ -298,6 +320,63 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
               </div>
 
               <div className="cld-form">
+                {activeProvider.family === 'oauth' ? (
+                  <>
+                    <label className="cld-field">
+                      <span>Client ID</span>
+                      <input
+                        ref={firstInput}
+                        dir="ltr"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        placeholder="…apps.googleusercontent.com"
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                      <small>
+                        {t('شناسهٔ اپ OAuth خودت؛ مکس هیچ کلاینتی از خودش همراه ندارد.')}
+                      </small>
+                    </label>
+                    <label className="cld-field">
+                      <span>
+                        Client Secret
+                        {activeProvider.id === 'gdrive' ? ` (${t('الزامی')})` : ` (${t('اختیاری')})`}
+                      </span>
+                      <span className="cld-input">
+                        <LockIcon size={13} />
+                        <input
+                          dir="ltr"
+                          type="password"
+                          value={clientSecret}
+                          onChange={(e) => setClientSecret(e.target.value)}
+                          autoComplete="new-password"
+                        />
+                      </span>
+                    </label>
+                    <div className="cld-redirect">
+                      <span>Redirect URI</span>
+                      <code dir="ltr">{OAUTH_REDIRECT_URI}</code>
+                      <button
+                        type="button"
+                        className="cld-mini ghost"
+                        onClick={() => void navigator.clipboard.writeText(OAUTH_REDIRECT_URI)}
+                      >
+                        {t('کپی')}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="cld-doclink"
+                      onClick={() => void api.cloud.docs(activeProvider.id)}
+                    >
+                      {t('راهنمای ساخت اپ OAuth')}
+                    </button>
+                    <div className="hint">
+                      {t('مرورگر باز می‌شود؛ بعد از تأیید، خودکار به همین پنجره برمی‌گردی.')}
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <label className="cld-field">
                   <span>{t('آدرس سرور')}</span>
                   <span className="cld-input">
@@ -343,6 +422,8 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
                   <span>{t('نام نمایشی (اختیاری)')}</span>
                   <input dir="auto" value={label} onChange={(e) => setLabel(e.target.value)} />
                 </label>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -551,7 +632,10 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
             ) : (
               <span className="cld-hint">
                 {step === 'provider' && t('۴ سرویس WebDAV فعال است؛ بقیه در فاز بعد.')}
-                {step === 'auth' && t('رمز فقط در کی‌رینگ سیستم ذخیره می‌شود.')}
+                {step === 'auth' &&
+                  (oauth
+                    ? t('توکن‌ها فقط در کی‌رینگ سیستم ذخیره می‌شوند.')
+                    : t('رمز فقط در کی‌رینگ سیستم ذخیره می‌شود.'))}
                 {step === 'folder' && t('پوشهٔ انتخاب‌شده، مقصد ابری این همگام‌سازی است.')}
                 {step === 'local' && !canDelete && t('حذف سمت ابر روی این سرور بازگشت‌پذیر نیست.')}
               </span>
@@ -574,13 +658,9 @@ export function CloudDialog({ activeDir, onClose, onSaved }: Props) {
               </button>
             )}
             {step === 'auth' && (
-              <button
-                className="cld-btn primary"
-                disabled={busy || !url || !user || !password}
-                onClick={() => void connect()}
-              >
+              <button className="cld-btn primary" disabled={busy || !authReady} onClick={() => void connect()}>
                 {busy && <span className="cld-spin light" />}
-                {busy ? t('در حال اتصال…') : primary}
+                {busy ? (oauth ? t('در انتظار تأیید در مرورگر…') : t('در حال اتصال…')) : primary}
               </button>
             )}
             {step === 'folder' && (

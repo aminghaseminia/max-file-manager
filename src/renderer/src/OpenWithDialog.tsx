@@ -2,7 +2,8 @@ import { t } from './i18n.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DesktopApp } from './api'
 import { baseName, matchCustomCommand, mediaUrl } from './format'
-import { PlayIcon, StarIcon } from './Icons'
+import { PlayIcon, StarIcon, FileIcon } from './Icons'
+import { SheetHead } from './Sheet'
 import type { CustomCommand } from './prefs'
 
 type Props = {
@@ -132,12 +133,12 @@ export function OpenWithDialog({ path, customCommands, isDir, onClose, onNote, o
         aria-labelledby="open-with-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="dialog-title">
-          <span id="open-with-title">{t('باز کردن با…')}</span>
-          <span className="dialog-sub" dir="auto" title={path}>
-            {baseName(path)}
-          </span>
-        </div>
+        <SheetHead
+          icon={<FileIcon size={17} />}
+          title={<span id="open-with-title">{t('باز کردن با…')}</span>}
+          sub={baseName(path)}
+          subTitle={path}
+        />
 
         <div className="open-with-tools">
           <input
