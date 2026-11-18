@@ -97,8 +97,14 @@ cloud); no `.conflict` copies are invented.
 
 ## Scheduling and «lightweight»
 
-- **One 30 s tick for the whole app**, not a timer per folder. A binding is due at
-  `lastRunAt + interval`; the floor is 5 minutes for WebDAV and 15 minutes is the default.
+- **One timer per binding**, armed for its own `lastRunAt + interval`; the 30 s tick is only a
+  safety net. A binding is due at `lastRunAt + interval`; the floor is 5 minutes for WebDAV and
+  15 minutes is the default.
+- **Scheduled runs are serial**: one binding walks the cloud at a time (a run is mostly network),
+  and the start-up catch-up is staggered (0.8 s, then 1.2 s per binding) instead of opening the
+  app with a burst of walks. A manual *Sync now* still starts immediately.
+- After a run, the local watcher ignores its own writes for 3 s, so a download does not echo into
+  a second run.
 - A **recursive `fs.watch`** on the local folder pulls the next run forward after a 1.5 s debounce.
   No directory is scanned on a timer.
 - **Catch-up on start**: everything that changed while the app was closed is applied on the first

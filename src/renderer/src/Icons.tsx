@@ -573,8 +573,8 @@ export const FilterIcon = () => (
 )
 
 /** Sliders read as «settings» at 16 px; a many-toothed gear looked like a sun. */
-export const SettingsIcon = () => (
-  <S>
+export const SettingsIcon = ({ size = 15 }: { size?: number }) => (
+  <S size={size}>
     <path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h9M17 17h3" />
     <circle cx="13" cy="7" r="2" />
     <circle cx="9" cy="12" r="2" />

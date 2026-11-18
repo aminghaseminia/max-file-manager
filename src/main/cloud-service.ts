@@ -70,6 +70,9 @@ export type CloudDeps = {
   emit(channel: string, payload: unknown): void
 }
 
+/** A binding's local root, pre-normalised once so a 100 000-row listing does not re-normalise it. */
+type BindingRoot = { norm: string; id: string; provider: string }
+
 type Live = {
   state: CloudState
   lastRunAt: number | null
@@ -146,11 +149,36 @@ export function createCloudService(deps: CloudDeps) {
   const live = new Map<string, Live>()
   /** the last comparison, per binding: what each local path should draw */
   const states = new Map<string, EntryStates>()
+  /**
+   * `fs:list` asks for a badge on every row of a folder that can hold 100 000 entries. The binding
+   * list is the same for the whole listing, so it is normalised once and rebuilt only when an
+   * account or binding changes.
+   */
+  let roots: BindingRoot[] | null = null
+  const bindingRoots = (): BindingRoot[] => {
+    if (roots) return roots
+    const out: BindingRoot[] = []
+    for (const b of cloudBindings()) {
+      const account = findAccount(b.accountId)
+      if (!account) continue
+      out.push({
+        norm: b.localPath.replace(/\\/g, '/').replace(/\/+$/, ''),
+        id: b.id,
+        provider: account.provider
+      })
+    }
+    roots = out
+    return out
+  }
+  const forgetRoots = (): void => {
+    roots = null
+  }
   const running = new Set<string>()
   const watchers = new Map<string, FSWatcher>()
   const debounces = new Map<string, NodeJS.Timeout>()
+  /** when a run last wrote into its own folder; those events must not start another run */
+  const settledAt = new Map<string, number>()
   let timer: NodeJS.Timeout | null = null
-  let kicked: NodeJS.Timeout | null = null
 
   const status = (id: string): CloudBindingStatus => {
     const l = live.get(id) ?? liveOf(id)
@@ -271,6 +299,7 @@ export function createCloudService(deps: CloudDeps) {
         createdAt: Date.now()
       }
       putAccount(account)
+      forgetRoots()
       setLive(account.id, { ...liveOf(account.id), state: 'idle', lastError: null })
       broadcast()
       return account
@@ -301,6 +330,7 @@ export function createCloudService(deps: CloudDeps) {
       createdAt: Date.now()
     }
     putAccount(account)
+    forgetRoots()
     setLive(account.id, { ...liveOf(account.id), state: 'idle', lastError: null })
     broadcast()
     return account
@@ -314,6 +344,7 @@ export function createCloudService(deps: CloudDeps) {
     }
     deleteAccount(id)
     live.delete(id)
+    forgetRoots()
     broadcast()
   }
 
@@ -454,6 +485,7 @@ export function createCloudService(deps: CloudDeps) {
     // the binding keeps the account's provider floor
     binding.intervalMs = cleanCloudInterval(account.provider, binding.intervalMs)
     putBinding(binding)
+    forgetRoots()
     if (existing) stopBinding(existing.id)
     const prev = runtimeOf(binding.id)
     setLive(binding.id, {
@@ -468,7 +500,8 @@ export function createCloudService(deps: CloudDeps) {
     startWatcher(binding)
     broadcast()
     // the first run starts in a moment instead of on the next 30 s tick
-    kick()
+    arm(binding.id)
+    pump()
     return binding
   }
 
@@ -490,16 +523,19 @@ export function createCloudService(deps: CloudDeps) {
       paused: patch.paused === undefined ? cur.paused : patch.paused === true
     }
     putBinding(next)
+    forgetRoots()
     startWatcher(next)
     const l = setLive(next.id, {
       state: next.paused ? 'paused' : (live.get(next.id)?.state ?? 'idle'),
       nextRunAt: next.paused ? null : Date.now()
     })
     persist(next.id)
-    if (l.state === 'paused') broadcast()
-    else {
+    if (l.state === 'paused') {
+      arm(next.id)
+      broadcast()
+    } else {
       schedule(next.id)
-      kick()
+      pump()
     }
     broadcast()
     return next
@@ -512,10 +548,14 @@ export function createCloudService(deps: CloudDeps) {
     deleteBinding(String(id ?? ''))
     live.delete(String(id ?? ''))
     states.delete(String(id ?? ''))
+    forgetRoots()
     broadcast()
   }
 
   function stopBinding(id: string): void {
+    const timerFor = timers.get(id)
+    if (timerFor) clearTimeout(timerFor)
+    timers.delete(id)
     const w = watchers.get(id)
     if (w) {
       try {
@@ -537,8 +577,10 @@ export function createCloudService(deps: CloudDeps) {
       const w = watch(binding.localPath, { recursive: true }, () => {
         const l = live.get(binding.id)
         if (l?.state === 'paused') return
-        // a run writes into this folder; those events must not schedule another run
+        // a run writes into this folder; those events must not schedule another run. The guard is
+        // also time-based because fs.watch delivers the events of a finished download a moment later.
         if (running.has(binding.id)) return
+        if (Date.now() - (settledAt.get(binding.id) ?? 0) < 3_000) return
         setLive(binding.id, { dirty: true })
         const prev = debounces.get(binding.id)
         if (prev) clearTimeout(prev)
@@ -548,6 +590,7 @@ export function createCloudService(deps: CloudDeps) {
             debounces.delete(binding.id)
             persist(binding.id)
             schedule(binding.id, true)
+            pump()
           }, DEBOUNCE_MS)
         )
       })
@@ -568,6 +611,7 @@ export function createCloudService(deps: CloudDeps) {
       ? Date.now() + 500
       : nextRunAt(binding, { lastRunAt: l.lastRunAt, dirty: l.dirty }, Date.now(), l.failures)
     setLive(id, { nextRunAt: next })
+    arm(id)
   }
 
   const failState = (message: string): CloudState =>
@@ -619,6 +663,8 @@ export function createCloudService(deps: CloudDeps) {
       const baseline = loadBaseline(pair)
       // a server without a content hash is read once and remembered by its ETag
       const hashes = binding.compareBy === 'hash' ? loadCloudHashes(pair) : new Map<string, CloudHashRow>()
+      // a run that changed nothing must not rewrite the table
+      const hashesBefore = new Map(hashes)
       const ops = createOps(deps.remote, cloudOps(binding, dav, undefined, hashes))
       setLive(id, { state: 'syncing' })
       broadcast()
@@ -683,7 +729,13 @@ export function createCloudService(deps: CloudDeps) {
         // a path that no longer exists on the cloud side does not need a remembered hash
         const present = new Set(cmp.rows.filter((r) => r.right && !r.right.dir).map((r) => r.rel))
         for (const rel of [...hashes.keys()]) if (!present.has(rel)) hashes.delete(rel)
-        saveCloudHashes(pair, hashes)
+        const moved =
+          hashes.size !== hashesBefore.size ||
+          [...hashes].some(([rel, v]) => {
+            const old = hashesBefore.get(rel)
+            return !old || old.etag !== v.etag || old.hash !== v.hash || old.size !== v.size
+          })
+        if (moved) saveCloudHashes(pair, hashes)
       }
       const map = entryStates(cmp.rows, settled, applied.errors)
       states.set(id, map)
@@ -723,7 +775,10 @@ export function createCloudService(deps: CloudDeps) {
       return { ok: false, copied: 0, removed: 0, conflicts: 0, blockedDeletes: 0, error: message }
     } finally {
       running.delete(id)
+      settledAt.set(id, Date.now())
+      arm(id)
       broadcast()
+      pump()
     }
   }
 
@@ -768,48 +823,75 @@ export function createCloudService(deps: CloudDeps) {
 
   // ---------------------------------------------------------------- scheduler
 
-  /** A fresh or unpaused binding must not wait for the 30 s tick. */
-  function kick(delay = 700): void {
-    if (kicked) return
-    kicked = setTimeout(() => {
-      kicked = null
-      tick()
-    }, delay)
+  const timers = new Map<string, NodeJS.Timeout>()
+
+  /** Arm one binding for its own `nextRunAt`; nothing has to wait for the safety tick. */
+  function arm(id: string): void {
+    const prev = timers.get(id)
+    if (prev) clearTimeout(prev)
+    timers.delete(id)
+    const binding = findBinding(id)
+    if (!binding || !binding.enabled || binding.paused) return
+    const l = live.get(id) ?? liveOf(id)
+    if (l.nextRunAt === null) return
+    const wait = Math.max(60, Math.min(2_147_000_000, l.nextRunAt - Date.now() + 60))
+    timers.set(
+      id,
+      setTimeout(() => {
+        timers.delete(id)
+        pump()
+      }, wait)
+    )
   }
 
-  function tick(): void {
+  /**
+   * Scheduled runs are serial: a cloud run is mostly network, and starting every due binding at the
+   * same moment (which is what a loop over «due» bindings did) turned app start into a burst of tree
+   * walks and PROPFINDs. A manual «Sync now» still starts at once, even while another binding runs.
+   */
+  function pump(): void {
+    if (running.size > 0) return
     const now = Date.now()
     for (const binding of cloudBindings()) {
-      if (!binding.enabled || binding.paused) continue
-      if (running.has(binding.id)) continue
+      if (!binding.enabled || binding.paused || running.has(binding.id)) continue
       const l = live.get(binding.id) ?? liveOf(binding.id)
       if (!live.has(binding.id)) live.set(binding.id, l)
       if (l.nextRunAt === null) {
         schedule(binding.id)
+        arm(binding.id)
         continue
       }
-      if (now < l.nextRunAt) continue
+      if (l.nextRunAt > now) continue
       void run(binding.id).catch(() => undefined)
+      return
     }
+  }
+
+  /** The 30 s tick is a safety net now: re-arm a lost timer and start anything already due. */
+  function tick(): void {
+    for (const binding of cloudBindings()) arm(binding.id)
+    pump()
   }
 
   function start(): void {
     if (timer) return
+    let i = 0
     for (const b of cloudBindings()) {
       if (!live.has(b.id)) live.set(b.id, liveOf(b.id))
       startWatcher(b)
-      // a catch-up: everything that changed while the app was closed is applied on the first tick
-      schedule(b.id, true)
+      // staggered catch-up: the first binding starts in under a second, the rest follow instead of
+      // all of them walking the cloud at once
+      setLive(b.id, { nextRunAt: Date.now() + 800 + i++ * 1_200 })
+      arm(b.id)
     }
     timer = setInterval(tick, TICK_MS)
-    setTimeout(tick, 1500)
   }
 
   function stop(): void {
     if (timer) clearInterval(timer)
     timer = null
-    if (kicked) clearTimeout(kicked)
-    kicked = null
+    for (const t of timers.values()) clearTimeout(t)
+    timers.clear()
     for (const id of [...watchers.keys()]) stopBinding(id)
     for (const d of debounces.values()) clearTimeout(d)
     debounces.clear()
@@ -819,7 +901,7 @@ export function createCloudService(deps: CloudDeps) {
   function wake(id: string): void {
     if (!findBinding(id)) return
     schedule(id, true)
-    kick()
+    pump()
   }
 
   // ---------------------------------------------------------------- badges
@@ -831,28 +913,24 @@ export function createCloudService(deps: CloudDeps) {
   function forPath(p: string): { provider: string; state: CloudEntryState; root: boolean } | null {
     if (!isAbsoluteFolder(p)) return null
     const norm = p.replace(/\\/g, '/').replace(/\/+$/, '')
-    let best: CloudBinding | null = null
-    for (const b of cloudBindings()) {
-      const root = b.localPath.replace(/\\/g, '/').replace(/\/+$/, '')
-      if (norm === root || norm.startsWith(root + '/')) {
-        if (!best || root.length > best.localPath.length) best = b
+    let best: BindingRoot | null = null
+    for (const r of bindingRoots()) {
+      if (norm === r.norm || norm.startsWith(r.norm + '/')) {
+        if (!best || r.norm.length > best.norm.length) best = r
       }
     }
     if (!best) return null
-    const account = findAccount(best.accountId)
-    if (!account) return null
     const l = live.get(best.id) ?? liveOf(best.id)
-    const root = best.localPath.replace(/\\/g, '/').replace(/\/+$/, '')
-    const isRoot = norm === root
+    const isRoot = norm === best.norm
     let state = entryState(l.state, l.dirty)
     const map = states.get(best.id)
     // paused/offline/error/conflict belong to the whole binding and outrank a file's own verdict
     if (map && l.state === 'idle') {
-      const rel = isRoot ? '' : norm.slice(root.length + 1)
+      const rel = isRoot ? '' : norm.slice(best.norm.length + 1)
       // a file row wins; a folder (and the root) carries the worst state below it
       state = (isRoot ? map.dirs.get('') : (map.files.get(rel) ?? map.dirs.get(rel))) ?? state
     }
-    return { provider: account.provider, state, root: isRoot }
+    return { provider: best.provider, state, root: isRoot }
   }
 
   return {
