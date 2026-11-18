@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { lstatSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getLang, hasTranslation, setLang, subscribeLang, t } from './i18n.ts'
@@ -82,7 +82,11 @@ function sources(dir: string): string[] {
   const out: string[] = []
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name)
-    if (statSync(full).isDirectory()) out.push(...sources(full))
+    // the icon pack is linked into the renderer and carries case-only symlinks that point at
+    // themselves on a case-insensitive filesystem (APFS): following them recurses until ELOOP
+    const st = lstatSync(full)
+    if (st.isSymbolicLink()) continue
+    if (st.isDirectory()) out.push(...sources(full))
     else if (/\.tsx?$/.test(name) && !/\.test\.ts$/.test(name) && name !== 'i18n.ts') out.push(full)
   }
   return out
