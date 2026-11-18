@@ -1145,6 +1145,11 @@ input {
   gap: 7px;
   min-width: 0;
 }
+/* file names sit a step above the chrome's labels; the columns are measured from this */
+.row .name,
+.compact-row .name {
+  font-size: 14px;
+}
 .trunc {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1254,7 +1259,7 @@ input {
 }
 .tile-name {
   width: 100%;
-  font-size: 11.5px;
+  font-size: 13px;
   line-height: 1.35;
   text-align: center;
   color: var(--text);

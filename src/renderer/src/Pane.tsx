@@ -189,12 +189,16 @@ const COMPACT_MIN_W = 170
 const tileGeo = (width: number, nameLines: number, metaLines = 0) => {
   const w = Math.max(80, Math.min(240, Math.round(width) || 108))
   const thumb = Math.round(w * 0.66)
+  // the name is the one line of text the eye is on all day; the geometry follows the font, so a
+  // bigger caption never clips at the tile's bottom edge
+  const font = w >= 170 ? 14.5 : w >= 130 ? 13.5 : 13
+  const line = Math.round(font * 1.35)
   return {
     w,
     thumb,
     glyph: Math.round(w * 0.52),
-    h: thumb + 24 + Math.max(1, nameLines) * 17 + metaLines * 14,
-    font: w >= 170 ? 13 : w >= 130 ? 12 : 11.5
+    h: thumb + 24 + Math.max(1, nameLines) * line + metaLines * 15,
+    font
   }
 }
 
