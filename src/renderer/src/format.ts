@@ -673,6 +673,23 @@ export function cleanMarkNames(raw: unknown): Record<string, string> {
 }
 
 /**
+ * The direct child of `parent` that lies on the way to `from`, or null when `from` is not below
+ * `parent`. Going up with Backspace selects that folder on the parent listing, so the keyboard
+ * cursor continues where the user came from instead of starting over.
+ */
+export function childPathIn(parent: string, from: string): string | null {
+  if (!parent || !from) return null
+  const sep = parent.includes('\\') && !isRemotePath(parent) ? '\\' : '/'
+  const p = parent.replace(/[\\/]+$/, '')
+  const f = from.replace(/[\\/]+$/, '')
+  if (!p || f === p) return null
+  if (!f.startsWith(p + sep) && !(sep === '\\' && f.startsWith(p + '/'))) return null
+  const rest = f.slice(p.length + 1)
+  const child = rest.split(/[\\/]/)[0]
+  return child && child !== '..' ? joinPath(p, child) : null
+}
+
+/**
  * Right-click target for the audio tag editor: a row that is part of the selection means the whole
  * selection (Explorer's rule), a row outside it means only that row.
  */

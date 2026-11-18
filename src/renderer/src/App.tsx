@@ -59,11 +59,12 @@ import { BookmarkBar } from './BookmarkBar'
 import { profileUri } from '../../shared/remote-profile.ts'
 import { pairKey } from '../../shared/sync.ts'
 import { COMMANDS, type CommandId } from './commands'
-import { appModifier, matchAccel } from './keys'
+import { appModifier, matchAccel, systemShortcut } from './keys'
 import { BLANK_TEMPLATE, NEW_CATEGORIES, NEW_FILE_TEMPLATES, type NewIconName } from './newTemplates.ts'
 import {
   audioTargets,
   baseName,
+  childPathIn,
   defaultSearchRoots,
   dirOf,
   fa,
@@ -538,6 +539,8 @@ export default function App() {
   const refreshRef = useRef<() => void>(() => {})
   /** per-pane request id: a slow listing from an old folder must not overwrite a newer one */
   const loadSeq = useRef([0, 0])
+  /** the folder to select once a parent listing arrives (Backspace / going up) */
+  const selectAfterLoad = useRef<Record<number, string | null>>({})
   /** timestamp of the last lone Shift press, for double-tap global search */
   const lastShift = useRef(0)
 
@@ -1104,7 +1107,25 @@ export default function App() {
       const entries = listing.entries.filter(
         (e) => e.forceShow || !isIgnoredName(e.name, prefs.ignoreFiles)
       )
-      setPanes((p) => p && patch(p, i, { listing: { ...listing, entries }, fmt, error: '', loading: false }))
+      // the folder we came out of gets the cursor back, when it exists in this listing
+      const want = selectAfterLoad.current[i] ?? null
+      if (want) delete selectAfterLoad.current[i]
+      const back = want && entries.some((e) => e.path === want) ? want : null
+      setPanes(
+        (p) =>
+          p &&
+          patch(p, i, {
+            listing: { ...listing, entries },
+            fmt,
+            error: '',
+            loading: false,
+            ...(back ? { sel: [back] } : {})
+          })
+      )
+      if (back) {
+        navAnchor.current = back
+        setReveal((r) => ({ pane: i, path: back, tick: r.tick + 1 }))
+      }
     } catch (e: any) {
       if (loadSeq.current[i] !== seq) return
       setPanes((p) => p && patch(p, i, { listing: null, error: String(e?.message ?? e), loading: false }))
@@ -1249,6 +1270,9 @@ export default function App() {
     setDrivesPageOpen(false)
     // type-ahead belongs to the folder it was typed in: leaving must not carry filter or buffer along
     typedBuf.current = ''
+    // going up to a parent leaves the folder we came from selected, so the cursor continues there
+    const from = panes?.[i] ? tabOf(panes[i]) : ''
+    selectAfterLoad.current[i] = childPathIn(dir, from)
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
@@ -1288,6 +1312,11 @@ export default function App() {
 
   const jump = (i: number, delta: number) => {
     typedBuf.current = ''
+    // history back to a parent: select the folder we just left, like Backspace does
+    if (panes?.[i]) {
+      const dest = panes[i].hist[panes[i].hi + delta]
+      selectAfterLoad.current[i] = dest ? childPathIn(dest, tabOf(panes[i])) : null
+    }
     setPanes((p) => {
       if (!p) return p
       const s = p[i]
@@ -1916,6 +1945,15 @@ export default function App() {
         preview: null
       })
     })
+
+  /** Ctrl/Cmd+W, the close button of a tab and the command all end here: the last tab takes the
+   *  window with it, which is what every desktop expects from the shortcut. */
+  const closeTabOrWindow = (i = active) => {
+    const s = panes?.[i]
+    if (!s) return
+    if (s.tabs.length > 1) closeTab(i, s.ti)
+    else void api.window.close()
+  }
 
   const closeTab = (i: number, idx: number) => {
     const s = panes?.[i]
@@ -3106,7 +3144,9 @@ export default function App() {
     if (!list.length) return
     const paths = list.map((e) => e.path)
     const me = panes[active]
-    const here = me.sel.length ? paths.indexOf(me.sel[me.sel.length - 1]) : -1
+    // after a click on the empty space nothing is highlighted, but the cursor is still there
+    const focusPath = me.sel[me.sel.length - 1] ?? (navAnchor.current || '')
+    const here = focusPath ? paths.indexOf(focusPath) : -1
     const m = metrics.current[active] ?? { cols: 1, rows: 20 }
     const next = navIndex(here, move, paths.length, viewOf(active) !== 'list' ? m.cols : 1, m.rows)
     if (next < 0) return
@@ -3207,7 +3247,7 @@ export default function App() {
     hidden: () => setHidden((h) => !h),
     bookmark: () => toggleMark(active),
     newTab: () => addTab(active, tabOf(panes![active])),
-    closeTab: () => closeTab(active, panes![active].ti),
+    closeTab: () => closeTabOrWindow(),
     reopenTab,
     nextTab: () =>
       setPanes(
@@ -3506,6 +3546,63 @@ export default function App() {
         typedBuf.current = ''
         moveSel(nav, ev.shiftKey)
         return
+      }
+
+      // Desktop conventions that are not user commands (⌘Q / ⌘W, ⌘↑, Delete, F11, …)
+      const sys = systemShortcut(ev, api.platform)
+      if (sys) {
+        ev.preventDefault()
+        switch (sys) {
+          case 'close-window':
+            closeTabOrWindow()
+            return
+          case 'quit':
+            void api.app.quit()
+            return
+          case 'fullscreen':
+            void toggleFullscreen()
+            return
+          case 'up':
+            up(active)
+            return
+          case 'trash':
+            RUN.trash()
+            return
+          case 'back':
+            jump(active, -1)
+            return
+          case 'forward':
+            jump(active, 1)
+            return
+          case 'properties': {
+            const p = me.sel[me.sel.length - 1]
+            if (p) setPropsFor(p)
+            return
+          }
+          case 'open': {
+            const p = me.sel[0]
+            if (p) openEntry(active, p)
+            return
+          }
+          case 'new-folder':
+            setPrompt({ kind: 'mkdir', value: '' })
+            return
+          case 'address':
+            setAddrTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n)))
+            return
+          case 'prev-tab':
+            if (me.tabs.length > 1) {
+              setPanes(
+                (p) =>
+                  p &&
+                  patch(p, active, {
+                    ti: (p[active].ti - 1 + p[active].tabs.length) % p[active].tabs.length,
+                    sel: []
+                  })
+              )
+            }
+            return
+        }
       }
 
       // double-tapping Shift opens global search; never while typing, and a slow second tap is ignored
@@ -4073,6 +4170,11 @@ export default function App() {
             onUp={() => up(i)}
             onRefresh={() => void load(i, tabOf(pane))}
             onOpen={(path) => openEntry(i, path)}
+            onCursor={(path) => {
+              // the highlight goes away, the cursor stays: the next arrow continues from here
+              navAnchor.current = path ?? ''
+              setPanes((p) => p && patch(p, i, { sel: [] }))
+            }}
             onSel={(paths, mode) => {
               // a single click becomes the anchor for a following shift+arrow
               if (mode === 'set' && paths.length === 1) navAnchor.current = paths[0]

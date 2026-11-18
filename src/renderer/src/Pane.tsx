@@ -140,6 +140,8 @@ type Props = {
   onRefresh(): void
   onOpen(path: string): void
   onSel(paths: string[], mode: 'set' | 'toggle'): void
+  /** a plain click on the empty space: drop the highlight but keep the keyboard cursor there */
+  onCursor(path: string | null): void
   onFilter(q: string): void
   /** sort + grouping menu, anchored at the button (works in both views) */
   onSortMenu(x: number, y: number): void
@@ -305,6 +307,8 @@ export function Pane(props: Props) {
     const el = listRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
+    const lastSel = pane.sel[pane.sel.length - 1] ?? null
+    let dragged = false
     marquee.current = {
       x: ev.clientX,
       y: ev.clientY,
@@ -324,6 +328,7 @@ export function Pane(props: Props) {
         height
       })
       if (width < 4 && height < 4) return
+      dragged = true
       const hits: string[] = []
       for (const node of el.querySelectorAll<HTMLElement>('.row,.tile,.compact-row')) {
         const r = node.getBoundingClientRect()
@@ -334,11 +339,14 @@ export function Pane(props: Props) {
       }
       props.onSel([...new Set([...start.base, ...hits])], 'set')
     }
-    const up = () => {
+    const up = (e: PointerEvent) => {
       marquee.current = null
       setBand(null)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      // a click that never became a band: Explorer drops the highlight, but the keyboard cursor
+      // stays on the last row so the next arrow continues from there
+      if (!dragged && !e.ctrlKey && !e.shiftKey) props.onCursor(lastSel)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
