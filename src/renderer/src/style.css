@@ -1393,7 +1393,9 @@ input {
   place-items: center;
 }
 .dialog {
-  width: 360px;
+  /* the default width lives here, *before* every `.dialog.x` subclass: a second `.dialog`
+     block further down (the shared sheet language) must not win over them by source order */
+  width: 380px;
   padding: 16px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -8235,7 +8237,8 @@ html.vp-cinema body {
   background: rgba(8, 10, 14, 0.48);
 }
 .dialog {
-  width: 380px;
+  /* no width here: it would override `.sync-workspace`, `.props`, `.tag-dialog` and friends,
+     which all set their own width below (source order beats equal specificity) */
   padding: 18px;
   gap: 13px;
   border-radius: 16px;
