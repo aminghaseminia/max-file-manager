@@ -3491,7 +3491,22 @@ export default function App() {
         jump(active, ev.key === 'ArrowLeft' ? -1 : 1)
         return
       }
-      if (typing) return
+      // The floating name filter has no use for Up/Down (a one-line field never moves its caret
+      // that way), so those keys keep driving the file cursor while it is open — this is the state
+      // a screenshot after a type-ahead is in, and dead arrows there look like a broken app.
+      const nameFilter = typing && !!el && !!el.closest('.filter-float .filter')
+      if (typing && !nameFilter) return
+      if (nameFilter) {
+        const nav = ev.key === 'ArrowDown' ? 'down' : ev.key === 'ArrowUp' ? 'up' : ev.key === 'PageDown' ? 'pageDown' : ev.key === 'PageUp' ? 'pageUp' : null
+        if (!nav) return
+        ev.preventDefault()
+        el.blur()
+        const list = document.querySelector('.pane.active .rows') as HTMLElement | null
+        list?.focus({ preventScroll: true })
+        typedBuf.current = ''
+        moveSel(nav, ev.shiftKey)
+        return
+      }
 
       // double-tapping Shift opens global search; never while typing, and a slow second tap is ignored
       if (ev.key === 'Shift' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.repeat) {

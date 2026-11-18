@@ -299,6 +299,8 @@ export function Pane(props: Props) {
   const startMarquee = (ev: React.PointerEvent) => {
     if (ev.button !== 0) return
     const target = ev.target as HTMLElement
+    // every click on the list — a row or the empty space beside it — hands the keyboard back to it
+    if (!target.closest('input, textarea, button')) listRef.current?.focus({ preventScroll: true })
     if (target.closest('.row,.tile,.compact-row')) return
     const el = listRef.current
     if (!el) return
@@ -357,6 +359,19 @@ export function Pane(props: Props) {
     if (document.querySelector('.modal, .dialog, .ctx')) return
     listRef.current?.focus({ preventScroll: true })
   }, [dirPath, props.active, previewing])
+
+  // Alt-Tabbing back, or clicking the window when the page itself has focus, must leave the list
+  // ready for the arrow keys instead of a focused body with no cursor.
+  useEffect(() => {
+    const onWindowFocus = (): void => {
+      if (!props.active) return
+      const el = document.activeElement as HTMLElement | null
+      if (el && el !== document.body && el.tagName !== 'HTML') return
+      listRef.current?.focus({ preventScroll: true })
+    }
+    window.addEventListener('focus', onWindowFocus)
+    return () => window.removeEventListener('focus', onWindowFocus)
+  }, [props.active])
 
   const attachList = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el
