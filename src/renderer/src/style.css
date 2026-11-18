@@ -7379,6 +7379,7 @@ html.vp-cinema body {
   align-items: center;
   color: var(--accent);
 }
+.cloud-mark.is-busy { animation: cloud-pulse 1.4s ease-in-out infinite; }
 .cloud-mark.is-conflict { color: var(--c-archive); }
 .cloud-mark.is-error { color: var(--c-pdf); }
 .cloud-mark.is-paused,
@@ -7392,7 +7393,125 @@ html.vp-cinema body {
 .cloud-mark.onedrive { color: #2b7cd3; }
 .cloud-mark.protondrive { color: #6d4aff; }
 
+.cloud-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dim);
+  opacity: 0.75;
+}
+/* «everything is fine» is the quietest state: the badge is a hint, not a label */
+.cloud-badge.is-synced { color: var(--c-code); opacity: 0.42; }
+.cloud-badge.is-pending { color: var(--c-archive); opacity: 1; }
+.cloud-badge.is-local-only { color: #d08a2c; opacity: 1; }
+.cloud-badge.is-cloud-only { color: var(--accent); opacity: 1; }
+.cloud-badge.is-busy { color: var(--accent); opacity: 1; }
+.cloud-badge.is-conflict { color: var(--c-archive); opacity: 1; }
+.cloud-badge.is-error { color: var(--c-pdf); opacity: 1; }
+.cloud-badge.is-paused,
+.cloud-badge.is-offline { color: var(--dim); opacity: 0.5; }
+
+/* ── run progress: sidebar row, settings page and the status bar share one bar ─────────────── */
+.cloud-bar {
+  display: block;
+  position: relative;
+  height: 4px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.cloud-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+/* the walk has no total yet: a fixed stub says «working», a percentage would be a guess */
+.cloud-bar.scan > i {
+  width: 35% !important;
+  opacity: 0.5;
+}
+.cloud-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 2px 3px;
+}
+.cloud-progress .cloud-bar { flex: 1; min-width: 24px; }
+.cloud-progress-pct {
+  flex: none;
+  font-size: 10px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.side-cloud-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.side-cloud-body .tree-name { width: 100%; }
+
+.cloud-run {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.cloud-run-meta {
+  font-size: 11px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cloud-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+.cloud-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 10px;
+  color: var(--dim);
+}
+.cloud-count > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.cloud-count.is-synced > i { background: var(--c-code); }
+.cloud-count.is-pending > i { background: var(--c-archive); }
+.cloud-count.is-local-only > i { background: #d08a2c; }
+.cloud-count.is-cloud-only > i { background: var(--accent); }
+.cloud-count.is-conflict > i { background: var(--c-pdf); }
+.cloud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+}
+.cloud-chip .cloud-bar { width: 64px; }
+.cloud-chip .cloud-bar > i { background: currentColor; }
+
 .thumb > .cloud-mark,
+.thumb > .cloud-badge,
 .thumb > .cloud-dot {
   position: absolute;
   inset-inline-end: 4px;

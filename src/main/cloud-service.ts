@@ -13,7 +13,7 @@ import type { SyncControl } from './sync-engine.ts'
 import { applyPlan, compareTrees, createOps } from './sync-engine.ts'
 import { makePlan } from './sync-engine.ts'
 import { nextBaseline } from './sync-core.ts'
-import { conflictPaths, entryState, nextRunAt } from './cloud-core.ts'
+import { conflictPaths, entryState, entryStates, nextRunAt, ZERO_COUNTS, type EntryStates } from './cloud-core.ts'
 import { cloudOps } from './cloud-engine.ts'
 import { shell } from 'electron'
 import { createDav, davAccountLabel, nextcloudRoot } from './cloud-dav.ts'
@@ -51,14 +51,17 @@ import {
   type CloudAccount,
   type CloudBinding,
   type CloudBindingStatus,
+  type CloudCounts,
   type CloudEntryState,
   type CloudPreview,
+  type CloudProgress,
   type CloudState,
   type CloudTarget,
   type CloudView
 } from '../shared/cloud.ts'
-import { cleanRemoteName } from './cloud-core.ts'
-import { loadBaseline, saveBaseline } from './sync-store.ts'
+import { cleanRemoteName, remoteJoin } from './cloud-core.ts'
+import { clearCloudHashes, loadBaseline, loadCloudHashes, saveBaseline, saveCloudHashes, type CloudHashRow } from './sync-store.ts'
+import { hashFile } from './hash.ts'
 import { pairKey } from '../shared/sync.ts'
 
 export type CloudDeps = {
@@ -75,6 +78,10 @@ type Live = {
   conflicts: string[]
   dirty: boolean
   failures: number
+  /** the run in flight, as the panes and the sidebar draw it */
+  progress: CloudProgress | null
+  /** what the last comparison found, per file state */
+  counts: CloudCounts
 }
 
 export type CloudAccountDraft = {
@@ -129,16 +136,21 @@ const liveOf = (id: string): Live => {
     lastError: stored.lastError,
     conflicts: stored.conflicts,
     dirty: stored.dirty,
-    failures: stored.failures
+    failures: stored.failures,
+    progress: null,
+    counts: { ...ZERO_COUNTS }
   }
 }
 
 export function createCloudService(deps: CloudDeps) {
   const live = new Map<string, Live>()
+  /** the last comparison, per binding: what each local path should draw */
+  const states = new Map<string, EntryStates>()
   const running = new Set<string>()
   const watchers = new Map<string, FSWatcher>()
   const debounces = new Map<string, NodeJS.Timeout>()
   let timer: NodeJS.Timeout | null = null
+  let kicked: NodeJS.Timeout | null = null
 
   const status = (id: string): CloudBindingStatus => {
     const l = live.get(id) ?? liveOf(id)
@@ -149,7 +161,9 @@ export function createCloudService(deps: CloudDeps) {
       nextRunAt: l.nextRunAt,
       lastError: l.lastError,
       conflicts: l.conflicts,
-      dirty: l.dirty
+      dirty: l.dirty,
+      counts: l.counts,
+      progress: l.progress
     }
   }
 
@@ -293,7 +307,11 @@ export function createCloudService(deps: CloudDeps) {
   }
 
   function removeAccount(id: string): void {
-    for (const b of bindingsFor(id)) stopBinding(b.id)
+    for (const b of bindingsFor(id)) {
+      stopBinding(b.id)
+      clearCloudHashes(pairKey(b.localPath, cloudPath(b.id)))
+      states.delete(b.id)
+    }
     deleteAccount(id)
     live.delete(id)
     broadcast()
@@ -449,6 +467,8 @@ export function createCloudService(deps: CloudDeps) {
     })
     startWatcher(binding)
     broadcast()
+    // the first run starts in a moment instead of on the next 30 s tick
+    kick()
     return binding
   }
 
@@ -477,15 +497,21 @@ export function createCloudService(deps: CloudDeps) {
     })
     persist(next.id)
     if (l.state === 'paused') broadcast()
-    else schedule(next.id)
+    else {
+      schedule(next.id)
+      kick()
+    }
     broadcast()
     return next
   }
 
   function removeBinding(id: string): void {
+    const binding = findBinding(String(id ?? ''))
     stopBinding(String(id ?? ''))
+    if (binding) clearCloudHashes(pairKey(binding.localPath, cloudPath(binding.id)))
     deleteBinding(String(id ?? ''))
     live.delete(String(id ?? ''))
+    states.delete(String(id ?? ''))
     broadcast()
   }
 
@@ -562,15 +588,38 @@ export function createCloudService(deps: CloudDeps) {
     const account = findAccount(binding.accountId)
     if (!account) return { ok: false, copied: 0, removed: 0, conflicts: 0, blockedDeletes: 0, error: 'the account is gone' }
     running.add(id)
-    setLive(id, { state: 'checking', lastError: null })
+    // the previous map described the folder before this run; while it is in flight every row
+    // falls back to the binding state, which is exactly «syncing»
+    states.delete(id)
+    let progress: CloudProgress = {
+      phase: 'scan',
+      files: 0,
+      filesDone: 0,
+      bytesTotal: 0,
+      bytesDone: 0,
+      current: '',
+      startedAt: Date.now()
+    }
+    let lastEmit = 0
+    // a walk reports every file; the UI only needs four frames a second
+    const push = (force = false): void => {
+      const now = Date.now()
+      if (!force && now - lastEmit < 250) return
+      lastEmit = now
+      setLive(id, { progress: { ...progress } })
+      broadcast()
+    }
+    setLive(id, { state: 'checking', lastError: null, progress: { ...progress } })
     broadcast()
     const ctl: SyncControl = { cancelled: false, paused: false }
     try {
       const dav = await clientFor(account)
-      const ops = createOps(deps.remote, cloudOps(binding, dav))
       const root = cloudPath(binding.id)
       const pair = pairKey(binding.localPath, root)
       const baseline = loadBaseline(pair)
+      // a server without a content hash is read once and remembered by its ETag
+      const hashes = binding.compareBy === 'hash' ? loadCloudHashes(pair) : new Map<string, CloudHashRow>()
+      const ops = createOps(deps.remote, cloudOps(binding, dav, undefined, hashes))
       setLive(id, { state: 'syncing' })
       broadcast()
       const cmp = await compareTrees(binding.localPath, root, ops, {
@@ -580,8 +629,11 @@ export function createCloudService(deps: CloudDeps) {
         maxRows: 20_000,
         budgetMs: 120_000,
         ctl,
-        onProgress: (phase, done, current) =>
-          deps.emit('cloud:progress', { bindingId: id, phase, done, current })
+        onProgress: (_phase, done, current) => {
+          progress.files = done
+          progress.current = current
+          push()
+        }
       })
       const conflicts = conflictPaths(cmp.rows)
       const plan = makePlan(cmp.rows, binding.direction, { deleteExtra: binding.deleteExtra })
@@ -592,16 +644,58 @@ export function createCloudService(deps: CloudDeps) {
         blockedDeletes = plan.remove.length - kept.length
         plan.remove = kept
       }
+      // the plan — not the row count — is the honest total: every action is one file
+      const byRel = new Map(cmp.rows.map((r) => [r.rel, r]))
+      progress = {
+        ...progress,
+        phase: 'copy',
+        files: plan.copy.length + plan.remove.length,
+        filesDone: 0,
+        bytesTotal: plan.copy.reduce((n, a) => {
+          const row = byRel.get(a.rel)
+          return n + (a.from === 'left' ? (row?.left?.size ?? 0) : (row?.right?.size ?? 0))
+        }, 0),
+        bytesDone: 0,
+        current: ''
+      }
+      ctl.onFile = (rel) => {
+        progress.filesDone++
+        progress.current = rel
+        push()
+      }
+      ctl.onBytes = (n) => {
+        progress.bytesDone += n
+        push()
+      }
+      push(true)
       const applied = await applyPlan(binding.localPath, root, plan, ops, { trash: deps.trash, ctl })
-      const next = nextBaseline(cmp.rows, baseline, plan)
+      // a failed action must not enter the baseline: the next run has to retry it
+      const failed = (rel: string): boolean => applied.errors.some((e) => e.startsWith(`${rel}: `))
+      const settled: typeof plan = {
+        ...plan,
+        copy: plan.copy.filter((a) => !failed(a.rel)),
+        remove: plan.remove.filter((a) => !failed(a.rel))
+      }
+      const next = nextBaseline(cmp.rows, baseline, settled)
+      await refreshUploadedBaseline(next, settled, dav, binding, hashes)
       saveBaseline(pair, next)
+      if (binding.compareBy === 'hash') {
+        // a path that no longer exists on the cloud side does not need a remembered hash
+        const present = new Set(cmp.rows.filter((r) => r.right && !r.right.dir).map((r) => r.rel))
+        for (const rel of [...hashes.keys()]) if (!present.has(rel)) hashes.delete(rel)
+        saveCloudHashes(pair, hashes)
+      }
+      const map = entryStates(cmp.rows, settled, applied.errors)
+      states.set(id, map)
       const l = setLive(id, {
         state: conflicts.length ? 'conflict' : applied.errors.length ? 'error' : 'idle',
         lastRunAt: Date.now(),
         lastError: applied.errors[0] ?? null,
         conflicts,
         dirty: false,
-        failures: applied.errors.length ? l0(id) + 1 : 0
+        failures: applied.errors.length ? l0(id) + 1 : 0,
+        progress: null,
+        counts: map.counts
       })
       l.nextRunAt = nextRunAt(binding, { lastRunAt: l.lastRunAt, dirty: false }, Date.now(), l.failures)
       persist(id)
@@ -620,7 +714,8 @@ export function createCloudService(deps: CloudDeps) {
         state: failState(message),
         lastError: message.slice(0, 400),
         failures: l0(id) + 1,
-        dirty: true
+        dirty: true,
+        progress: null
       })
       l.nextRunAt = nextRunAt({ intervalMs: binding.intervalMs, enabled: binding.enabled }, { lastRunAt: Date.now(), dirty: false }, Date.now(), l.failures)
       persist(id)
@@ -632,9 +727,55 @@ export function createCloudService(deps: CloudDeps) {
     }
   }
 
+
+  /**
+   * A server that does not keep the source timestamp answers an upload with its own `Last-Modified`,
+   * so a baseline recorded from the *local* side can never match it again: the next run would call a
+   * locally deleted file «edited on both sides» and badge it as a conflict forever. One PROPFIND per
+   * uploaded file records what the server actually says. Uploads are the only direction that needs
+   * this — a download takes the source timestamp, and mtime comparison is exact by definition.
+   */
+  async function refreshUploadedBaseline(
+    next: Record<string, { size: number; mtime: number; dir: boolean; hash?: string }>,
+    plan: { copy: { rel: string; to: 'left' | 'right' }[] },
+    dav: CloudClient,
+    binding: CloudBinding,
+    hashes: Map<string, CloudHashRow>
+  ): Promise<void> {
+    if (binding.compareBy !== 'hash') return
+    const rels = plan.copy.filter((a) => a.to === 'right').map((a) => a.rel)
+    if (!rels.length) return
+    let cursor = 0
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const i = cursor++
+        if (i >= rels.length) return
+        const rel = rels[i]
+        const st = await dav.stat(remoteJoin(binding.remoteId, rel)).catch(() => null)
+        if (!st) continue
+        next[rel] = { size: st.size, mtime: st.mtime, dir: st.dir }
+        // the content that was just uploaded is on disk here, so its hash is free
+        if (st.etag) {
+          const h = await hashFile(path.join(binding.localPath, rel)).catch(() => null)
+          if (h) hashes.set(rel, { size: st.size, etag: st.etag, hash: h })
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, rels.length) }, worker))
+  }
+
   const l0 = (id: string): number => live.get(id)?.failures ?? runtimeOf(id).failures
 
   // ---------------------------------------------------------------- scheduler
+
+  /** A fresh or unpaused binding must not wait for the 30 s tick. */
+  function kick(delay = 700): void {
+    if (kicked) return
+    kicked = setTimeout(() => {
+      kicked = null
+      tick()
+    }, delay)
+  }
 
   function tick(): void {
     const now = Date.now()
@@ -667,6 +808,8 @@ export function createCloudService(deps: CloudDeps) {
   function stop(): void {
     if (timer) clearInterval(timer)
     timer = null
+    if (kicked) clearTimeout(kicked)
+    kicked = null
     for (const id of [...watchers.keys()]) stopBinding(id)
     for (const d of debounces.values()) clearTimeout(d)
     debounces.clear()
@@ -674,7 +817,9 @@ export function createCloudService(deps: CloudDeps) {
 
   /** Called after a successful account connection so the first run does not wait an interval. */
   function wake(id: string): void {
-    if (findBinding(id)) schedule(id, true)
+    if (!findBinding(id)) return
+    schedule(id, true)
+    kick()
   }
 
   // ---------------------------------------------------------------- badges
@@ -698,7 +843,16 @@ export function createCloudService(deps: CloudDeps) {
     if (!account) return null
     const l = live.get(best.id) ?? liveOf(best.id)
     const root = best.localPath.replace(/\\/g, '/').replace(/\/+$/, '')
-    return { provider: account.provider, state: entryState(l.state, l.dirty), root: norm === root }
+    const isRoot = norm === root
+    let state = entryState(l.state, l.dirty)
+    const map = states.get(best.id)
+    // paused/offline/error/conflict belong to the whole binding and outrank a file's own verdict
+    if (map && l.state === 'idle') {
+      const rel = isRoot ? '' : norm.slice(root.length + 1)
+      // a file row wins; a folder (and the root) carries the worst state below it
+      state = (isRoot ? map.dirs.get('') : (map.files.get(rel) ?? map.dirs.get(rel))) ?? state
+    }
+    return { provider: account.provider, state, root: isRoot }
   }
 
   return {
