@@ -1,13 +1,17 @@
 :root {
   color-scheme: dark;
-  --bg: #14161b;
-  --panel: #1a1d23;
-  --panel-2: #1f232a;
-  --panel-3: #252a33;
-  --line: #2b303a;
-  --line-soft: #23272f;
-  --text: #dfe3ea;
-  --dim: #9ba3b2;
+  --bg: #16191f;
+  --panel: #1d222b;
+  --panel-2: #242a34;
+  --panel-3: #2d343f;
+  --line: #353d49;
+  --line-soft: #2b313b;
+  --text: #e4e8ef;
+  --dim: #a4acbb;
+  /* the chrome (title/command bar) and the rail sit a step above the content; a dark theme that
+     overrides --panel still gets the lift because the mix resolves at use time */
+  --chrome: color-mix(in srgb, var(--panel) 92%, #fff);
+  --rail: color-mix(in srgb, var(--panel) 89%, #fff);
   --accent: #5b93ff;
   --accent-soft: #2b3a55;
   --sel: #2c3a52;
@@ -74,6 +78,9 @@
   --line-soft: #e8ebf1;
   --text: #1b1f27;
   --dim: #646c7c;
+  /* in a light theme the chrome and the rail already are the two light surfaces */
+  --chrome: var(--panel);
+  --rail: var(--panel-2);
   --accent: #2f6fe0;
   --accent-soft: #dbe6fb;
   --sel: #dbe6fb;
@@ -8513,7 +8520,7 @@ html[data-rounded='0'] .app { border-radius: 0; }
   padding: 8px 10px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 78%),
-    var(--panel);
+    var(--chrome);
   border-bottom: 1px solid var(--line-soft);
 }
 .logo {
@@ -8527,7 +8534,7 @@ html[data-rounded='0'] .app { border-radius: 0; }
 /* the command bar is a strip of sheet buttons, in both styles */
 .cmdbar,
 .cmdbar.ribbon {
-  background: var(--panel);
+  background: var(--chrome);
   border-bottom: 1px solid var(--line-soft);
 }
 .cmdbar { padding: 6px 8px; }
@@ -8556,7 +8563,8 @@ html[data-rounded='0'] .app { border-radius: 0; }
 /* ── sidebar: the sheet's soft rail ────────────────────────────────────────── */
 .side {
   padding: 8px;
-  background: var(--panel-2);
+  /* the sidebar tone levels still apply; only their base moved up with the rail */
+  background: color-mix(in srgb, var(--accent) var(--side-tint, 0.6%), var(--rail));
   border-inline-end: 1px solid var(--line-soft);
 }
 .side-title {
@@ -8572,7 +8580,7 @@ html[data-rounded='0'] .app { border-radius: 0; }
   color: var(--dim);
 }
 .tree-row { border-radius: var(--r-sm); min-height: 26px; }
-.side .tree-row:hover,
+.side .tree-row:hover { background: color-mix(in srgb, var(--accent) 8%, var(--rail)); }
 .tree-row:hover { background: var(--hover); }
 .tree-row.on { background: var(--accent-soft); }
 .side-add {
@@ -8664,7 +8672,7 @@ html[data-rounded='0'] .app { border-radius: 0; }
 /* ── status bar ─────────────────────────────────────────────────────────────── */
 .status {
   padding: 6px 12px;
-  background: var(--panel);
+  background: var(--chrome);
   border-top: 1px solid var(--line-soft);
   font-size: 11px;
 }
