@@ -196,7 +196,7 @@ const tileGeo = (width: number, nameLines: number, metaLines = 0) => {
   return {
     w,
     thumb,
-    glyph: Math.round(w * 0.52),
+    glyph: Math.round(w * 0.6),
     h: thumb + 24 + Math.max(1, nameLines) * line + metaLines * 15,
     font
   }
@@ -341,6 +341,22 @@ export function Pane(props: Props) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+
+  /**
+   * After a navigation the list owns the keyboard: arrow keys move the cursor straight away, without
+   * a click first, and a click on the sidebar/crumb (which leaves focus on that button) does not
+   * swallow the next key. A field or an open modal keeps its own focus, and a quiet reload of the
+   * same folder never steals it.
+   */
+  const dirPath = pane.listing?.path ?? ''
+  const previewing = !!pane.preview
+  useEffect(() => {
+    if (!props.active || !dirPath) return
+    const el = document.activeElement as HTMLElement | null
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+    if (document.querySelector('.modal, .dialog, .ctx')) return
+    listRef.current?.focus({ preventScroll: true })
+  }, [dirPath, props.active, previewing])
 
   const attachList = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el
@@ -974,6 +990,7 @@ export function Pane(props: Props) {
       <div
         className="rows"
         ref={attachList}
+        tabIndex={-1}
         onPointerDown={startMarquee}
         onWheel={(ev) => {
           if (view !== 'grid' || !ev.ctrlKey) return
@@ -1079,7 +1096,7 @@ export function Pane(props: Props) {
                                 <EyeIcon />
                               </span>
                             )}
-                            <EntryIcon entry={e} iconSet={props.iconSet} />
+                            <EntryIcon entry={e} iconSet={props.iconSet} size={19} />
                             {e.cloud && <CloudMark cloud={e.cloud} />}
                             <span dir="auto" className="trunc">{e.name}</span>
                             {props.showSymlink && e.link && (
@@ -1177,7 +1194,7 @@ export function Pane(props: Props) {
                                 <EyeIcon />
                               </span>
                             )}
-                            <EntryIcon entry={e} iconSet={props.iconSet} />
+                            <EntryIcon entry={e} iconSet={props.iconSet} size={18} />
                             {e.cloud && <CloudMark cloud={e.cloud} />}
                             <span dir="auto" className="trunc">{e.name}</span>
                             {props.showSymlink && e.link && (
