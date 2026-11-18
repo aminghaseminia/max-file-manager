@@ -3555,6 +3555,14 @@ export default function App() {
         moveSel(move, ev.shiftKey)
         return
       }
+      // In a grid (or the compact grid) the plain left/right keys walk the cells like up/down;
+      // in a list a horizontal key has no cell to move to and stays free.
+      if (!appModifier(ev) && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && viewOf(active) !== 'list') {
+        ev.preventDefault()
+        typedBuf.current = ''
+        moveSel(ev.key === 'ArrowLeft' ? 'left' : 'right', ev.shiftKey)
+        return
+      }
       if (appModifier(ev) && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
         // in a grid the arrows walk the cells; in a list they do what Krusader does: up / open
         if (viewOf(active) !== 'list') {
