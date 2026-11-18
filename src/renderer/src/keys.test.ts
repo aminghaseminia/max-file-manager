@@ -96,4 +96,6 @@ test('the navigation and trash keys follow the platform', () => {
   // a chord with both modifiers belongs to the system (⌃⌘F is macOS full screen)
   assert.equal(systemShortcut(ev('w', { ctrlKey: true, metaKey: true }), 'darwin'), null)
   assert.equal(systemShortcut(ev('g', { metaKey: true, shiftKey: true }), 'darwin'), 'address')
+  assert.equal(systemShortcut(ev('r', { metaKey: true, shiftKey: true }), 'darwin'), 'rename')
+  assert.equal(systemShortcut(ev('Enter'), 'darwin'), null, 'plain Enter belongs to the command handler')
 })

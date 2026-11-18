@@ -3113,7 +3113,11 @@ export default function App() {
 
   const openRename = (i: number) => {
     if (!panes) return
-    const sel = panes[i].sel
+    // after a click on the empty space nothing is highlighted, but the cursor row is still the
+    // thing the user is pointing at (F2 must rename it, on every platform)
+    const remembered =
+      navAnchor.current && visibleOf(i).some((e) => e.path === navAnchor.current) ? [navAnchor.current] : []
+    const sel = panes[i].sel.length ? panes[i].sel : remembered
     if (sel.length > 1) setRenameTargets(sel)
     else if (sel.length === 1) setPrompt({ kind: 'rename', value: baseName(sel[0]) })
     else setNote(t('چیزی انتخاب نشده'))
@@ -3587,6 +3591,9 @@ export default function App() {
           case 'new-folder':
             setPrompt({ kind: 'mkdir', value: '' })
             return
+          case 'rename':
+            openRename(active)
+            return
           case 'address':
             setAddrTicks((ticks) => ticks.map((n, j) => (j === active ? n + 1 : n)))
             return
@@ -3679,9 +3686,13 @@ export default function App() {
         setActive((a) => 1 - a)
         return
       }
-      if (ev.key === 'Enter' && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+      // Enter opens on every platform (macOS reports the Return key as «Enter»; the numpad one is
+      // the same). With the highlight dropped by an empty-space click, the remembered cursor row
+      // is what opens.
+      if ((ev.key === 'Enter' || ev.key === 'Return') && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault()
-        if (me.sel[0]) openEntry(active, me.sel[0])
+        const cell = me.sel[0] ?? (navAnchor.current || '')
+        if (cell && visibleOf(active).some((e) => e.path === cell)) openEntry(active, cell)
         return
       }
       if (ev.key === 'Escape') {

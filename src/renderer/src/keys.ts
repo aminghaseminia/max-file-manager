@@ -113,6 +113,7 @@ export type SystemAction =
   | 'properties'
   | 'open'
   | 'new-folder'
+  | 'rename'
   | 'address'
   | 'prev-tab'
 
@@ -149,6 +150,8 @@ export function systemShortcut(ev: KeyLike, platform: string): SystemAction | nu
       if (k === 'o' && !ev.shiftKey) return 'open'
       if ((key === 'Backspace' || key === 'Delete') && !ev.shiftKey) return 'trash'
       if (ev.shiftKey && k === 'g') return 'address'
+      // macOS often takes F2 for a system action; this is the same command without a function key
+      if (ev.shiftKey && k === 'r') return 'rename'
     }
   }
   return null
